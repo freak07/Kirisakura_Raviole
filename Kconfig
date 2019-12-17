@@ -1,0 +1,10 @@
+#
+# AoC Driver Support
+#
+
+config WC_MBOX
+	tristate "Whitechapel Mailbox support"
+	depends on MAILBOX
+	help
+		Say yes here to build the generic mailbox driver for the exynos
+		mailboxes in Whitechapel
