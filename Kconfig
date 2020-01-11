@@ -8,3 +8,10 @@ config WC_MBOX
 	help
 		Say yes here to build the generic mailbox driver for the exynos
 		mailboxes in Whitechapel
+
+config AOC_DRIVER
+	tristate "WhiteChapel AoC support"
+	default n
+	depends on WC_MBOX
+	help
+		Say yes here to add support for the AoC subsystem in WhiteChapel

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* 
+/*
  * Google Whitechapel Mailbox Driver
  *
  * Copyright (c) 2019 Google LLC
