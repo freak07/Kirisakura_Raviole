@@ -39,6 +39,8 @@
 /* TODO: Remove internal calls, or promote to "public" */
 #include "aoc_ipc_core_internal.h"
 
+#define MAX_FIRMWARE_LENGTH 128
+
 static struct platform_device *aoc_platform_device;
 
 static bool aoc_online;
@@ -59,6 +61,8 @@ struct aoc_prvdata {
 	void *dram_virt;
 	size_t sram_size;
 	size_t dram_size;
+
+	char firmware_name[MAX_FIRMWARE_LENGTH];
 };
 
 /* TODO: Reduce the global variables (move into a driver structure) */
@@ -77,6 +81,11 @@ static int aoc_major;
 static int aoc_major_dev;
 
 static struct class *aoc_class = NULL;
+
+static const char *default_firmware = "aoc.bin";
+static bool aoc_autoload_firmware;
+module_param(aoc_autoload_firmware, bool, 0644);
+MODULE_PARM_DESC(aoc_autoload_firmware, "Automatically load firmware if true");
 
 static int aoc_bus_match(struct device *dev, struct device_driver *drv);
 static int aoc_bus_probe(struct device *dev);
@@ -115,26 +124,10 @@ static void aoc_clear_sysmmu(struct iommu_domain *domain);
 
 static void aoc_process_services(struct aoc_prvdata *prvdata);
 
-static inline size_t aoc_sram_size(void)
-{
-	if (!aoc_sram_resource)
-		return 0;
-
-	return (aoc_sram_resource->end - aoc_sram_resource->start) + 1;
-}
-
-static inline size_t aoc_dram_size(void)
-{
-	if (!aoc_dram_resource)
-		return 0;
-
-	return (aoc_dram_resource->end - aoc_dram_resource->start) + 1;
-}
-
 static inline void *aoc_sram_translate(u32 offset)
 {
 	BUG_ON(aoc_sram_virt_mapping == NULL);
-	if (offset > aoc_sram_size())
+	if (offset > resource_size(aoc_sram_resource))
 		return NULL;
 
 	return aoc_sram_virt_mapping + offset;
@@ -143,7 +136,7 @@ static inline void *aoc_sram_translate(u32 offset)
 static inline void *aoc_dram_translate(u32 offset)
 {
 	BUG_ON(aoc_dram_virt_mapping == NULL);
-	if (offset > aoc_dram_size())
+	if (offset > resource_size(aoc_dram_resource))
 		return NULL;
 
 	return aoc_dram_virt_mapping + offset;
@@ -183,21 +176,23 @@ static inline aoc_service *service_at_index(struct aoc_prvdata *prvdata,
 static bool validate_service(struct aoc_prvdata *prv, int i)
 {
 	struct aoc_ipc_service_header *hdr = service_at_index(prv, i);
+	struct device *dev = prv->dev;
 
 	if (!aoc_is_valid_dram_address(prv, hdr)) {
-		pr_err("Service is not in DRAM region\n");
+		dev_err(dev, "service %d is not in DRAM region\n", i);
 		return false;
 	}
 
 	if (hdr->regions[0].slots == 0 && hdr->regions[1].slots == 0) {
-		pr_err("Service is not readable or writable\n");
+		dev_err(dev, "service %d is not readable or writable\n", i);
 
 		return false;
 	}
 
 	if (aoc_service_is_ring(hdr) &&
 	    (hdr->regions[0].slots > 1 || hdr->regions[1].slots > 1)) {
-		pr_err("Service has invalid ring slot configuration\n");
+		dev_err(dev, "service %d has invalid ring slot configuration\n",
+			i);
 
 		return false;
 	}
@@ -492,9 +487,8 @@ static bool aoc_a32_reset(void)
 	return true;
 }
 
-#if CONFIG_SYSFS
-static ssize_t aoc_revision_show(struct device *dev,
-				 struct device_attribute *attr, char *buf)
+static ssize_t revision_show(struct device *dev, struct device_attribute *attr,
+			     char *buf)
 {
 	u32 fw_rev, hw_rev;
 
@@ -508,10 +502,10 @@ static ssize_t aoc_revision_show(struct device *dev,
 			 hw_rev);
 }
 
-static DEVICE_ATTR(revision, 0444, aoc_revision_show, NULL);
+static DEVICE_ATTR_RO(revision);
 
-static ssize_t aoc_services_show(struct device *dev,
-				 struct device_attribute *attr, char *buf)
+static ssize_t services_show(struct device *dev, struct device_attribute *attr,
+			     char *buf)
 {
 	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
 	int services = aoc_num_services();
@@ -546,23 +540,67 @@ static ssize_t aoc_services_show(struct device *dev,
 	return ret;
 }
 
-static DEVICE_ATTR(services, 0444, aoc_services_show, NULL);
+static DEVICE_ATTR_RO(services);
+
+static int start_firmware_load(struct device *dev)
+{
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+
+	dev_notice(dev, "attempting to load firmware \"%s\"\n",
+		   prvdata->firmware_name);
+	return request_firmware_nowait(THIS_MODULE, true,
+				       prvdata->firmware_name, dev, GFP_KERNEL,
+				       dev, aoc_fw_callback);
+}
+
+static ssize_t firmware_show(struct device *dev, struct device_attribute *attr,
+			     char *buf)
+{
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%s", prvdata->firmware_name);
+}
+
+static ssize_t firmware_store(struct device *dev, struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+	char buffer[MAX_FIRMWARE_LENGTH];
+	char *trimmed = NULL;
+
+	if (strscpy(buffer, buf, sizeof(buffer)) <= 0)
+		return -E2BIG;
+
+	if (strchr(buffer, '/') != NULL) {
+		dev_err(dev, "firmware path must not contain '/'\n");
+		return -EINVAL;
+	}
+
+	/* Strip whitespace (including \n) */
+	trimmed = strim(buffer);
+
+	strscpy(prvdata->firmware_name, trimmed,
+		sizeof(prvdata->firmware_name));
+	start_firmware_load(dev);
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(firmware);
 
 static inline void aoc_create_sysfs_nodes(struct device *dev)
 {
 	device_create_file(dev, &dev_attr_revision);
 	device_create_file(dev, &dev_attr_services);
+	device_create_file(dev, &dev_attr_firmware);
 }
 
 static inline void aoc_remove_sysfs_nodes(struct device *dev)
 {
-	device_remove_file(dev, &dev_attr_revision);
+	device_remove_file(dev, &dev_attr_firmware);
 	device_remove_file(dev, &dev_attr_services);
+	device_remove_file(dev, &dev_attr_revision);
 }
-#else
-#define aoc_create_sysfs_nodes(x)
-#define aoc_remove_sysfs_nodes(x)
-#endif
 
 /* File operations */
 static struct aoc_client *allocate_client(void)
@@ -625,7 +663,7 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd,
 		aoc_fpga_reset();
 		aoc_a32_reset();
 #else
-		pr_err("Needs APM mailbox support\n");
+		pr_err("APM mailbox support required\n");
 		return -EOPNOTSUPP;
 #endif
 		return 0;
@@ -691,7 +729,7 @@ static int aoc_bus_match(struct device *dev, struct device_driver *drv)
 	 * generic driver to claim the service
 	 */
 	if (!driver_matches_by_name && has_name_matching_driver(service_name)) {
-		pr_debug("Ignoring generic driver for service %s\n",
+		pr_debug("ignoring generic driver for service %s\n",
 			 service_name);
 		return 0;
 	}
@@ -839,8 +877,8 @@ static void aoc_configure_sysmmu(struct iommu_domain *domain)
 #ifndef AOC_JUNO
 	/* static inline int iommu_map(struct iommu_domain *domain, unsigned long
 	 * iova, phys_addr_t paddr, size_t size, int prot) */
-	iommu_map(domain, 0x98000000, aoc_dram_resource->start, aoc_dram_size(),
-		  0);
+	iommu_map(domain, 0x98000000, aoc_dram_resource->start,
+		  resource_size(aoc_dram_resource), 0);
 
 	/* Use a 1MB mapping instead of individual mailboxes for now */
 	/* TODO: Turn the mailbox address ranges into dtb entries */
@@ -851,7 +889,7 @@ static void aoc_configure_sysmmu(struct iommu_domain *domain)
 static void aoc_clear_sysmmu(struct iommu_domain *domain)
 {
 #ifndef AOC_JUNO
-	iommu_unmap(domain, 0x98000000, aoc_dram_size());
+	iommu_unmap(domain, 0x98000000, resource_size(aoc_dram_resource));
 
 	iommu_unmap(domain, 0x9A000000, SZ_1M);
 #endif
@@ -885,7 +923,7 @@ static void aoc_did_become_online(struct work_struct *work)
 
 	for (i = 0; i < s; i++) {
 		if (!validate_service(prvdata, i)) {
-			pr_err("Service %d invalid\n", i);
+			pr_err("service %d invalid\n", i);
 			continue;
 		}
 
@@ -953,6 +991,7 @@ static struct device *aoc_create_chrdev(void)
 	aoc_major = register_chrdev(0, AOC_CHARDEV_NAME, &fops);
 	aoc_major_dev = MKDEV(aoc_major, 0);
 
+	pr_notice("creating char device with class %p\n", aoc_class);
 	new_device = device_create(aoc_class, NULL, aoc_major_dev, NULL,
 				   AOC_CHARDEV_NAME);
 	if (!new_device) {
@@ -986,35 +1025,24 @@ static void aoc_cleanup_resources(struct platform_device *pdev)
 		aoc_take_offline();
 
 		if (prvdata->char_dev) {
-			aoc_remove_sysfs_nodes(&pdev->dev);
 #ifdef AOC_JUNO
 			free_irq(aoc_irq, prvdata->char_dev);
 			aoc_irq = -1;
 #endif
+			pr_notice(
+				"destroying device in cleanup with class %p\n",
+				aoc_class);
 			device_destroy(aoc_class, aoc_major_dev);
 			prvdata->char_dev = NULL;
 		}
+
+		aoc_remove_sysfs_nodes(&pdev->dev);
 	}
 
-	if (aoc_sram_resource) {
-		if (aoc_sram_virt_mapping) {
-			iounmap((void *)aoc_sram_resource->start);
-			aoc_sram_virt_mapping = NULL;
-		}
-
-		release_mem_region(aoc_sram_resource->start, aoc_sram_size());
-		aoc_sram_resource = NULL;
-	}
-
-	if (aoc_dram_resource) {
-		if (aoc_dram_virt_mapping) {
-			iounmap((void *)aoc_dram_resource->start);
-			aoc_dram_virt_mapping = NULL;
-		}
-
-		release_mem_region(aoc_dram_resource->start, aoc_dram_size());
-		aoc_dram_resource = NULL;
-	}
+	/*
+	 * SRAM and DRAM were mapped with the device managed API, so they will
+	 * be automatically detached
+	 */
 
 	if (aoc_major) {
 		unregister_chrdev(aoc_major, AOC_CHARDEV_NAME);
@@ -1067,7 +1095,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	int i;
 
 	if (aoc_platform_device != NULL) {
-		pr_err("Already matched the AoC to another platform device");
+		dev_err(dev,
+			"already matched the AoC to another platform device");
 		return -EEXIST;
 	}
 
@@ -1094,7 +1123,6 @@ static int aoc_platform_probe(struct platform_device *pdev)
 
 	prvdata = devm_kzalloc(dev, sizeof(*prvdata), GFP_KERNEL);
 	if (!prvdata) {
-		pr_err("failed to allocate private data\n");
 		return -ENOMEM;
 	}
 
@@ -1102,7 +1130,7 @@ static int aoc_platform_probe(struct platform_device *pdev)
 #ifdef AOC_JUNO
 	aoc_irq = platform_get_irq(pdev, 0);
 	if (aoc_irq < 1) {
-		pr_err("failed to configure aoc interrupt\n");
+		dev_err(dev, "failed to configure aoc interrupt\n");
 		return aoc_irq;
 	}
 #else
@@ -1114,13 +1142,16 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	prvdata->mbox_client.tx_done = aoc_mbox_tx_done;
 	prvdata->mbox_client.tx_prepare = aoc_mbox_tx_prepare;
 
+	strscpy(prvdata->firmware_name, default_firmware,
+		sizeof(prvdata->firmware_name));
+
 	platform_set_drvdata(pdev, prvdata);
 
 	prvdata->mbox_channel =
 		mbox_request_channel_byname(&prvdata->mbox_client, "aoc2ap");
 	if (IS_ERR(prvdata->mbox_channel)) {
-		pr_err("failed to find mailbox interface : %ld\n",
-		       PTR_ERR(prvdata->mbox_channel));
+		dev_err(dev, "failed to find mailbox interface : %ld\n",
+			PTR_ERR(prvdata->mbox_channel));
 		prvdata->mbox_channel = NULL;
 		return -EIO;
 	}
@@ -1155,18 +1186,18 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		init_waitqueue_head(&metadata[i].write_queue);
 	}
 
-	aoc_sram_virt_mapping =
-		ioremap(aoc_sram_resource->start, aoc_sram_size());
-	aoc_dram_virt_mapping =
-		ioremap(aoc_dram_resource->start, aoc_dram_size());
+	aoc_sram_virt_mapping = devm_ioremap(dev, aoc_sram_resource->start,
+					     resource_size(aoc_sram_resource));
+	aoc_dram_virt_mapping = devm_ioremap(dev, aoc_dram_resource->start,
+					     resource_size(aoc_dram_resource));
 
 	prvdata->sram_virt = aoc_sram_virt_mapping;
-	prvdata->sram_size = aoc_sram_size();
+	prvdata->sram_size = resource_size(aoc_sram_resource);
 
 	prvdata->dram_virt = aoc_dram_virt_mapping;
-	prvdata->dram_size = aoc_dram_size();
+	prvdata->dram_size = resource_size(aoc_dram_resource);
 
-	if (!aoc_sram_virt_mapping || !aoc_dram_virt_mapping) {
+	if (IS_ERR(aoc_sram_virt_mapping) || IS_ERR(aoc_dram_virt_mapping)) {
 		aoc_cleanup_resources(pdev);
 		return -ENOMEM;
 	}
@@ -1190,8 +1221,7 @@ static int aoc_platform_probe(struct platform_device *pdev)
 
 	aoc_create_sysfs_nodes(dev);
 
-	if ((request_firmware_nowait(THIS_MODULE, true, "aoc.bin", dev,
-				     GFP_KERNEL, dev, aoc_fw_callback)) != 0)
+	if (aoc_autoload_firmware && !start_firmware_load(dev))
 		pr_err("failed to start firmware download procedure\n");
 
 	pr_notice("platform_probe matched\n");
@@ -1226,7 +1256,7 @@ static int __init aoc_init(void)
 	platform_driver_register(&aoc_driver);
 
 	if (bus_register(&aoc_bus_type) != 0)
-		pr_err("Failed to register AoC bus\n");
+		pr_err("failed to register AoC bus\n");
 
 	return 0;
 }
@@ -1235,12 +1265,12 @@ static void __exit aoc_exit(void)
 {
 	pr_debug("system driver exit\n");
 
-	if (aoc_class)
-		class_destroy(aoc_class);
-
 	bus_unregister(&aoc_bus_type);
 
 	platform_driver_unregister(&aoc_driver);
+
+	if (aoc_class)
+		class_destroy(aoc_class);
 }
 
 module_init(aoc_init);
