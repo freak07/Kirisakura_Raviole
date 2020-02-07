@@ -15,3 +15,15 @@ config AOC_DRIVER
 	depends on WC_MBOX
 	help
 		Say yes here to add support for the AoC subsystem in WhiteChapel
+
+config AOC_CHAR_DRIVER
+	tristate "WhiteChapel AoC character device support"
+	default Y if AOC_DRIVER
+	help
+		Say yes here to expose AoC services as character devices
+
+config AOC_CHAN_DRIVER
+	tristate "WhiteChapel AoC IPC channel support"
+	default Y if AOC_DRIVER
+	help
+		Say yes here to add channelized IPC support for USF
