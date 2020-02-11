@@ -61,14 +61,13 @@ static const struct of_device_id wc_mbox_match[] = {
 };
 
 static struct platform_driver wc_mbox_driver = {
-    .probe = wc_mbox_probe,
-    .remove = wc_mbox_remove,
-    .driver =
-        {
-            .name = "wc-mbox",
-            .owner = THIS_MODULE,
-            .of_match_table = of_match_ptr(wc_mbox_match),
-        },
+	.probe = wc_mbox_probe,
+	.remove = wc_mbox_remove,
+	.driver = {
+		.name = "wc-mbox",
+		.owner = THIS_MODULE,
+		.of_match_table = of_match_ptr(wc_mbox_match),
+	},
 };
 
 static struct mbox_chan_ops wc_mbox_chan_ops = {
@@ -115,17 +114,15 @@ static irqreturn_t wc_int_handler(int irq, void *dev)
 	u32 status;
 	int i;
 
-	for (i = 0; i < min(prvdata->shared_registers, 8); i++) {
+	for (i = 0; i < min(prvdata->shared_registers, 8); i++)
 		data[i] = ioread32(prvdata->base + MB_SHARED(i));
-	}
 
 	status = ioread32(prvdata->base + MB_INTSR1);
 
 	for (i = 0; i < MBOX_WC_INTERRUPTS; i++) {
 		if ((status & (1 << i)) != 0) {
-			if (chan->cl != NULL) {
+			if (chan->cl != NULL)
 				mbox_chan_received_data(chan, &data);
-			}
 
 			wc_mbox_int_clear(prvdata->base, i);
 		}
@@ -157,6 +154,7 @@ static int wc_mbox_send_data(struct mbox_chan *chan, void *data)
 static int wc_mbox_startup(struct mbox_chan *chan)
 {
 	struct wc_mbox_prvdata *prvdata = chan->con_priv;
+
 	wc_mbox_set_interrupt_mask(prvdata->base, 0x0000);
 
 	pr_debug("startup for mbox_chan %p\n", chan);
@@ -167,6 +165,7 @@ static int wc_mbox_startup(struct mbox_chan *chan)
 static void wc_mbox_shutdown(struct mbox_chan *chan)
 {
 	struct wc_mbox_prvdata *prvdata = chan->con_priv;
+
 	wc_mbox_set_interrupt_mask(prvdata->base, 0xffff);
 
 	pr_debug("shutdown for mbox_chan %p\n", chan);
@@ -243,15 +242,17 @@ static int wc_mbox_probe(struct platform_device *pdev)
 	/* Start with interrupts masked */
 	wc_mbox_set_interrupt_mask(prvdata->base, 0xffff);
 
-	if ((ret = devm_request_irq(dev, interrupt, wc_int_handler,
-			    IRQF_TRIGGER_HIGH, dev_name(dev), dev)) != 0) {
+	ret = devm_request_irq(dev, interrupt, wc_int_handler,
+			       IRQF_TRIGGER_HIGH, dev_name(dev), dev);
+	if (ret != 0) {
 		dev_err(dev, "failed to register interrupt handler: %d\n", ret);
 		return -ENXIO;
 	}
 
 	ret = mbox_controller_register(mbox);
 	if (ret != 0) {
-		dev_err(dev, "failed to register mailbox controller: %d\n", ret);
+		dev_err(dev, "failed to register mailbox controller: %d\n",
+			ret);
 		return -EINVAL;
 	}
 
@@ -264,6 +265,7 @@ static int wc_mbox_remove(struct platform_device *pdev)
 {
 	struct wc_mbox_prvdata *prvdata = platform_get_drvdata(pdev);
 	struct device *dev = &(pdev->dev);
+
 	if (!prvdata)
 		return -EINVAL;
 
