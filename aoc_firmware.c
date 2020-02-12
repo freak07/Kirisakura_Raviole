@@ -36,7 +36,7 @@ struct aoc_superbin_header {
 	u32 hifi3z_data_offset;
 	u32 hifi3z_data_size;
 	u32 crc32;
-} __attribute__((packed));
+} __packed;
 
 bool _aoc_fw_is_valid(const struct firmware *fw)
 {
@@ -56,14 +56,9 @@ bool _aoc_fw_is_valid(const struct firmware *fw)
 	ipc_offset = _aoc_fw_bootloader_offset(fw);
 	bootloader_offset = _aoc_fw_bootloader_offset(fw);
 
-#if 0
-	/* The IPC offset needs to reside after the FW image, so
-	 * make sure the value makes sense */
-	if (ipc_offset < fw->size)
-		return false;
-#endif
 	/* The bootloader resides within the FW image, so make sure
-	 * that value makes sense */
+	 * that value makes sense
+	 */
 	if (bootloader_offset > fw->size)
 		return false;
 

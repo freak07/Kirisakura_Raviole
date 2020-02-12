@@ -70,17 +70,17 @@ struct aoc_prvdata {
 static struct resource *aoc_sram_resource;
 static struct resource *aoc_dram_resource;
 
-static void *aoc_sram_virt_mapping = NULL;
-static void *aoc_dram_virt_mapping = NULL;
+static void *aoc_sram_virt_mapping;
+static void *aoc_dram_virt_mapping;
 
-static int aoc_irq = 0;
+static int aoc_irq;
 
-static struct aoc_control_block *aoc_control = NULL;
+static struct aoc_control_block *aoc_control;
 
 static int aoc_major;
 static int aoc_major_dev;
 
-static struct class *aoc_class = NULL;
+static struct class *aoc_class;
 
 static const char *default_firmware = "aoc.bin";
 static bool aoc_autoload_firmware;
@@ -108,8 +108,8 @@ struct aoc_service_metadata {
 	wait_queue_head_t write_queue;
 };
 
-static volatile unsigned long read_blocked_mask;
-static volatile unsigned long write_blocked_mask;
+static unsigned long read_blocked_mask;
+static unsigned long write_blocked_mask;
 static struct aoc_service_metadata *metadata;
 
 static bool aoc_fpga_reset(void);
@@ -234,6 +234,7 @@ static bool service_names_are_valid(struct aoc_prvdata *prv)
 	for (i = 0; i < services; i++) {
 		const char *name = aoc_service_name(service_at_index(prv, i));
 		size_t name_len = strnlen(name, AOC_SERVICE_NAME_LENGTH);
+
 		if (name_len == 0 || name_len == AOC_SERVICE_NAME_LENGTH) {
 			dev_err(prv->dev,
 				"service %d has a name that is too long\n", i);
@@ -281,18 +282,14 @@ static void aoc_mbox_rx_callback(struct mbox_client *cl, void *mssg)
 	} else {
 		aoc_process_services(prvdata);
 	}
-
-	return;
 }
 
 static void aoc_mbox_tx_prepare(struct mbox_client *cl, void *mssg)
 {
-	return;
 }
 
 static void aoc_mbox_tx_done(struct mbox_client *cl, void *mssg, int r)
 {
-	return;
 }
 
 static void aoc_fw_callback(const struct firmware *fw, void *ctx)
@@ -455,7 +452,8 @@ static bool write_reset_trampoline(u32 addr)
 static bool aoc_fpga_reset(void)
 {
 #ifdef AOC_JUNO
-	volatile u32 *reset = aoc_sram_translate(0x1000000);
+	u32 *reset = aoc_sram_translate(0x1000000);
+
 	if (!reset)
 		return false;
 
@@ -472,7 +470,8 @@ static bool aoc_fpga_reset(void)
 static bool aoc_a32_reset(void)
 {
 	u32 pcu_value;
-	volatile u32 *pcu = aoc_sram_translate(AOC_PCU_BASE);
+	u32 *pcu = aoc_sram_translate(AOC_PCU_BASE);
+
 	if (!pcu)
 		return false;
 
@@ -655,6 +654,7 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd,
 	switch (cmd) {
 	case AOC_IS_ONLINE: {
 		int online = aoc_is_online();
+
 		ret = copy_to_user(argp, &online, sizeof(online));
 		return 0;
 	}
@@ -669,8 +669,9 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd,
 		return 0;
 	}
 	default:
-		/* man ioctl(2) The specified request does not apply to the kind of object
-		 * that the file descriptor fd references */
+		/* man ioctl(2) The specified request does not apply to the kind
+		 * of object that the file descriptor fd references
+		 */
 		return -ENOTTY;
 	}
 
@@ -698,8 +699,7 @@ static const struct of_device_id aoc_match[] = {
 static struct platform_driver aoc_driver = {
 	.probe = aoc_platform_probe,
 	.remove = aoc_platform_remove,
-	.driver =
-		{
+	.driver = {
 			.name = "aoc",
 			.owner = THIS_MODULE,
 			.of_match_table = of_match_ptr(aoc_match),
@@ -786,7 +786,7 @@ static void aoc_clear_gpio_interrupt(void)
 {
 #ifndef AOC_JUNO
 	int reg = 93, val;
-	volatile u32 *gpio_register =
+	u32 *gpio_register =
 		aoc_sram_translate(AOC_GPIO_BASE + ((reg / 32) * 12));
 
 	val = ioread32(gpio_register);
@@ -802,7 +802,7 @@ static void aoc_configure_interrupt(void)
 
 static int aoc_remove_device(struct device *dev, void *ctx)
 {
-	pr_debug("aoc_remove_device %s\n", dev_name(dev));
+	pr_debug("%s %s\n", __func__, dev_name(dev));
 	device_unregister(dev);
 
 	return 0;
@@ -811,7 +811,8 @@ static int aoc_remove_device(struct device *dev, void *ctx)
 static void aoc_device_release(struct device *dev)
 {
 	struct aoc_service_dev *the_dev = AOC_DEVICE(dev);
-	pr_debug("device release:%s\n", dev_name(dev));
+
+	pr_debug("%s %s\n", __func__, dev_name(dev));
 
 	kfree(the_dev);
 }
@@ -862,11 +863,16 @@ static void signal_aoc(struct mbox_chan *channel)
 
 	u32 mask = (1 << AOC_DOWNCALL_DOORBELL);
 
+	/* The signal is called as directly after writing a message to shared
+	 * memory, so make sure all pending writes are flushed before actually
+	 * sending the signal
+	 */
 	wmb();
 	iowrite32(mask,
 		  aoc_sram_translate(AOC_PCU_BASE + AOC_PCU_DB_SET_OFFSET));
 #else
 	uint32_t message[8] = { 0 };
+
 	pr_notice("signal\n");
 	mbox_send_message(channel, &message);
 #endif
@@ -875,8 +881,9 @@ static void signal_aoc(struct mbox_chan *channel)
 static void aoc_configure_sysmmu(struct iommu_domain *domain)
 {
 #ifndef AOC_JUNO
-	/* static inline int iommu_map(struct iommu_domain *domain, unsigned long
-	 * iova, phys_addr_t paddr, size_t size, int prot) */
+	/* static inline int iommu_map(struct iommu_domain *domain, unsigned
+	 * long iova, phys_addr_t paddr, size_t size, int prot)
+	 */
 	iommu_map(domain, 0x98000000, aoc_dram_resource->start,
 		  resource_size(aoc_dram_resource), 0);
 
@@ -945,12 +952,10 @@ static void aoc_take_offline(void)
 
 static void aoc_process_services(struct aoc_prvdata *prvdata)
 {
-	volatile unsigned long mask;
 	int services;
 	int i;
 
 	services = aoc_num_services();
-	mask = read_blocked_mask;
 	for (i = 0; i < services; i++) {
 		if (test_bit(i, &read_blocked_mask) &&
 		    aoc_service_can_read_message(service_at_index(prvdata, i),
@@ -958,7 +963,6 @@ static void aoc_process_services(struct aoc_prvdata *prvdata)
 			wake_up(&metadata[i].read_queue);
 	}
 
-	mask = write_blocked_mask;
 	for (i = 0; i < services; i++) {
 		if (test_bit(i, &write_blocked_mask) &&
 		    aoc_service_can_write_message(service_at_index(prvdata, i),
@@ -1122,9 +1126,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	}
 
 	prvdata = devm_kzalloc(dev, sizeof(*prvdata), GFP_KERNEL);
-	if (!prvdata) {
+	if (!prvdata)
 		return -ENOMEM;
-	}
 
 	prvdata->dev = dev;
 #ifdef AOC_JUNO
@@ -1210,8 +1213,9 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	aoc_configure_interrupt();
 
 #ifdef AOC_JUNO
-	if ((ret = request_irq(aoc_irq, aoc_int_handler, IRQF_TRIGGER_HIGH,
-			       "aoc", aoc_device)) != 0) {
+	ret = request_irq(aoc_irq, aoc_int_handler, IRQF_TRIGGER_HIGH, "aoc",
+			  aoc_device);
+	if (ret != 0) {
 		pr_err("failed to register interrupt handler : %d\n", ret);
 		aoc_cleanup_resources(pdev);
 
