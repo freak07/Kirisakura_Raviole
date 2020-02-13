@@ -445,18 +445,35 @@ EXPORT_SYMBOL(aoc_service_write);
 
 static bool write_reset_trampoline(u32 addr)
 {
-	u32 instruction;
 	u32 *reset;
+	u32 instructions[] = {
+		0xe59f0030, /* ldr r0, .PCU_SLC_MIF_REQ_ADDR */
+		0xe3a01003, /* mov r1, #3 */
+		0xe5801000, /* str r1, [r0] */
+		/* mif_ack_loop: */
+		0xe5902004, /* ldr r2, [r0, #4] */
+		0xe3520002, /* cmp r2, #2 */
+		0x1afffffc, /* bne mif_ack_loop */
+		0xe59f0014, /* ldr r0, .PCU_POWER_STATUS_ADDR*/
+		0xe3a01004, /* mov r1, #4 */
+		0xe5801004, /* str r1, [r0, #4] */
+		/* blk_aoc_on_loop: */
+		0xe5902000, /* ldr r2, [r0] */
+		0xe3120004, /* tst r2, #4 */
+		0x0afffffc, /* beq blk_aoc_on_loop */
+		0xe59ff004, /* ldr pc, BOOTLOADER_START_ADDR */
+		0x00b02000, /* PCU_TOP_POWER_STATUS_ADDR */
+		0x00b0819c, /* PCU_SLC_MIF_REQ_ADDR */
+		addr /* BOOTLOADER_START_ADDR */
+	};
 
 	pr_notice("writing reset trampoline to addr %#x\n", addr);
 
-	instruction = 0xe51ff004; /* ldr pc, [pc, #-4] */
 	reset = aoc_sram_translate(0);
 	if (!reset)
 		return false;
 
-	iowrite32(cpu_to_le32(instruction), reset++);
-	iowrite32(cpu_to_le32(addr), reset);
+	memcpy_toio(reset, instructions, sizeof(instructions));
 
 	return true;
 }
