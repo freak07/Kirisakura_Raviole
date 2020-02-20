@@ -233,8 +233,16 @@ static bool service_names_are_valid(struct aoc_prvdata *prv)
 	/* All names have a valid length */
 	for (i = 0; i < services; i++) {
 		const char *name = aoc_service_name(service_at_index(prv, i));
-		size_t name_len = strnlen(name, AOC_SERVICE_NAME_LENGTH);
+		size_t name_len;
 
+		if (!name) {
+			dev_err(prv->dev,
+				"failed to retrieve service name for service %d\n",
+				i);
+			return false;
+		}
+
+		name_len = strnlen(name, AOC_SERVICE_NAME_LENGTH);
 		if (name_len == 0 || name_len == AOC_SERVICE_NAME_LENGTH) {
 			dev_err(prv->dev,
 				"service %d has a name that is too long\n", i);
@@ -317,6 +325,8 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		"firmware image commit.  ipc_offset %u bootloader_offset %u\n",
 		ipc_offset, bootloader_offset);
 
+	aoc_control = aoc_dram_translate(ipc_offset);
+
 	aoc_fpga_reset();
 
 	_aoc_fw_commit(fw, aoc_dram_virt_mapping + AOC_BINARY_DRAM_OFFSET);
@@ -396,7 +406,9 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 		return -EINVAL;
 
 	service_number = dev->service_index;
-	service = service_at_index(prvdata->ipc_base, service_number);
+	service = service_at_index(prvdata, service_number);
+
+	BUG_ON(!aoc_is_valid_dram_address(prvdata, service));
 
 	if (aoc_service_message_slots(service, AOC_DOWN) == 0)
 		return -EBADF;
@@ -872,8 +884,6 @@ static void signal_aoc(struct mbox_chan *channel)
 		  aoc_sram_translate(AOC_PCU_BASE + AOC_PCU_DB_SET_OFFSET));
 #else
 	uint32_t message[8] = { 0 };
-
-	pr_notice("signal\n");
 	mbox_send_message(channel, &message);
 #endif
 }
