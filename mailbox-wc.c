@@ -177,7 +177,7 @@ static bool wc_mbox_last_tx_done(struct mbox_chan *chan)
 	u32 status;
 
 	status = ioread32(prvdata->base + MB_INTSR0);
-	return status != 0;
+	return status == 0;
 }
 
 static bool wc_mbox_peek_data(struct mbox_chan *chan)
@@ -228,7 +228,7 @@ static int wc_mbox_probe(struct platform_device *pdev)
 	prvdata->mbox = mbox;
 
 	mbox->num_chans = 1;
-	mbox->txpoll_period = 10;
+	mbox->txpoll_period = 2;
 	mbox->txdone_poll = true;
 	mbox->dev = dev;
 	mbox->ops = &wc_mbox_chan_ops;
