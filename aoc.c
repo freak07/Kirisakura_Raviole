@@ -83,7 +83,7 @@ static int aoc_major_dev;
 static struct class *aoc_class;
 
 static const char *default_firmware = "aoc.bin";
-static bool aoc_autoload_firmware;
+static bool aoc_autoload_firmware = true;
 module_param(aoc_autoload_firmware, bool, 0644);
 MODULE_PARM_DESC(aoc_autoload_firmware, "Automatically load firmware if true");
 
