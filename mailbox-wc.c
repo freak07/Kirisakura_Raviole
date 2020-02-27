@@ -134,17 +134,20 @@ static irqreturn_t wc_int_handler(int irq, void *dev)
 static int wc_mbox_send_data(struct mbox_chan *chan, void *data)
 {
 	struct wc_mbox_prvdata *prvdata = chan->con_priv;
-	u32 *data_to_send = data;
+	u32 *regs = data;
 	u32 status;
 	int i;
 
 	/* Wait if the remote has not finished processing the last message */
 	status = ioread32(prvdata + MB_INTSR0);
-	if (status != 0)
+	if (status != 0) {
+		pr_debug("Busy with status %x\n", status);
 		return -EBUSY;
+	}
 
-	for (i = 0; i < prvdata->shared_registers; i++)
-		iowrite32(data_to_send[i], prvdata->base + MB_SHARED(i));
+	if (data)
+		for (i = 0; i < prvdata->shared_registers; i++)
+			iowrite32(regs[i], prvdata->base + MB_SHARED(i));
 
 	wc_mbox_int_generate(prvdata->base, 0);
 
@@ -177,6 +180,9 @@ static bool wc_mbox_last_tx_done(struct mbox_chan *chan)
 	u32 status;
 
 	status = ioread32(prvdata->base + MB_INTSR0);
+	if (status != 0)
+		pr_debug("Pending status %x\n", status);
+
 	return status == 0;
 }
 

@@ -900,8 +900,7 @@ static void signal_aoc(struct mbox_chan *channel)
 	iowrite32(mask,
 		  aoc_sram_translate(AOC_PCU_BASE + AOC_PCU_DB_SET_OFFSET));
 #else
-	uint32_t message[8] = { 0 };
-	mbox_send_message(channel, &message);
+	mbox_send_message(channel, NULL);
 #endif
 }
 
