@@ -509,9 +509,6 @@ static bool aoc_a32_reset(void)
 	pcu_value |= 1;
 	iowrite32(pcu_value, pcu);
 
-	pcu_value &= ~(1);
-	iowrite32(pcu_value, pcu);
-
 	return true;
 }
 
