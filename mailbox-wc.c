@@ -139,7 +139,7 @@ static int wc_mbox_send_data(struct mbox_chan *chan, void *data)
 	int i;
 
 	/* Wait if the remote has not finished processing the last message */
-	status = ioread32(prvdata + MB_INTSR0);
+	status = ioread32(prvdata->base + MB_INTSR0);
 	if (status != 0) {
 		pr_debug("Busy with status %x\n", status);
 		return -EBUSY;
