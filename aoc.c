@@ -904,15 +904,17 @@ static void signal_aoc(struct mbox_chan *channel)
 static void aoc_configure_sysmmu(struct iommu_domain *domain)
 {
 #ifndef AOC_JUNO
-	/* static inline int iommu_map(struct iommu_domain *domain, unsigned
-	 * long iova, phys_addr_t paddr, size_t size, int prot)
-	 */
+	/* Map in the AoC carveout */
 	iommu_map(domain, 0x98000000, aoc_dram_resource->start,
 		  resource_size(aoc_dram_resource), IOMMU_READ | IOMMU_WRITE);
 
 	/* Use a 1MB mapping instead of individual mailboxes for now */
 	/* TODO: Turn the mailbox address ranges into dtb entries */
 	iommu_map(domain, 0x9A000000, 0x17600000, SZ_1M,
+		  IOMMU_READ | IOMMU_WRITE);
+
+	/* Map in BLK_ALIVE for MIF status */
+	iommu_map(domain, 0x9A263000, 0x17463000, SZ_4K,
 		  IOMMU_READ | IOMMU_WRITE);
 #endif
 }
