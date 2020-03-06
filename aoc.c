@@ -1024,8 +1024,8 @@ static struct device *aoc_create_chrdev(void)
 	pr_notice("creating char device with class %p\n", aoc_class);
 	new_device = device_create(aoc_class, NULL, aoc_major_dev, NULL,
 				   AOC_CHARDEV_NAME);
-	if (!new_device) {
-		pr_err("failed to create aoc device\n");
+	if (IS_ERR(new_device)) {
+		pr_err("device_create failed: %ld\n", PTR_ERR(new_device));
 		return NULL;
 	}
 

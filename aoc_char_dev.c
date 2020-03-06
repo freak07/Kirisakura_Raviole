@@ -96,8 +96,10 @@ static int create_character_device(struct aoc_service_dev *dev)
 				device_create(acd_class, &dev->dev,
 					      MKDEV(acd_major, i), NULL,
 					      "acd-%s", dev_name(&(dev->dev)));
-			if (acd_devices[i] == NULL) {
-				pr_err("failed to create aoc character device\n");
+			if (IS_ERR(acd_devices[i])) {
+				pr_err("device_create failed: %ld\n",
+				       PTR_ERR(acd_devices[i]));
+				acd_devices[i] = NULL;
 				return -EINVAL;
 			}
 
