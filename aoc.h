@@ -15,7 +15,6 @@
 
 struct aoc_service_dev {
 	struct device dev;
-	const char *name;
 	int service_index;
 	aoc_service *service;
 	void *ipc_base;

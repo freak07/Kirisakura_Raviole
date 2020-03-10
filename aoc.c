@@ -886,7 +886,6 @@ static struct aoc_service_dev *register_service_device(int index,
 	dev->dev.bus = &aoc_bus_type;
 	dev->dev.release = aoc_device_release;
 
-	dev->name = aoc_service_name(s);
 	dev->service_index = index;
 	dev->service = s;
 	dev->ipc_base = prv->ipc_base;
