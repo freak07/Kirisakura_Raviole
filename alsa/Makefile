@@ -13,4 +13,4 @@ KBUILD_OPTIONS += CONFIG_AOC_DRIVER=m
 EXTRA_CFLAGS=-I$(KERNEL_SRC)/../google-modules/aoc_ipc -I$(KERNEL_SRC)/../google-modules/aoc
 
 modules modules_install clean:
-	$(MAKE) -C $(KERNEL_SRC) M=$(M) $(KBUILD_OPTIONS) $(EXTRA_CFLAGS)  $(@)
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) $(KBUILD_OPTIONS) $(EXTRA_CFLAGS) KBUILD_EXTRA_SYMBOLS=$(OUT_DIR)/../google-modules/aoc/Module.symvers $(@)
