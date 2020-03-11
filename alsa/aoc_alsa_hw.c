@@ -11,7 +11,7 @@
 
 #include "aoc_alsa_drv.h"
 #include "aoc_alsa.h"
-#include "aoc-interface.h"
+#include "../aoc-interface.h"
 
 enum { NONBLOCKING = 0, BLOCKING = 1 };
 enum { START, STOP };
