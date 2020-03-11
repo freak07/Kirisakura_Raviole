@@ -527,18 +527,42 @@ static ssize_t revision_show(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_RO(revision);
 
-static ssize_t clock_offset_show(struct device *dev,
-				 struct device_attribute *attr, char *buf)
+static uint64_t clock_offset(void)
 {
 	u64 clock_offset;
 
 	if (!aoc_is_online())
-		return scnprintf(buf, PAGE_SIZE, "0\n");
+		return 0;
 
 	memcpy_fromio(&clock_offset, &aoc_control->system_clock_offset,
 		      sizeof(clock_offset));
 
-	return scnprintf(buf, PAGE_SIZE, "%lld\n", le64_to_cpu(clock_offset));
+	return le64_to_cpu(clock_offset);
+}
+
+static ssize_t aoc_clock_show(struct device *dev, struct device_attribute *attr,
+			      char *buf)
+{
+	u64 counter;
+
+	if (!aoc_is_online())
+		return scnprintf(buf, PAGE_SIZE, "0\n");
+
+	counter = arch_timer_read_counter();
+
+	return scnprintf(buf, PAGE_SIZE, "%lld\n",
+			 ((counter - clock_offset()) / 6));
+}
+
+static DEVICE_ATTR_RO(aoc_clock);
+
+static ssize_t clock_offset_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	if (!aoc_is_online())
+		return scnprintf(buf, PAGE_SIZE, "0\n");
+
+	return scnprintf(buf, PAGE_SIZE, "%lld\n", clock_offset());
 }
 
 static DEVICE_ATTR_RO(clock_offset);
@@ -633,10 +657,12 @@ static inline void aoc_create_sysfs_nodes(struct device *dev)
 	device_create_file(dev, &dev_attr_services);
 	device_create_file(dev, &dev_attr_firmware);
 	device_create_file(dev, &dev_attr_clock_offset);
+	device_create_file(dev, &dev_attr_aoc_clock);
 }
 
 static inline void aoc_remove_sysfs_nodes(struct device *dev)
 {
+	device_remove_file(dev, &dev_attr_aoc_clock);
 	device_remove_file(dev, &dev_attr_clock_offset);
 	device_remove_file(dev, &dev_attr_firmware);
 	device_remove_file(dev, &dev_attr_services);
