@@ -49,7 +49,6 @@ struct aoc_prvdata {
 	struct mbox_client mbox_client;
 	struct mbox_chan *mbox_channel;
 
-	struct device *char_dev;
 	struct device *dev;
 
 	struct iommu_domain *domain;
@@ -78,7 +77,6 @@ static int aoc_irq;
 static struct aoc_control_block *aoc_control;
 
 static int aoc_major;
-static int aoc_major_dev;
 
 static struct class *aoc_class;
 
@@ -645,91 +643,6 @@ static inline void aoc_remove_sysfs_nodes(struct device *dev)
 	device_remove_file(dev, &dev_attr_revision);
 }
 
-/* File operations */
-static struct aoc_client *allocate_client(void)
-{
-	struct aoc_client *client =
-		kmalloc(sizeof(struct aoc_client), GFP_KERNEL);
-	if (!client)
-		return NULL;
-
-	client->endpoint = AOC_ENDPOINT_NONE;
-
-	return client;
-}
-
-static void free_client(struct aoc_client *client)
-{
-	kfree(client);
-}
-
-static int aoc_open(struct inode *inode, struct file *file)
-{
-	file->private_data = allocate_client();
-	if (!file->private_data)
-		return -ENOMEM;
-
-	return 0;
-}
-
-static int aoc_release(struct inode *inode, struct file *file)
-{
-	if (file->private_data) {
-		struct aoc_client *client = file->private_data;
-
-		free_client(client);
-	}
-
-	return 0;
-}
-
-static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd,
-			       unsigned long arg)
-{
-	struct aoc_client *client = file->private_data;
-	void __user *argp = (void __user *)arg;
-	int ret;
-
-	if (!client) {
-		pr_err("no client associated with request\n");
-		return -EINVAL;
-	}
-
-	switch (cmd) {
-	case AOC_IS_ONLINE: {
-		int online = aoc_is_online();
-
-		ret = copy_to_user(argp, &online, sizeof(online));
-		return 0;
-	}
-	case AOC_FPGA_RESET: {
-#ifdef AOC_JUNO
-		aoc_fpga_reset();
-		aoc_a32_reset();
-#else
-		pr_err("APM mailbox support required\n");
-		return -EOPNOTSUPP;
-#endif
-		return 0;
-	}
-	default:
-		/* man ioctl(2) The specified request does not apply to the kind
-		 * of object that the file descriptor fd references
-		 */
-		return -ENOTTY;
-	}
-
-	return -EINVAL;
-}
-
-static const struct file_operations fops = {
-	.open = aoc_open,
-	.release = aoc_release,
-	.unlocked_ioctl = aoc_unlocked_ioctl,
-
-	.owner = THIS_MODULE,
-};
-
 static int aoc_platform_probe(struct platform_device *dev);
 static int aoc_platform_remove(struct platform_device *dev);
 
@@ -1031,27 +944,6 @@ static irqreturn_t aoc_int_handler(int irq, void *dev)
 }
 #endif
 
-static struct device *aoc_create_chrdev(void)
-{
-	struct device *new_device;
-
-	aoc_major = register_chrdev(0, AOC_CHARDEV_NAME, &fops);
-	aoc_major_dev = MKDEV(aoc_major, 0);
-
-	pr_notice("creating char device with class %p\n", aoc_class);
-	new_device = device_create(aoc_class, NULL, aoc_major_dev, NULL,
-				   AOC_CHARDEV_NAME);
-	if (IS_ERR(new_device)) {
-		pr_err("device_create failed: %ld\n", PTR_ERR(new_device));
-		return NULL;
-	}
-
-	pr_notice("created character device with major %d minor %d\n",
-		  aoc_major, 0);
-
-	return new_device;
-}
-
 static void aoc_cleanup_resources(struct platform_device *pdev)
 {
 	struct aoc_prvdata *prvdata = platform_get_drvdata(pdev);
@@ -1071,17 +963,10 @@ static void aoc_cleanup_resources(struct platform_device *pdev)
 
 		aoc_take_offline();
 
-		if (prvdata->char_dev) {
 #ifdef AOC_JUNO
-			free_irq(aoc_irq, prvdata->char_dev);
-			aoc_irq = -1;
+		free_irq(aoc_irq, prvdata->dev);
+		aoc_irq = -1;
 #endif
-			pr_notice(
-				"destroying device in cleanup with class %p\n",
-				aoc_class);
-			device_destroy(aoc_class, aoc_major_dev);
-			prvdata->char_dev = NULL;
-		}
 
 		aoc_remove_sysfs_nodes(&pdev->dev);
 	}
@@ -1216,13 +1101,6 @@ static int aoc_platform_probe(struct platform_device *pdev)
 
 	aoc_configure_sysmmu(prvdata->domain);
 #endif
-
-	prvdata->char_dev = aoc_create_chrdev();
-	if (!prvdata->char_dev) {
-		pr_err("failed to create character device\n");
-		aoc_cleanup_resources(pdev);
-		return -ENXIO;
-	}
 
 	metadata =
 		kmalloc(AOC_MAX_ENDPOINTS * sizeof(struct aoc_service_metadata),
