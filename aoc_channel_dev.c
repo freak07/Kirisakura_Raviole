@@ -8,13 +8,13 @@
 #define pr_fmt(fmt) "aoc_chan: " fmt
 
 #include <linux/fs.h>
+#include <linux/kthread.h>
 #include <linux/module.h>
+#include <linux/poll.h>
+#include <linux/rwlock_types.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
-
-#include <linux/rwlock_types.h>
-#include <linux/kthread.h>
 
 #include "aoc.h"
 
@@ -304,9 +304,7 @@ static int aocc_open(struct inode *inode, struct file *file)
 	rwlock_init(&prvdata->pending_msg_lock);
 	atomic_set(&prvdata->pending_msg_count, 0);
 
-	/* Initialize the waitqueues if this was opened as blocking. */
-	if ((file->f_flags & O_NONBLOCK) == 0)
-		init_waitqueue_head(&prvdata->read_queue);
+	init_waitqueue_head(&prvdata->read_queue);
 
 	/* Add this item to the open files list for the dispatcher thread. */
 	write_lock(&s_open_files_lock);
@@ -354,14 +352,15 @@ static int aocc_release(struct inode *inode, struct file *file)
 
 	clear_bit(private->device_index, &opened_devices);
 	kfree(private);
+
 	file->private_data = NULL;
 
 	return 0;
 }
 
-static int aocc_are_messages_pending(struct file_prvdata *private)
+static bool aocc_are_messages_pending(struct file_prvdata *private)
 {
-	int retval = atomic_read(&private->pending_msg_count);
+	bool retval = !!atomic_read(&private->pending_msg_count);
 	return retval;
 }
 
@@ -375,8 +374,7 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 	/*Block while there are no messages pending. */
 	while (!aocc_are_messages_pending(private)) {
 		if (file->f_flags & O_NONBLOCK) {
-			retval = -EAGAIN;
-			goto out;
+			return -EAGAIN;
 		}
 
 		retval = wait_event_interruptible(
@@ -387,8 +385,7 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 			/* If the wait was interrupted, we are probably
 			 * being killed. Quit.
 			 */
-			retval = -EINTR;
-			goto out;
+			return -EINTR;
 		}
 	}
 
@@ -400,13 +397,14 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 
 	if (!node) {
 		pr_err("No messages available.");
-		goto out;
+		return retval;
 	}
 
 	/* is message too big to fit into read buffer? */
 	if (count < (node->msg_size - sizeof(int))) {
-		retval = -EFBIG;
-		goto out;
+		pr_err("Message size %d bytes, read size %d",
+		       node->msg_size, count);
+		node->msg_size = count + sizeof(int);
 	}
 
 	/* copy message payload to userspace, minus the channel ID */
@@ -419,9 +417,8 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 	list_del(&node->msg_list);
 	atomic_dec(&private->pending_msg_count);
 	write_unlock(&private->pending_msg_lock);
-
-out:
 	kfree(node);
+
 	return retval;
 }
 
