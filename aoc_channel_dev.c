@@ -206,12 +206,14 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 			 loff_t *off);
 static ssize_t aocc_write(struct file *file, const char __user *buf,
 			  size_t count, loff_t *off);
+static unsigned int aocc_poll(struct file *file, poll_table *wait);
 
 static const struct file_operations fops = {
 	.open = aocc_open,
 	.release = aocc_release,
 	.read = aocc_read,
 	.write = aocc_write,
+	.poll = aocc_poll,
 
 	.owner = THIS_MODULE,
 };
@@ -451,6 +453,20 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 
 	kfree(buffer);
 	return retval;
+}
+
+static unsigned int aocc_poll(struct file *file, poll_table *wait)
+{
+	unsigned int mask = 0;
+	struct file_prvdata *private = file->private_data;
+
+	poll_wait(file, &private->read_queue, wait);
+
+	if (aocc_are_messages_pending(private)) {
+		mask |= POLLIN | POLLRDNORM;
+	}
+
+	return mask;
 }
 
 static int aocc_probe(struct aoc_service_dev *dev)
