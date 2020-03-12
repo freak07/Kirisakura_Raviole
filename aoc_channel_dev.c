@@ -164,8 +164,8 @@ int aocc_demux_kthread(void *data)
 
 				/* append message to the list of messages. */
 				write_lock(&entry->pending_msg_lock);
-				list_add(&node->msg_list,
-					 &entry->pending_aoc_messages);
+				list_add_tail(&node->msg_list,
+					      &entry->pending_aoc_messages);
 				atomic_inc(&entry->pending_msg_count);
 				write_unlock(&entry->pending_msg_lock);
 
