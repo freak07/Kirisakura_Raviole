@@ -78,8 +78,6 @@ static struct aoc_control_block *aoc_control;
 
 static int aoc_major;
 
-static struct class *aoc_class;
-
 static const char *default_firmware = "aoc.bin";
 static bool aoc_autoload_firmware = true;
 module_param(aoc_autoload_firmware, bool, 0644);
@@ -884,17 +882,6 @@ static void aoc_clear_sysmmu(struct iommu_domain *domain)
 #endif
 }
 
-static char *aoc_devnode(struct device *dev, umode_t *mode)
-{
-	if (!mode || !dev)
-		return NULL;
-
-	if (MAJOR(dev->devt) == aoc_major)
-		*mode = 0666;
-
-	return kasprintf(GFP_KERNEL, "%s", dev_name(dev));
-}
-
 static void aoc_did_become_online(struct work_struct *work)
 {
 	struct aoc_prvdata *prvdata =
@@ -1195,19 +1182,16 @@ static int __init aoc_init(void)
 {
 	pr_debug("system driver init\n");
 
-	aoc_class = class_create(THIS_MODULE, AOC_CHARDEV_NAME);
-	if (!aoc_class) {
-		pr_err("failed to create aoc class\n");
-		bus_unregister(&aoc_bus_type);
-		return -EIO;
+	if (platform_driver_register(&aoc_driver) != 0) {
+		pr_err("failed to register platform driver\n");
+		return -1;
 	}
 
-	aoc_class->devnode = aoc_devnode;
-
-	platform_driver_register(&aoc_driver);
-
-	if (bus_register(&aoc_bus_type) != 0)
+	if (bus_register(&aoc_bus_type) != 0) {
 		pr_err("failed to register AoC bus\n");
+		platform_driver_unregister(&aoc_driver);
+		return -1;
+	}
 
 	return 0;
 }
@@ -1219,9 +1203,6 @@ static void __exit aoc_exit(void)
 	bus_unregister(&aoc_bus_type);
 
 	platform_driver_unregister(&aoc_driver);
-
-	if (aoc_class)
-		class_destroy(aoc_class);
 }
 
 module_init(aoc_init);
