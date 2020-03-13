@@ -649,23 +649,13 @@ static ssize_t firmware_store(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_RW(firmware);
 
-static inline void aoc_create_sysfs_nodes(struct device *dev)
-{
-	device_create_file(dev, &dev_attr_revision);
-	device_create_file(dev, &dev_attr_services);
-	device_create_file(dev, &dev_attr_firmware);
-	device_create_file(dev, &dev_attr_clock_offset);
-	device_create_file(dev, &dev_attr_aoc_clock);
-}
+static struct attribute *aoc_attrs[] = {
+	&dev_attr_firmware.attr,  &dev_attr_revision.attr,
+	&dev_attr_services.attr,  &dev_attr_clock_offset.attr,
+	&dev_attr_aoc_clock.attr, NULL
+};
 
-static inline void aoc_remove_sysfs_nodes(struct device *dev)
-{
-	device_remove_file(dev, &dev_attr_aoc_clock);
-	device_remove_file(dev, &dev_attr_clock_offset);
-	device_remove_file(dev, &dev_attr_firmware);
-	device_remove_file(dev, &dev_attr_services);
-	device_remove_file(dev, &dev_attr_revision);
-}
+ATTRIBUTE_GROUPS(aoc);
 
 static int aoc_platform_probe(struct platform_device *dev);
 static int aoc_platform_remove(struct platform_device *dev);
@@ -980,8 +970,6 @@ static void aoc_cleanup_resources(struct platform_device *pdev)
 		free_irq(aoc_irq, prvdata->dev);
 		aoc_irq = -1;
 #endif
-
-		aoc_remove_sysfs_nodes(&pdev->dev);
 	}
 
 	/*
@@ -1157,10 +1145,10 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	}
 #endif
 
-	aoc_create_sysfs_nodes(dev);
-
 	if (aoc_autoload_firmware && !start_firmware_load(dev))
 		pr_err("failed to start firmware download procedure\n");
+
+	sysfs_create_groups(&dev->kobj, aoc_groups);
 
 	pr_notice("platform_probe matched\n");
 
@@ -1170,6 +1158,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 static int aoc_platform_remove(struct platform_device *pdev)
 {
 	pr_notice("platform_remove\n");
+
+	sysfs_remove_groups(&pdev->dev.kobj, aoc_groups);
 
 	aoc_cleanup_resources(pdev);
 	aoc_platform_device = NULL;
