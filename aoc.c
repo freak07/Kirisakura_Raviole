@@ -845,9 +845,21 @@ static void signal_aoc(struct mbox_chan *channel)
 #endif
 }
 
+static int aoc_iommu_fault_handler(struct iommu_domain *domain,
+				   struct device *dev, unsigned long iova,
+				   int flags, void *token)
+{
+	dev_err(dev, "iommu fault at aoc address %#010x, flags %#010x\n", iova,
+	       flags);
+
+	return 0;
+}
+
 static void aoc_configure_sysmmu(struct iommu_domain *domain)
 {
 #ifndef AOC_JUNO
+	iommu_set_fault_handler(domain, aoc_iommu_fault_handler, NULL);
+
 	/* Map in the AoC carveout */
 	iommu_map(domain, 0x98000000, aoc_dram_resource->start,
 		  resource_size(aoc_dram_resource), IOMMU_READ | IOMMU_WRITE);
