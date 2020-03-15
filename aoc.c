@@ -850,7 +850,7 @@ static int aoc_iommu_fault_handler(struct iommu_domain *domain,
 				   int flags, void *token)
 {
 	dev_err(dev, "iommu fault at aoc address %#010x, flags %#010x\n", iova,
-	       flags);
+		flags);
 
 	return 0;
 }
@@ -1037,7 +1037,7 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct aoc_prvdata *prvdata = NULL;
 	struct device_node *aoc_node, *mem_node;
-	int i;
+	int i, ret;
 
 	if (aoc_platform_device != NULL) {
 		dev_err(dev,
@@ -1157,8 +1157,11 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	}
 #endif
 
-	if (aoc_autoload_firmware && !start_firmware_load(dev))
-		pr_err("failed to start firmware download procedure\n");
+	if (aoc_autoload_firmware) {
+		ret = start_firmware_load(dev);
+		if (ret != 0)
+			pr_err("failed to start firmware download: %d\n", ret);
+	}
 
 	sysfs_create_groups(&dev->kobj, aoc_groups);
 
