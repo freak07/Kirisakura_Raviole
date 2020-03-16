@@ -892,7 +892,8 @@ static void aoc_did_become_online(struct work_struct *work)
 
 	s = aoc_num_services();
 
-	pr_notice("did become online with %d services\n", aoc_num_services());
+	pr_notice("firmware v%u did become online with %d services\n",
+		  le32_to_cpu(aoc_control->fw_version), aoc_num_services());
 
 	if (!service_names_are_valid(prvdata)) {
 		pr_err("invalid service names found.  Ignoring\n");
@@ -1165,14 +1166,14 @@ static int aoc_platform_probe(struct platform_device *pdev)
 
 	sysfs_create_groups(&dev->kobj, aoc_groups);
 
-	pr_notice("platform_probe matched\n");
+	pr_debug("platform_probe matched\n");
 
 	return 0;
 }
 
 static int aoc_platform_remove(struct platform_device *pdev)
 {
-	pr_notice("platform_remove\n");
+	pr_debug("platform_remove\n");
 
 	sysfs_remove_groups(&pdev->dev.kobj, aoc_groups);
 
