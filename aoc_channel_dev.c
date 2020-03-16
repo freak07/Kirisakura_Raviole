@@ -323,9 +323,9 @@ static int aocc_open(struct inode *inode, struct file *file)
 static int aocc_release(struct inode *inode, struct file *file)
 {
 	struct file_prvdata *private = file->private_data;
-	int scrapped = 0;
 	struct aoc_message_node *entry;
 	struct aoc_message_node *temp;
+	int scrapped = 0;
 
 	if (!private)
 		return -ENODEV;
@@ -349,8 +349,12 @@ static int aocc_release(struct inode *inode, struct file *file)
 	aocc_send_cmd_msg(private->service, AOCC_CMD_CLOSE_CHANNEL,
 			  private->channel_index);
 
-	pr_info("Destroyed channel %d with %d unread messages",
-		private->channel_index, scrapped);
+	if (scrapped)
+		pr_warn("Destroyed channel %d with %d unread messages",
+			 private->channel_index, scrapped);
+	else
+		pr_debug("Destroyed channel %d with no unread messages",
+			private->channel_index);
 
 	clear_bit(private->device_index, &opened_devices);
 	kfree(private);
@@ -404,8 +408,8 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 
 	/* is message too big to fit into read buffer? */
 	if (count < (node->msg_size - sizeof(int))) {
-		pr_err("Message size %d bytes, read size %d",
-		       node->msg_size, count);
+		pr_err("Message size %d bytes, read size %d", node->msg_size,
+		       count);
 		node->msg_size = count + sizeof(int);
 	}
 
