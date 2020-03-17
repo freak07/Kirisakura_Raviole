@@ -817,6 +817,15 @@ static struct aoc_service_dev *register_service_device(int index,
 	dev->service = s;
 	dev->ipc_base = prv->ipc_base;
 
+	/*
+	 * Bus corruption has been seen during reboot cycling.  Check for it
+	 * explictly so more information can be part of the panic log
+	 */
+	if (aoc_bus_type.p == NULL) {
+		panic("corrupted bus found when adding service (%d) %s\n",
+		      index, dev_name(&dev->dev));
+	}
+
 	ret = device_register(&dev->dev);
 	if (ret) {
 		kfree(dev);
