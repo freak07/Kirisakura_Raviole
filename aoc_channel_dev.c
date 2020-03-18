@@ -156,8 +156,9 @@ int aocc_demux_kthread(void *data)
 
 				if (atomic_read(&entry->pending_msg_count) >
 				    AOCC_MAX_PENDING_MSGS) {
-					pr_err("Too many pending messages on channel %d",
-					       channel);
+					pr_err_ratelimited(
+						"Too many pending messages on channel %d",
+						channel);
 					kfree(node);
 					break;
 				}
@@ -351,10 +352,10 @@ static int aocc_release(struct inode *inode, struct file *file)
 
 	if (scrapped)
 		pr_warn("Destroyed channel %d with %d unread messages",
-			 private->channel_index, scrapped);
+			private->channel_index, scrapped);
 	else
 		pr_debug("Destroyed channel %d with no unread messages",
-			private->channel_index);
+			 private->channel_index);
 
 	clear_bit(private->device_index, &opened_devices);
 	kfree(private);
