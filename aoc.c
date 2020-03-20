@@ -1197,14 +1197,14 @@ static int __init aoc_init(void)
 {
 	pr_debug("system driver init\n");
 
-	if (platform_driver_register(&aoc_driver) != 0) {
-		pr_err("failed to register platform driver\n");
+	if (bus_register(&aoc_bus_type) != 0) {
+		pr_err("failed to register AoC bus\n");
 		return -1;
 	}
 
-	if (bus_register(&aoc_bus_type) != 0) {
-		pr_err("failed to register AoC bus\n");
-		platform_driver_unregister(&aoc_driver);
+	if (platform_driver_register(&aoc_driver) != 0) {
+		pr_err("failed to register platform driver\n");
+		bus_unregister(&aoc_bus_type);
 		return -1;
 	}
 
@@ -1215,9 +1215,9 @@ static void __exit aoc_exit(void)
 {
 	pr_debug("system driver exit\n");
 
-	bus_unregister(&aoc_bus_type);
-
 	platform_driver_unregister(&aoc_driver);
+
+	bus_unregister(&aoc_bus_type);
 }
 
 module_init(aoc_init);
