@@ -27,3 +27,9 @@ config AOC_CHAN_DRIVER
 	default Y if AOC_DRIVER
 	help
 		Say yes here to add channelized IPC support for USF
+
+config AOC_CONTROL_DRIVER
+	tristate "WhiteChapel AoC Basic Control"
+	default Y if AOC_DRIVER
+	help
+		Say yes here to add basic control for the AoC
