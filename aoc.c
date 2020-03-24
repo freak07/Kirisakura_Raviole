@@ -358,10 +358,6 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 	if (aoc_service_message_slots(service, AOC_UP) == 0)
 		return -EBADF;
 
-	if (!aoc_service_is_ring(service) &&
-	    count < aoc_service_message_size(service, AOC_UP))
-		return -EFBIG;
-
 	if (!aoc_service_can_read_message(service, AOC_UP)) {
 		if (!block)
 			return -EAGAIN;
@@ -379,6 +375,11 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 	 */
 	if (ret != 0)
 		return -EAGAIN;
+
+	if (!aoc_service_is_ring(service) &&
+	    count < aoc_service_current_message_size(service, prvdata->ipc_base,
+						     AOC_UP))
+		return -EFBIG;
 
 	msg_size = count;
 	aoc_service_read_message(service, prvdata->ipc_base, AOC_UP, buffer,
