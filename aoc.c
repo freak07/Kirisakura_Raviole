@@ -539,6 +539,11 @@ static uint64_t clock_offset(void)
 	return le64_to_cpu(clock_offset);
 }
 
+static inline u64 sys_tick_to_aoc_tick(u64 sys_tick)
+{
+	return (sys_tick - clock_offset()) / 6;
+}
+
 static ssize_t aoc_clock_show(struct device *dev, struct device_attribute *attr,
 			      char *buf)
 {
@@ -549,11 +554,30 @@ static ssize_t aoc_clock_show(struct device *dev, struct device_attribute *attr,
 
 	counter = arch_timer_read_counter();
 
-	return scnprintf(buf, PAGE_SIZE, "%lld\n",
-			 ((counter - clock_offset()) / 6));
+	return scnprintf(buf, PAGE_SIZE, "%llu\n",
+			 sys_tick_to_aoc_tick(counter));
 }
 
 static DEVICE_ATTR_RO(aoc_clock);
+
+static ssize_t aoc_clock_and_kernel_boottime_show(struct device *dev,
+						  struct device_attribute *attr,
+						  char *buf)
+{
+	u64 counter;
+	ktime_t kboottime;
+
+	if (!aoc_is_online())
+		return scnprintf(buf, PAGE_SIZE, "0 0\n");
+
+	counter = arch_timer_read_counter();
+	kboottime = ktime_get_boottime();
+
+	return scnprintf(buf, PAGE_SIZE, "%llu %llu\n",
+			 sys_tick_to_aoc_tick(counter), (u64)kboottime);
+}
+
+static DEVICE_ATTR_RO(aoc_clock_and_kernel_boottime);
 
 static ssize_t clock_offset_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
@@ -651,9 +675,13 @@ static ssize_t firmware_store(struct device *dev, struct device_attribute *attr,
 static DEVICE_ATTR_RW(firmware);
 
 static struct attribute *aoc_attrs[] = {
-	&dev_attr_firmware.attr,  &dev_attr_revision.attr,
-	&dev_attr_services.attr,  &dev_attr_clock_offset.attr,
-	&dev_attr_aoc_clock.attr, NULL
+	&dev_attr_firmware.attr,
+	&dev_attr_revision.attr,
+	&dev_attr_services.attr,
+	&dev_attr_clock_offset.attr,
+	&dev_attr_aoc_clock.attr,
+	&dev_attr_aoc_clock_and_kernel_boottime.attr,
+	NULL
 };
 
 ATTRIBUTE_GROUPS(aoc);
