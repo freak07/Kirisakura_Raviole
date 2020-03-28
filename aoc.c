@@ -434,7 +434,8 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 	ret = aoc_service_write_message(service, prvdata->ipc_base, AOC_DOWN,
 					buffer, count);
 
-	signal_aoc(prvdata->mbox_channel);
+	if (!aoc_service_is_ring(service) || aoc_ring_is_push(service))
+		signal_aoc(prvdata->mbox_channel);
 
 	return count;
 }
