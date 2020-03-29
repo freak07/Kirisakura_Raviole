@@ -38,7 +38,7 @@ static atomic_t channel_index_counter = ATOMIC_INIT(1);
 static int aocc_probe(struct aoc_service_dev *dev);
 static int aocc_remove(struct aoc_service_dev *dev);
 
-const char * const channel_service_names[] = {
+static const char * const channel_service_names[] = {
 	"com.google.usf",
 	NULL,
 };
@@ -90,15 +90,15 @@ struct file_prvdata {
 
 /* Globals */
 /* TODO(b/141396548): Move these to drv_data. */
-LIST_HEAD(s_open_files);
-rwlock_t s_open_files_lock;
+static LIST_HEAD(s_open_files);
+static rwlock_t s_open_files_lock;
 static struct task_struct *s_demux_task;
 
 /* Message related services */
 static void aocc_send_cmd_msg(aoc_service *service_id, enum aoc_cmd_code code,
 			      int channel_to_modify);
 
-int aocc_demux_kthread(void *data)
+static int aocc_demux_kthread(void *data)
 {
 	ssize_t retval = 0;
 	struct aoc_service_dev *service = (struct aoc_service_dev *)data;
