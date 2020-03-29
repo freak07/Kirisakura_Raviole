@@ -200,7 +200,7 @@ static int driver_matches_service_by_name(struct device_driver *drv, void *name)
 {
 	struct aoc_driver *aoc_drv = AOC_DRIVER(drv);
 	const char *service_name = name;
-	const char **driver_names = aoc_drv->service_names;
+	const char * const *driver_names = aoc_drv->service_names;
 
 	while (driver_names && *driver_names) {
 		if (glob_match(*driver_names, service_name) == true)

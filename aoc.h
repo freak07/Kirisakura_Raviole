@@ -31,7 +31,7 @@ struct aoc_driver {
 	struct device_driver drv;
 
 	/* Array of service names to match against.  Last entry must be NULL */
-	const char **service_names;
+	const char * const *service_names;
 	int (*probe)(struct aoc_service_dev *);
 	int (*remove)(struct aoc_service_dev *);
 };

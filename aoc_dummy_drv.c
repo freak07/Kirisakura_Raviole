@@ -17,7 +17,7 @@
 static int aoc_dummy_probe(struct aoc_service_dev *dev);
 static int aoc_dummy_remove(struct aoc_service_dev *dev);
 
-const char *service_names[] = {
+const char * const service_names[] = {
 	"com.google.dummy*",
 	"dummy",
 	NULL,

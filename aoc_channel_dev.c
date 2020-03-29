@@ -38,7 +38,7 @@ static atomic_t channel_index_counter = ATOMIC_INIT(1);
 static int aocc_probe(struct aoc_service_dev *dev);
 static int aocc_remove(struct aoc_service_dev *dev);
 
-const char *channel_service_names[] = {
+const char * const channel_service_names[] = {
 	"com.google.usf",
 	NULL,
 };

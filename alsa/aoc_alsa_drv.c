@@ -217,7 +217,7 @@ static struct aoc_driver aoc_alsa_driver = {
 	.drv = {
 		.name = AOC_ALSA_NAME,
 	},
-	.service_names = (const char **)audio_service_names,
+	.service_names = audio_service_names,
 	.probe = aoc_alsa_probe,
 	.remove = aoc_alsa_remove,
 };
