@@ -139,15 +139,16 @@ static int wc_mbox_send_data(struct mbox_chan *chan, void *data)
 	int i;
 
 	/* Wait if the remote has not finished processing the last message */
-	status = ioread32(prvdata->base + MB_INTSR0);
-	if (status != 0) {
-		pr_debug("Busy with status %x\n", status);
-		return -EBUSY;
-	}
+	if (data) {
+		status = ioread32(prvdata->base + MB_INTSR0);
+		if (status != 0) {
+			pr_debug("Busy with status %x\n", status);
+			return -EBUSY;
+		}
 
-	if (data)
 		for (i = 0; i < prvdata->shared_registers; i++)
 			iowrite32(regs[i], prvdata->base + MB_SHARED(i));
+	}
 
 	wc_mbox_int_generate(prvdata->base, 0);
 
