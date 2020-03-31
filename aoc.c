@@ -27,6 +27,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/timer.h>
@@ -47,19 +48,20 @@ static bool aoc_online;
 
 struct aoc_prvdata {
 	struct mbox_client mbox_client;
-	struct mbox_chan *mbox_channel;
-
-	struct device *dev;
-
-	struct iommu_domain *domain;
 	struct work_struct online_work;
+	struct resource dram_resource;
 
+	struct mbox_chan *mbox_channel;
+	struct device *dev;
+	struct iommu_domain *domain;
 	void *ipc_base;
 
 	void *sram_virt;
 	void *dram_virt;
+	void *aoc_req_virt;
 	size_t sram_size;
 	size_t dram_size;
+	size_t aoc_req_size;
 
 	char firmware_name[MAX_FIRMWARE_LENGTH];
 };
@@ -67,7 +69,6 @@ struct aoc_prvdata {
 /* TODO: Reduce the global variables (move into a driver structure) */
 /* Resources found from the device tree */
 static struct resource *aoc_sram_resource;
-static struct resource *aoc_dram_resource;
 
 static void *aoc_sram_virt_mapping;
 static void *aoc_dram_virt_mapping;
@@ -115,9 +116,6 @@ static bool aoc_a32_reset(void);
 static void aoc_take_offline(void);
 static void signal_aoc(struct mbox_chan *channel);
 
-static void aoc_configure_sysmmu(struct iommu_domain *domain);
-static void aoc_clear_sysmmu(struct iommu_domain *domain);
-
 static void aoc_process_services(struct aoc_prvdata *prvdata);
 
 static inline void *aoc_sram_translate(u32 offset)
@@ -129,13 +127,13 @@ static inline void *aoc_sram_translate(u32 offset)
 	return aoc_sram_virt_mapping + offset;
 }
 
-static inline void *aoc_dram_translate(u32 offset)
+static inline void *aoc_dram_translate(struct aoc_prvdata *p, u32 offset)
 {
-	BUG_ON(aoc_dram_virt_mapping == NULL);
-	if (offset > resource_size(aoc_dram_resource))
+	BUG_ON(p->dram_virt == NULL);
+	if (offset > p->dram_size)
 		return NULL;
 
-	return aoc_dram_virt_mapping + offset;
+	return p->dram_virt + offset;
 }
 
 static bool aoc_is_valid_dram_address(struct aoc_prvdata *prv, void *addr)
@@ -200,7 +198,7 @@ static int driver_matches_service_by_name(struct device_driver *drv, void *name)
 {
 	struct aoc_driver *aoc_drv = AOC_DRIVER(drv);
 	const char *service_name = name;
-	const char * const *driver_names = aoc_drv->service_names;
+	const char *const *driver_names = aoc_drv->service_names;
 
 	while (driver_names && *driver_names) {
 		if (glob_match(*driver_names, service_name) == true)
@@ -296,11 +294,18 @@ static void aoc_mbox_tx_done(struct mbox_client *cl, void *mssg, int r)
 {
 }
 
+static void aoc_req_assert(struct aoc_prvdata *p, bool assert)
+{
+	iowrite32(!!assert, p->aoc_req_virt);
+}
+
 static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 {
 	struct device *dev = ctx;
 	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
 	u32 ipc_offset, bootloader_offset;
+
+	aoc_req_assert(prvdata, true);
 
 	if (!fw || !fw->data) {
 		dev_err(dev, "failed to load firmware image\n");
@@ -321,7 +326,7 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		"firmware image commit.  ipc_offset %u bootloader_offset %u\n",
 		ipc_offset, bootloader_offset);
 
-	aoc_control = aoc_dram_translate(ipc_offset);
+	aoc_control = aoc_dram_translate(prvdata, ipc_offset);
 
 	aoc_fpga_reset();
 
@@ -331,7 +336,7 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 
 	aoc_a32_reset();
 
-	prvdata->ipc_base = aoc_dram_translate(ipc_offset);
+	prvdata->ipc_base = aoc_dram_translate(prvdata, ipc_offset);
 free_fw:
 	release_firmware(fw);
 }
@@ -894,14 +899,16 @@ static int aoc_iommu_fault_handler(struct iommu_domain *domain,
 	return 0;
 }
 
-static void aoc_configure_sysmmu(struct iommu_domain *domain)
+static void aoc_configure_sysmmu(struct aoc_prvdata *p)
 {
 #ifndef AOC_JUNO
+	struct iommu_domain *domain = p->domain;
+
 	iommu_set_fault_handler(domain, aoc_iommu_fault_handler, NULL);
 
 	/* Map in the AoC carveout */
-	iommu_map(domain, 0x98000000, aoc_dram_resource->start,
-		  resource_size(aoc_dram_resource), IOMMU_READ | IOMMU_WRITE);
+	iommu_map(domain, 0x98000000, p->dram_resource.start, p->dram_size,
+		  IOMMU_READ | IOMMU_WRITE);
 
 	/* Use a 1MB mapping instead of individual mailboxes for now */
 	/* TODO: Turn the mailbox address ranges into dtb entries */
@@ -914,10 +921,12 @@ static void aoc_configure_sysmmu(struct iommu_domain *domain)
 #endif
 }
 
-static void aoc_clear_sysmmu(struct iommu_domain *domain)
+static void aoc_clear_sysmmu(struct aoc_prvdata *p)
 {
 #ifndef AOC_JUNO
-	iommu_unmap(domain, 0x98000000, resource_size(aoc_dram_resource));
+	struct iommu_domain *domain = p->domain;
+
+	iommu_unmap(domain, 0x98000000, p->dram_size);
 
 	iommu_unmap(domain, 0x9A000000, SZ_1M);
 #endif
@@ -930,6 +939,8 @@ static void aoc_did_become_online(struct work_struct *work)
 	int i, s;
 
 	s = aoc_num_services();
+
+	aoc_req_assert(prvdata, false);
 
 	pr_notice("firmware v%u did become online with %d services\n",
 		  le32_to_cpu(aoc_control->fw_version), aoc_num_services());
@@ -1007,7 +1018,7 @@ static void aoc_cleanup_resources(struct platform_device *pdev)
 
 	if (prvdata) {
 		if (prvdata->domain) {
-			aoc_clear_sysmmu(prvdata->domain);
+			aoc_clear_sysmmu(prvdata);
 			prvdata->domain = NULL;
 		}
 
@@ -1035,48 +1046,12 @@ static void aoc_cleanup_resources(struct platform_device *pdev)
 	}
 }
 
-static struct resource *memory_region_to_resource(struct device *dev,
-						  struct device_node *node)
-{
-	u64 start, size;
-	u32 region[4];
-
-	int ret;
-
-	BUG_ON(dev == NULL);
-	BUG_ON(node == NULL);
-
-	size = of_property_count_elems_of_size(node, "reg", sizeof(u32));
-	if (size < 3 || size > 4) {
-		dev_err(dev, "invalid array size %d\n", size);
-		return NULL;
-	}
-
-	ret = of_property_read_u32_array(node, "reg", region, size);
-	if (ret != 0) {
-		dev_err(dev, "failed to read \"reg\" from memory node %pOF\n",
-			node);
-		return NULL;
-	}
-
-	if (size == 3) {
-		/* 64-bit addr, 32-bit size */
-		start = ((u64)region[0] << 32 | region[1]);
-		size = region[2];
-	} else if (size == 4) {
-		/* 64-bit addr, 64-bit size (Juno) */
-		start = ((u64)region[0] << 32 | region[1]);
-		size = ((u64)region[2] | region[3]);
-	}
-
-	return devm_request_mem_region(dev, start, size, "carveout");
-}
-
 static int aoc_platform_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct aoc_prvdata *prvdata = NULL;
 	struct device_node *aoc_node, *mem_node;
+	struct resource *rsrc;
 	int i, ret;
 
 	if (aoc_platform_device != NULL) {
@@ -1088,29 +1063,33 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	aoc_node = dev->of_node;
 	mem_node = of_parse_phandle(aoc_node, "memory-region", 0);
 
+	prvdata = devm_kzalloc(dev, sizeof(*prvdata), GFP_KERNEL);
+	if (!prvdata)
+		return -ENOMEM;
+
+	prvdata->dev = dev;
+
 	if (!mem_node) {
 		dev_err(dev,
 			"failed to find reserve-memory in the device tree\n");
 		return -EINVAL;
 	}
 
-	aoc_sram_resource = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	aoc_dram_resource = memory_region_to_resource(dev, mem_node);
+	aoc_sram_resource = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+							 "blk_aoc");
 
-	if (!aoc_sram_resource || !aoc_dram_resource) {
+	ret = of_address_to_resource(mem_node, 0, &prvdata->dram_resource);
+	of_node_put(mem_node);
+
+	if (!aoc_sram_resource || ret != 0) {
 		dev_err(dev,
 			"failed to get memory resources for device sram %pR dram %pR\n",
-			aoc_sram_resource, aoc_dram_resource);
+			aoc_sram_resource, &prvdata->dram_resource);
 		aoc_cleanup_resources(pdev);
 
 		return -ENOMEM;
 	}
 
-	prvdata = devm_kzalloc(dev, sizeof(*prvdata), GFP_KERNEL);
-	if (!prvdata)
-		return -ENOMEM;
-
-	prvdata->dev = dev;
 #ifdef AOC_JUNO
 	aoc_irq = platform_get_irq(pdev, 0);
 	if (aoc_irq < 1) {
@@ -1142,18 +1121,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 #endif
 
 	pr_notice("found aoc with interrupt:%d sram:%pR dram:%pR\n", aoc_irq,
-		  aoc_sram_resource, aoc_dram_resource);
+		  aoc_sram_resource, &prvdata->dram_resource);
 	aoc_platform_device = pdev;
-
-#ifndef AOC_JUNO
-	prvdata->domain = iommu_get_domain_for_dev(dev);
-	if (!prvdata->domain) {
-		pr_err("failed to find iommu domain\n");
-		return -EIO;
-	}
-
-	aoc_configure_sysmmu(prvdata->domain);
-#endif
 
 	metadata =
 		kmalloc(AOC_MAX_ENDPOINTS * sizeof(struct aoc_service_metadata),
@@ -1163,24 +1132,49 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		init_waitqueue_head(&metadata[i].write_queue);
 	}
 
-	aoc_sram_virt_mapping = devm_ioremap(dev, aoc_sram_resource->start,
-					     resource_size(aoc_sram_resource));
-	aoc_dram_virt_mapping = devm_ioremap(dev, aoc_dram_resource->start,
-					     resource_size(aoc_dram_resource));
+	aoc_sram_virt_mapping = devm_ioremap_resource(dev, aoc_sram_resource);
+	aoc_dram_virt_mapping =
+		devm_ioremap_resource(dev, &prvdata->dram_resource);
+
+	/* Change to devm_platform_ioremap_resource_byname when available */
+	rsrc = platform_get_resource_byname(pdev, IORESOURCE_MEM, "aoc_req");
+	if (rsrc) {
+		prvdata->aoc_req_virt = devm_ioremap_resource(dev, rsrc);
+		prvdata->aoc_req_size = resource_size(rsrc);
+
+		if (IS_ERR(prvdata->aoc_req_virt)) {
+			dev_err(dev, "failed to map aoc_req region at %pR\n",
+				rsrc);
+			prvdata->aoc_req_virt = NULL;
+			prvdata->aoc_req_size = 0;
+		} else {
+			dev_dbg(dev, "found aoc_req at %pR\n", rsrc);
+		}
+	}
 
 	prvdata->sram_virt = aoc_sram_virt_mapping;
 	prvdata->sram_size = resource_size(aoc_sram_resource);
 
 	prvdata->dram_virt = aoc_dram_virt_mapping;
-	prvdata->dram_size = resource_size(aoc_dram_resource);
+	prvdata->dram_size = resource_size(&prvdata->dram_resource);
 
 	if (IS_ERR(aoc_sram_virt_mapping) || IS_ERR(aoc_dram_virt_mapping)) {
 		aoc_cleanup_resources(pdev);
 		return -ENOMEM;
 	}
 
-	/* Default to 4MB if we are not loading the firmware (i.e. trace32) */
-	aoc_control = aoc_dram_translate(0x400000);
+#ifndef AOC_JUNO
+	prvdata->domain = iommu_get_domain_for_dev(dev);
+	if (!prvdata->domain) {
+		pr_err("failed to find iommu domain\n");
+		return -EIO;
+	}
+
+	aoc_configure_sysmmu(prvdata);
+#endif
+
+	/* Default to 6MB if we are not loading the firmware (i.e. trace32) */
+	aoc_control = aoc_dram_translate(prvdata, 6 * SZ_1M);
 
 	INIT_WORK(&prvdata->online_work, aoc_did_become_online);
 
