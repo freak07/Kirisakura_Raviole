@@ -133,7 +133,7 @@ aoc_audio_playback_trigger_source(struct aoc_alsa_stream *alsa_stream, int cmd,
 		     sizeof(source));
 	/* source On/Off */
 	source.source = src;
-	source.on = (cmd == START) ? 1 : 0;
+	source.mode = (cmd == START) ? ENTRYPOINT_MODE_PLAYBACK : ENTRYPOINT_MODE_OFF;
 	err = aoc_service_audio_control(dev, (uint8_t *)&source,
 					sizeof(source));
 
