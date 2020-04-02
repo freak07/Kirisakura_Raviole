@@ -17,21 +17,6 @@
 #include "aoc_alsa_drv.h"
 
 /* Timer interrupt to read the ring buffer reader/writer positions */
-void aoc_timer_start(struct aoc_alsa_stream *alsa_stream)
-{
-	mod_timer(&(alsa_stream->timer), jiffies + HZ / 300); /* Close to 5ms */
-}
-
-void aoc_timer_stop(struct aoc_alsa_stream *alsa_stream)
-{
-	del_timer(&(alsa_stream->timer));
-	alsa_stream->timer.expires = 0;
-}
-
-void aoc_timer_stop_sync(struct aoc_alsa_stream *alsa_stream)
-{
-	del_timer_sync(&(alsa_stream->timer));
-}
 
 /* Hardware definition
  * TODO: different pcm may have different hardware setup,
@@ -58,7 +43,7 @@ static struct snd_pcm_hardware snd_aoc_playback_hw = {
 /* Timer interrupt handler to update the ring buffer reader/writer positions
  * during playback/capturing
  */
-void aoc_pcm_timer_irq_handler(struct timer_list *timer)
+static void aoc_pcm_timer_irq_handler(struct timer_list *timer)
 {
 	struct aoc_alsa_stream *alsa_stream;
 	struct aoc_service_dev *dev;
@@ -225,6 +210,13 @@ static int snd_aoc_pcm_close(struct snd_pcm_substream *substream)
 		return -EINTR;
 	}
 
+	/* Stop phone call (Refactor needed)*/
+	pr_notice("Stop voice call\n");
+	err = teardown_phonecall(alsa_stream);
+	if (err < 0)
+		pr_err("error in tearing down for phonecall in function : %s\n",
+		       __func__);
+
 	runtime = substream->runtime;
 	alsa_stream = runtime->private_data;
 
@@ -340,148 +332,23 @@ static int snd_aoc_pcm_prepare(struct snd_pcm_substream *substream)
 		 alsa_stream->buffer_size, alsa_stream->period_size,
 		 alsa_stream->pos, runtime->frame_bits);
 
+	/* Prepare phone call (Refactor needed) */
+	pr_notice("Start voice call\n");
+	err = prepare_phonecall(alsa_stream);
+	if (err < 0)
+		pr_err("error in preparing for phonecall: %s\n", __func__);
+
 	mutex_unlock(&chip->audio_mutex);
 
-	return err;
-}
-
-/* Trigger callback */
-static int snd_aoc_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
-{
-	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
-	int err = 0;
-
-	switch (cmd) {
-	case SNDRV_PCM_TRIGGER_START:
-		pr_debug("aoc_AUDIO_TRIGGER_START running=%d\n",
-			 alsa_stream->running);
-		if (!alsa_stream->running) {
-			/* start timer first to avoid underrun/overrun */
-			aoc_timer_start(alsa_stream);
-
-			err = aoc_audio_start(alsa_stream);
-			if (err == 0) {
-				alsa_stream->running = 1;
-				alsa_stream->draining = 1;
-			} else {
-				pr_err(" Failed to START alsa device (%d)\n",
-				       err);
-			}
-		}
-		break;
-	case SNDRV_PCM_TRIGGER_STOP:
-		pr_debug("aoc_AUDIO_TRIGGER_STOP running=%d draining=%d\n",
-			 alsa_stream->running,
-			 runtime->status->state == SNDRV_PCM_STATE_DRAINING);
-		aoc_timer_stop(alsa_stream);
-		if (runtime->status->state == SNDRV_PCM_STATE_DRAINING) {
-			pr_debug("DRAINING\n");
-			alsa_stream->draining = 1;
-		} else {
-			pr_debug("DROPPING\n");
-			alsa_stream->draining = 0;
-		}
-		if (alsa_stream->running) {
-			err = aoc_audio_stop(alsa_stream);
-			if (err != 0)
-				pr_err("failed to STOP alsa device (%d)\n",
-				       err);
-			alsa_stream->running = 0;
-		}
-		break;
-	default:
-		err = -EINVAL;
-	}
-
-	return err;
-}
-
-/* Copy data from user space to hardware buffer  */
-static int snd_aoc_pcm_playback_copy_user(struct snd_pcm_substream *substream,
-					  int channel, unsigned long pos,
-					  void __user *buf, unsigned long count)
-{
-	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
-	int err = 0;
-
-	err = aoc_audio_write(alsa_stream, buf, count);
-	if (err)
-		pr_err("failed to transfer to alsa device (%d)\n", err);
-
-	return err;
-}
-
-/* Copy data from hardware buffer to user space */
-static int snd_aoc_pcm_capture_copy_user(struct snd_pcm_substream *substream,
-					 int channel, unsigned long pos,
-					 void __user *buf, unsigned long count)
-{
-	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
-	int err = 0;
-
-	err = aoc_audio_read(alsa_stream, buf, count);
-	if (err)
-		pr_err("fFailed to transfer to alsa device (%d)\n", err);
-
-	return err;
-}
-
-/* Copy data between hardware buffer and user space */
-static int snd_aoc_pcm_copy_user(struct snd_pcm_substream *substream,
-				 int channel, unsigned long pos,
-				 void __user *buf, unsigned long count)
-{
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		return snd_aoc_pcm_playback_copy_user(substream, channel, pos,
-						      buf, count);
-	} else { /* Capture */
-		return snd_aoc_pcm_capture_copy_user(substream, channel, pos,
-						     buf, count);
-	}
-}
-
-/* Pointer callback */
-static snd_pcm_uframes_t
-snd_aoc_pcm_pointer(struct snd_pcm_substream *substream)
-{
-	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
-	int pointer;
-
-	pr_debug("pcm_pointer... (%d) hwptr=%ld appl=%ld pos=%d\n", 0,
-		 frames_to_bytes(runtime, runtime->status->hw_ptr),
-		 frames_to_bytes(runtime, runtime->control->appl_ptr),
-		 alsa_stream->pos);
-
-	pointer = bytes_to_frames(substream->runtime, alsa_stream->pos);
-
-	pr_debug("pcm pointer  = %d\n", pointer);
-	return pointer;
-}
-
-static int snd_aoc_pcm_lib_ioctl(struct snd_pcm_substream *substream,
-				 unsigned int cmd, void *arg)
-{
-	int err = snd_pcm_lib_ioctl(substream, cmd, arg);
-
-	pr_debug(" .. substream=%p, cmd=%d, arg=%p (%x) err=%d\n", substream,
-		 cmd, arg, arg ? *(unsigned int *)arg : 0, err);
 	return err;
 }
 
 static const struct snd_pcm_ops snd_aoc_pcm_ops = {
 	.open = snd_aoc_pcm_open,
 	.close = snd_aoc_pcm_close,
-	.ioctl = snd_aoc_pcm_lib_ioctl,
 	.hw_params = snd_aoc_pcm_hw_params,
 	.hw_free = snd_aoc_pcm_hw_free,
-	.copy_user = snd_aoc_pcm_copy_user,
 	.prepare = snd_aoc_pcm_prepare,
-	.trigger = snd_aoc_pcm_trigger,
-	.pointer = snd_aoc_pcm_pointer,
 };
 
 static int aoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
@@ -513,7 +380,7 @@ static int aoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
 
 #if (KERNEL_VERSION(4, 18, 0) <= LINUX_VERSION_CODE)
 static const struct snd_soc_component_driver aoc_pcm_component = {
-	.name = "AoC PCM",
+	.name = "AoC VOICE",
 	.ops = &snd_aoc_pcm_ops,
 	.pcm_new = aoc_pcm_new,
 };
@@ -547,38 +414,38 @@ static int aoc_pcm_probe(struct platform_device *pdev)
 	return err;
 }
 
-static const struct of_device_id aoc_pcm_of_match[] = {
+static const struct of_device_id aoc_voice_of_match[] = {
 	{
-		.compatible = "google-aoc-snd-pcm",
+		.compatible = "google-aoc-snd-voice",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, aoc_pcm_of_match);
+MODULE_DEVICE_TABLE(of, aoc_voice_of_match);
 
 static struct platform_driver aoc_pcm_drv = {
     .driver =
         {
-            .name = "google-aoc-snd-pcm",
-            .of_match_table = aoc_pcm_of_match,
+            .name = "google-aoc-snd-voice",
+            .of_match_table = aoc_voice_of_match,
         },
     .probe = aoc_pcm_probe,
 };
 
-int aoc_pcm_init(void)
+int aoc_voice_init(void)
 {
 	int err;
 
 	pr_debug("%s", __func__);
 	err = platform_driver_register(&aoc_pcm_drv);
 	if (err) {
-		pr_err("error registering aoc pcm drv %d\n", err);
+		pr_err("error registering aoc voice drv %d\n", err);
 		return err;
 	}
 
 	return 0;
 }
 
-void aoc_pcm_exit(void)
+void aoc_voice_exit(void)
 {
 	platform_driver_unregister(&aoc_pcm_drv);
 }

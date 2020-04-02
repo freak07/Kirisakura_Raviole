@@ -9,12 +9,12 @@
  * published by the Free Software Foundation.
  */
 
-#include "aoc_alsa_drv.h"
-#include "aoc_alsa.h"
 #include "../aoc-interface.h"
+#include "aoc_alsa.h"
+#include "aoc_alsa_drv.h"
 
 enum { NONBLOCKING = 0, BLOCKING = 1 };
-enum { START, STOP };
+enum { START, STOP, VOICE_TX_MODE, VOICE_RX_MODE, OFFLOAD_MODE };
 
 static int aoc_service_audio_control(struct aoc_service_dev *dev,
 				     const uint8_t *cmd, size_t cmd_size);
@@ -68,9 +68,9 @@ static int aoc_service_audio_control(struct aoc_service_dev *dev,
 	}
 
 	/*
-	 * TODO:   assuming only one user for the audio control channel.
-	 * clear all the response messages from previous commands
-	 */
+   * TODO:   assuming only one user for the audio control channel.
+   * clear all the response messages from previous commands
+   */
 	count = 0;
 	while (((err = aoc_service_read(dev, buffer, buffer_size,
 					NONBLOCKING)) >= 1) &&
@@ -107,8 +107,7 @@ static int aoc_service_audio_control(struct aoc_service_dev *dev,
 #endif /* AOC_CMD_DEBUG_ENABLE */
 
 	if (err < 1) {
-		pr_err("failed to get reply from audio-control: err %d\n",
-			 err);
+		pr_err("failed to get reply from audio-control: err %d\n", err);
 	} else if (err == 4) {
 		pr_debug("audio control err code %#x\n", *(uint32_t *)buffer);
 	} else {
@@ -124,16 +123,36 @@ aoc_audio_playback_trigger_source(struct aoc_alsa_stream *alsa_stream, int cmd,
 				  int src)
 {
 	int err;
-
 	struct aoc_service_dev *dev;
 	struct CMD_AUDIO_OUTPUT_SOURCE source;
 
 	dev = alsa_stream->chip->dev_alsa_output_control;
 	AocCmdHdrSet(&(source.parent), CMD_AUDIO_OUTPUT_SOURCE_ID,
 		     sizeof(source));
-	/* source On/Off */
+	/* source mode: playbckOn/Off/TX/Rx/Offload */
 	source.source = src;
-	source.mode = (cmd == START) ? ENTRYPOINT_MODE_PLAYBACK : ENTRYPOINT_MODE_OFF;
+	switch (cmd) {
+	case START:
+		source.mode = ENTRYPOINT_MODE_PLAYBACK;
+		break;
+	case STOP:
+		source.mode = ENTRYPOINT_MODE_OFF;
+		break;
+	case VOICE_TX_MODE:
+		source.mode = ENTRYPOINT_MODE_VOICE_TX;
+		break;
+	case VOICE_RX_MODE:
+		source.mode = ENTRYPOINT_MODE_VOICE_RX;
+		break;
+	case OFFLOAD_MODE:
+		source.mode = ENTRYPOINT_MODE_DECODE_OFFLOAD;
+		break;
+	default:
+		source.mode = ENTRYPOINT_MODE_OFF;
+	}
+
+	/*source.mode = (cmd == START) ? ENTRYPOINT_MODE_PLAYBACK :
+   * ENTRYPOINT_MODE_OFF;*/
 	err = aoc_service_audio_control(dev, (uint8_t *)&source,
 					sizeof(source));
 
@@ -239,7 +258,7 @@ int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 				 uint32_t bps, bool pcm_float_fmt)
 {
 	int err = 0;
-	int left, right; //two channels
+	int left, right; // two channels
 	struct CMD_AUDIO_INPUT_MIC_RECORD_AP_SET_PARAMS cmd;
 	struct aoc_service_dev *dev;
 
@@ -435,6 +454,7 @@ int aoc_audio_read(struct aoc_alsa_stream *alsa_stream, void *dest,
 	int avail;
 
 	avail = aoc_ring_bytes_available_to_read(dev->service, AOC_UP);
+
 	if (unlikely(avail < count)) {
 		pr_err("error in read data from ringbuffer. avail = %d, toread = %d\n",
 		       avail, count);
@@ -584,6 +604,118 @@ int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 
 out:
 	return err;
+}
+
+static int aoc_audio_modem_input(struct aoc_alsa_stream *alsa_stream,
+				 int input_cmd)
+{
+	int err;
+	struct CMD_HDR cmd;
+	struct aoc_service_dev *dev;
+
+	AocCmdHdrSet(&cmd,
+		     (input_cmd == START) ?
+			     CMD_AUDIO_INPUT_MODEM_INPUT_START_ID :
+			     CMD_AUDIO_INPUT_MODEM_INPUT_STOP_ID,
+		     sizeof(cmd));
+
+	dev = alsa_stream->chip->dev_alsa_input_control;
+	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd));
+	if (err < 0)
+		pr_err("aoc modem input setup fail!\n");
+
+	return err;
+}
+
+/* TODO: entry point idx and sink id should be specified  in the alsa_stream */
+int prepare_phonecall(struct aoc_alsa_stream *alsa_stream)
+{
+	int err;
+	int src = alsa_stream->entry_point_idx;
+
+	printk("prepare phone call - dev %d\n", alsa_stream->entry_point_idx);
+	if (src != 4)
+		return 0;
+
+	err = aoc_audio_modem_input(alsa_stream, START);
+	if (err < 0)
+		pr_err("audio modem input start failed. errcode = %d\n", err);
+	pr_notice("audio modem input STARTED\n");
+
+	/* Tx */
+	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 3, 3);
+	if (err < 0)
+		pr_err("audio playback binding start failed. errcode = %d\n",
+		       err);
+
+	/* refactor needed */
+	alsa_stream->entry_point_idx = 3;
+	err = aoc_audio_playback_set_params(alsa_stream, 2, 48000, 32, false);
+	alsa_stream->entry_point_idx = 4;
+	if (err < 0)
+		pr_err("audio playback set params failed. errcode = %d\n", err);
+
+	err = aoc_audio_playback_trigger_source(alsa_stream, VOICE_TX_MODE, 3);
+	if (err < 0)
+		pr_err("audio playback source start failed. errcode = %d\n",
+		       err);
+
+	/* Rx */
+	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 4, 0);
+	if (err < 0)
+		pr_err("audio playback binding start failed. errcode = %d\n",
+		       err);
+
+	err = aoc_audio_playback_set_params(alsa_stream, 2, 48000, 32, false);
+	if (err < 0)
+		pr_err("audio playback set params failed. errcode = %d\n", err);
+
+	err = aoc_audio_playback_trigger_source(alsa_stream, VOICE_RX_MODE, 4);
+	if (err < 0)
+		pr_err("audio playback source  voice RX mode setup failed. errcode = %d\n",
+		       err);
+
+	return 0;
+}
+
+int teardown_phonecall(struct aoc_alsa_stream *alsa_stream)
+{
+	int err = 0;
+	int src = alsa_stream->entry_point_idx;
+
+	printk("stop phone call - dev %d\n", alsa_stream->entry_point_idx);
+	if (src != 4)
+		return 0;
+
+	/* unbind */
+	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 4, 0);
+	if (err < 0)
+		pr_err("audio playback binding stop failed. errcode = %d\n",
+		       err);
+
+	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 3, 3);
+	if (err < 0)
+		pr_err("audio playback binding stop failed. errcode = %d\n",
+		       err);
+
+	/* source off */
+	err = aoc_audio_playback_trigger_source(alsa_stream, STOP, 4);
+	if (err < 0)
+		pr_err("audio playback source stop failed. errcode = %d\n",
+		       err);
+
+	err = aoc_audio_playback_trigger_source(alsa_stream, STOP, 3);
+	if (err < 0)
+		pr_err("audio playback source stop failed. errcode = %d\n",
+		       err);
+
+	err = aoc_audio_modem_input(alsa_stream, STOP);
+	if (err < 0)
+		pr_err("audio modem input stop failed. errcode = %d\n", err);
+
+	pr_notice("audio modem input STOPPED\n");
+
+	return 0;
 }
 
 int aoc_audio_setup(struct aoc_alsa_stream *alsa_stream)

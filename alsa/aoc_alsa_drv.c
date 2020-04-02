@@ -133,6 +133,12 @@ static int snd_aoc_alsa_probe(void)
 		goto err_free;
 	}
 
+	err = aoc_voice_init();
+	if (err) {
+		pr_err("%s: failed to init aoc voice\n", __func__);
+		goto err_free;
+	}
+
 	err = aoc_path_init();
 	if (err) {
 		pr_err("%s: failed to init aoc path\n", __func__);
@@ -148,6 +154,7 @@ err_free:
 static int snd_aoc_alsa_remove(void)
 {
 	aoc_path_exit();
+	aoc_voice_exit();
 	aoc_pcm_exit();
 
 	return 0;

@@ -116,10 +116,15 @@ int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 int aoc_audio_read(struct aoc_alsa_stream *alsa_stream, void *dest,
 		   uint32_t count);
 
+int prepare_phonecall(struct aoc_alsa_stream *alsa_stream);
+int teardown_phonecall(struct aoc_alsa_stream *alsa_stream);
+
 int aoc_mic_loopback(struct aoc_chip *chip, int enable);
 
 int aoc_pcm_init(void);
 void aoc_pcm_exit(void);
+int aoc_voice_init(void);
+void aoc_voice_exit(void);
 int aoc_path_init(void);
 void aoc_path_exit(void);
 #endif
