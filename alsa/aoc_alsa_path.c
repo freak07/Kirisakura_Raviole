@@ -150,6 +150,22 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 	},
 
 	{
+		.playback = {
+			.stream_name = "EP8 Playback",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S24_3LE |
+					SNDRV_PCM_FMTBIT_FLOAT_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 2,
+		},
+		.name = "EP8 PB",
+		.id = IDX_EP8_RX,
+	},
+
+	{
 		.capture = {
 			.stream_name = "EP1 Capture",
 			.rates = SNDRV_PCM_RATE_8000_48000,
@@ -788,6 +804,8 @@ const struct snd_kcontrol_new tdm_0_rx_ctrl[] = {
 		       tdm_0_rx_put),
 	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, tdm_0_rx_get,
 		       tdm_0_rx_put),
+	SOC_SINGLE_EXT("EP8", SND_SOC_NOPM, IDX_EP8_RX, 1, 0, tdm_0_rx_get,
+		       tdm_0_rx_put),
 };
 
 static int tdm_1_rx_put(struct snd_kcontrol *kcontrol,
@@ -975,6 +993,7 @@ const struct snd_soc_dapm_widget aoc_widget[] = {
 	SND_SOC_DAPM_AIF_IN("EP5_RX", "EP5 Playback", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("EP6_RX", "EP6 Playback", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("EP7_RX", "EP7 Playback", 0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_IN("EP8_RX", "EP8 Playback", 0, SND_SOC_NOPM, 0, 0),
 
 	/* Audio record */
 	SND_SOC_DAPM_AIF_OUT("EP1_TX", "EP1 Capture", 0, SND_SOC_NOPM, 0, 0),
@@ -1067,6 +1086,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "TDM_0_RX Mixer", "EP5", "EP5_RX" },
 	{ "TDM_0_RX Mixer", "EP6", "EP6_RX" },
 	{ "TDM_0_RX Mixer", "EP7", "EP7_RX" },
+	{ "TDM_0_RX Mixer", "EP8", "EP8_RX" },
 	{ "TDM_0_RX", NULL, "TDM_0_RX Mixer" },
 	{ "HW_SINK", NULL, "TDM_0_RX" },
 

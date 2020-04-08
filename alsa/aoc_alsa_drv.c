@@ -28,13 +28,21 @@ struct aoc_service_resource {
 
 /* TODO: audio_haptics should be added, capture1-3 needs to be determined */
 static const char *const audio_service_names[] = {
-	"audio_output_control", "audio_input_control",
-	"audio_playback0",	"audio_playback1",
-	"audio_playback2",	"audio_playback3",
-	"audio_playback4",	"audio_playback5",
-	"audio_playback6",	"audio_capture0",
-	"audio_capture1",	"audio_capture2",
-	"audio_capture3",	NULL,
+	"audio_output_control",
+	"audio_input_control",
+	"audio_playback0",
+	"audio_playback1",
+	"audio_playback2",
+	"audio_playback3",
+	"audio_playback4",
+	"audio_playback5",
+	"audio_playback6",
+	"audio_haptics",
+	"audio_capture0",
+	"audio_capture1",
+	"audio_capture2",
+	"audio_capture3",
+	NULL,
 };
 
 static struct aoc_service_resource
