@@ -30,6 +30,7 @@ struct aoc_superbin_header {
 	u32 bootloader_size;
 	u32 uuid_table_offset;
 	u32 uuid_table_size;
+	u8 date_time[20];
 	u32 section_table_offset;
 	u32 section_table_entry_size;
 	u32 sram_offset;
@@ -50,7 +51,7 @@ static bool region_is_in_firmware(size_t start, size_t length,
 
 bool _aoc_fw_is_valid(const struct firmware *fw)
 {
-	struct aoc_superbin_header *header;
+	const struct aoc_superbin_header *header;
 	u32 ipc_offset, bootloader_offset;
 	u32 uuid_offset, uuid_size;
 
@@ -60,7 +61,7 @@ bool _aoc_fw_is_valid(const struct firmware *fw)
 	if (!region_is_in_firmware(0, sizeof(*header), fw))
 		return false;
 
-	header = (struct aoc_superbin_header *)fw->data;
+	header = (const struct aoc_superbin_header *)fw->data;
 	if (le32_to_cpu(header->magic) != 0xaabbccdd)
 		return false;
 
@@ -94,18 +95,57 @@ bool _aoc_fw_is_valid(const struct firmware *fw)
 	return true;
 }
 
+bool _aoc_fw_is_compatible(const struct firmware *fw)
+{
+	const struct aoc_superbin_header *header =
+		(const struct aoc_superbin_header *)fw->data;
+	u32 uuid_offset, uuid_size;
+
+	uuid_offset = le32_to_cpu(header->uuid_table_offset);
+	uuid_size = le32_to_cpu(header->uuid_table_size);
+
+	if (AocInterfaceCheck(fw->data + uuid_offset, uuid_size) != 0) {
+		pr_err("failed to validate method signature table\n");
+		return false;
+	}
+
+	return true;
+}
+
 u32 _aoc_fw_bootloader_offset(const struct firmware *fw)
 {
-	struct aoc_superbin_header *header =
-		(struct aoc_superbin_header *)fw->data;
+	const struct aoc_superbin_header *header =
+		(const struct aoc_superbin_header *)fw->data;
 	return le32_to_cpu(header->bootloader_offset);
 }
 
 u32 _aoc_fw_ipc_offset(const struct firmware *fw)
 {
-	struct aoc_superbin_header *header =
-		(struct aoc_superbin_header *)fw->data;
+	const struct aoc_superbin_header *header =
+		(const struct aoc_superbin_header *)fw->data;
 	return le32_to_cpu(header->image_size);
+}
+
+/* Returns firmware version, or 0 on error */
+u32 _aoc_fw_version(const struct firmware *fw)
+{
+	const struct aoc_superbin_header *header =
+		(const struct aoc_superbin_header *)fw->data;
+	return le32_to_cpu(header->firmware_version);
+}
+
+/* Returns firmware build date, or NULL on error */
+const char *_aoc_fw_builddate(const struct firmware *fw)
+{
+	const struct aoc_superbin_header *header =
+		(const struct aoc_superbin_header *)fw->data;
+	size_t field_size = sizeof(header->date_time);
+	const char *date = &header->date_time[0];
+
+	if (strnlen(date, field_size) < field_size)
+		return date;
+
+	return NULL;
 }
 
 bool _aoc_fw_commit(const struct firmware *fw, void *dest)

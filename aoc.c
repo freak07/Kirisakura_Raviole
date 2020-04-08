@@ -303,6 +303,8 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 {
 	struct device *dev = ctx;
 	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+	const char *builddate;
+
 	u32 ipc_offset, bootloader_offset;
 
 	aoc_req_assert(prvdata, true);
@@ -312,19 +314,22 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		goto free_fw;
 	}
 
-	dev_notice(dev, "loaded firmware with size %d bytes\n", fw->size);
-
 	if (!_aoc_fw_is_valid(fw)) {
 		dev_err(dev, "firmware validation failed\n");
 		goto free_fw;
 	}
 
+	builddate = _aoc_fw_builddate(fw);
 	ipc_offset = _aoc_fw_ipc_offset(fw);
 	bootloader_offset = _aoc_fw_bootloader_offset(fw);
 
-	pr_notice(
-		"firmware image commit.  ipc_offset %u bootloader_offset %u\n",
-		ipc_offset, bootloader_offset);
+	pr_notice("successfully loaded firmware version %u buildtime \'%s\'",
+		  _aoc_fw_version(fw), builddate ? builddate : "unknown");
+
+	if (!_aoc_fw_is_compatible(fw)) {
+		dev_err(dev, "firmware and drivers are incompatible\n");
+		goto free_fw;
+	}
 
 	aoc_control = aoc_dram_translate(prvdata, ipc_offset);
 
@@ -1075,8 +1080,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	aoc_sram_resource = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-							 "blk_aoc");
+	aoc_sram_resource =
+		platform_get_resource_byname(pdev, IORESOURCE_MEM, "blk_aoc");
 
 	ret = of_address_to_resource(mem_node, 0, &prvdata->dram_resource);
 	of_node_put(mem_node);
