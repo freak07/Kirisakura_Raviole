@@ -75,6 +75,8 @@ struct aoc_alsa_stream {
 	struct aoc_chip *chip;
 	struct snd_pcm_substream *substream;
 	struct timer_list timer; /* For advancing the hw ptr */
+	struct hrtimer hr_timer; /* For advancing the hw ptr */
+
 	struct aoc_service_dev *dev;
 	int idx; /* PCM device number */
 	int entry_point_idx; /* Index of entry point, same as idx in playback */
@@ -96,6 +98,7 @@ struct aoc_alsa_stream {
 };
 
 void aoc_timer_start(struct aoc_alsa_stream *alsa_stream);
+void aoc_timer_restart(struct aoc_alsa_stream *alsa_stream);
 void aoc_timer_stop(struct aoc_alsa_stream *alsa_stream);
 void aoc_timer_stop_sync(struct aoc_alsa_stream *alsa_stream);
 

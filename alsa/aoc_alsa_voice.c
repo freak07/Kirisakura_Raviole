@@ -40,62 +40,17 @@ static struct snd_pcm_hardware snd_aoc_playback_hw = {
 	.periods_max = 4,
 };
 
+static enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
+{
+	return HRTIMER_RESTART;
+}
+
 /* Timer interrupt handler to update the ring buffer reader/writer positions
  * during playback/capturing
  */
 static void aoc_pcm_timer_irq_handler(struct timer_list *timer)
 {
-	struct aoc_alsa_stream *alsa_stream;
-	struct aoc_service_dev *dev;
-	unsigned long consumed; /* TODO: uint64_t? */
-
-	BUG_ON(!timer);
-	alsa_stream = container_of(timer, struct aoc_alsa_stream, timer);
-
-	BUG_ON(!alsa_stream || !alsa_stream->substream);
-
-	/* Start the timer immediately for next period */
-	aoc_timer_start(alsa_stream);
-
-	/* The number of bytes read/writtien should be the bytes in the buffer
-	 * already played out in the case of playback. But this may not be true
-	 * in the AoC ring buffer implementation, since the reader pointer in
-	 * the playback case represents what has been read from the buffer,
-	 * not what already played out .
-	*/
-	dev = alsa_stream->dev;
-	consumed =
-		((alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ?
-			 aoc_ring_bytes_read(dev->service, AOC_DOWN) :
-			 aoc_ring_bytes_written(dev->service, AOC_UP));
-
-	pr_debug("consumed = %ld , hw_ptr_base =%ld\n", consumed,
-		 alsa_stream->hw_ptr_base);
-
-	/* TODO: To do more on no pointer update? */
-	if (consumed == alsa_stream->prev_consumed)
-		return;
-
-	/* To deal with overlfow in Tx or Rx in int32_t */
-	if (consumed < alsa_stream->prev_consumed) {
-		alsa_stream->n_overflow++;
-		pr_notice("overflow in Tx/Rx: %ld - %ld - %d times\n", consumed,
-			  alsa_stream->prev_consumed, alsa_stream->n_overflow);
-	}
-	alsa_stream->prev_consumed = consumed;
-
-	/* Update the pcm pointer  */
-	if (unlikely(alsa_stream->n_overflow)) {
-		alsa_stream->pos =
-			(consumed + 0x100000000 * alsa_stream->n_overflow -
-			 alsa_stream->hw_ptr_base) %
-			alsa_stream->buffer_size;
-	} else {
-		alsa_stream->pos = (consumed - alsa_stream->hw_ptr_base) %
-				   alsa_stream->buffer_size;
-	}
-
-	snd_pcm_period_elapsed(alsa_stream->substream);
+	return ;
 }
 
 static void snd_aoc_pcm_free(struct snd_pcm_runtime *runtime)
@@ -175,6 +130,8 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 	alsa_stream->draining = 1;
 
 	timer_setup(&(alsa_stream->timer), aoc_pcm_timer_irq_handler, 0);
+	hrtimer_init( &(alsa_stream->hr_timer), CLOCK_MONOTONIC, HRTIMER_MODE_REL );
+	alsa_stream->hr_timer.function = &aoc_pcm_hrtimer_irq_handler;
 
 	alsa_stream->entry_point_idx = substream->pcm->device;
 	mutex_unlock(&chip->audio_mutex);
@@ -191,6 +148,7 @@ out:
 	pr_debug("pcm open err=%d\n", err);
 	return err;
 }
+
 
 /* Close callback */
 static int snd_aoc_pcm_close(struct snd_pcm_substream *substream)

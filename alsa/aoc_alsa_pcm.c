@@ -16,21 +16,52 @@
 #include "aoc_alsa.h"
 #include "aoc_alsa_drv.h"
 
+#include <linux/hrtimer.h>
+#include <linux/ktime.h>
+
+/* #define AOC_TIMER_LIST */
+static unsigned long timer_interval_ns = 10e6;
+
 /* Timer interrupt to read the ring buffer reader/writer positions */
 void aoc_timer_start(struct aoc_alsa_stream *alsa_stream)
 {
-	mod_timer(&(alsa_stream->timer), jiffies + HZ / 300); /* Close to 5ms */
+#ifdef AOC_TIMER_LIST
+	mod_timer(&(alsa_stream->timer), jiffies +nsecs_to_jiffies(timer_interval_ns));
+#else
+	ktime_t interval = ktime_set( 0, timer_interval_ns );
+	hrtimer_start( &(alsa_stream->hr_timer), interval, HRTIMER_MODE_REL );
+#endif
+}
+
+void aoc_timer_restart(struct aoc_alsa_stream *alsa_stream)
+{
+	ktime_t currtime;
+	ktime_t interval = ktime_set( 0, timer_interval_ns );
+  	currtime  = ktime_get();
+  	hrtimer_forward(&(alsa_stream->hr_timer), currtime , interval);
 }
 
 void aoc_timer_stop(struct aoc_alsa_stream *alsa_stream)
 {
+#ifdef AOC_TIMER_LIST
 	del_timer(&(alsa_stream->timer));
 	alsa_stream->timer.expires = 0;
+#else
+	int ret;
+	ret = hrtimer_cancel( &(alsa_stream->hr_timer) );
+  	if (ret) printk("The hr_timer was still in use...\n");
+#endif
 }
 
 void aoc_timer_stop_sync(struct aoc_alsa_stream *alsa_stream)
 {
+#ifdef AOC_TIMER_LIST
 	del_timer_sync(&(alsa_stream->timer));
+#else
+	int ret;
+	ret = hrtimer_cancel( &(alsa_stream->hr_timer) );
+  	if (ret) printk("The hr_timer was still in use...\n");
+#endif
 }
 
 /* Hardware definition
@@ -54,6 +85,65 @@ static struct snd_pcm_hardware snd_aoc_playback_hw = {
 	.periods_min = 2,
 	.periods_max = 4,
 };
+
+enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
+{
+	struct aoc_alsa_stream *alsa_stream;
+	struct aoc_service_dev *dev;
+	unsigned long consumed; /* TODO: uint64_t? */
+
+	BUG_ON(!timer);
+	alsa_stream = container_of(timer, struct aoc_alsa_stream, hr_timer);
+
+	BUG_ON(!alsa_stream || !alsa_stream->substream);
+
+	/* Start the timer immediately for next period */
+	/* aoc_timer_start(alsa_stream); */
+	aoc_timer_restart(alsa_stream);
+
+	/* The number of bytes read/writtien should be the bytes in the buffer
+	 * already played out in the case of playback. But this may not be true
+	 * in the AoC ring buffer implementation, since the reader pointer in
+	 * the playback case represents what has been read from the buffer,
+	 * not what already played out .
+	*/
+	dev = alsa_stream->dev;
+	consumed =
+		((alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ?
+			 aoc_ring_bytes_read(dev->service, AOC_DOWN) :
+			 aoc_ring_bytes_written(dev->service, AOC_UP));
+
+	pr_debug("consumed = %ld , hw_ptr_base =%ld\n", consumed,
+		 alsa_stream->hw_ptr_base);
+
+	/* TODO: To do more on no pointer update? */
+	if (consumed == alsa_stream->prev_consumed)
+		return HRTIMER_RESTART;
+
+	/* To deal with overlfow in Tx or Rx in int32_t */
+	if (consumed < alsa_stream->prev_consumed) {
+		alsa_stream->n_overflow++;
+		pr_notice("overflow in Tx/Rx: %ld - %ld - %d times\n", consumed,
+			  alsa_stream->prev_consumed, alsa_stream->n_overflow);
+	}
+	alsa_stream->prev_consumed = consumed;
+
+	/* Update the pcm pointer  */
+	if (unlikely(alsa_stream->n_overflow)) {
+		alsa_stream->pos =
+			(consumed + 0x100000000 * alsa_stream->n_overflow -
+			 alsa_stream->hw_ptr_base) %
+			alsa_stream->buffer_size;
+	} else {
+		alsa_stream->pos = (consumed - alsa_stream->hw_ptr_base) %
+				   alsa_stream->buffer_size;
+	}
+
+	snd_pcm_period_elapsed(alsa_stream->substream);
+
+	return HRTIMER_RESTART;
+}
+
 
 /* Timer interrupt handler to update the ring buffer reader/writer positions
  * during playback/capturing
@@ -190,6 +280,8 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 	alsa_stream->draining = 1;
 
 	timer_setup(&(alsa_stream->timer), aoc_pcm_timer_irq_handler, 0);
+	hrtimer_init( &(alsa_stream->hr_timer), CLOCK_MONOTONIC, HRTIMER_MODE_REL );
+	alsa_stream->hr_timer.function = &aoc_pcm_hrtimer_irq_handler;
 
 	alsa_stream->entry_point_idx = substream->pcm->device;
 	mutex_unlock(&chip->audio_mutex);
