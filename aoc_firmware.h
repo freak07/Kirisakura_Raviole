@@ -13,6 +13,9 @@
 
 #define AOC_FIRMWARE_OFFSET_INVALID 0xffffffff
 
+/* Dev builds bypass the UUID check on load */
+bool _aoc_fw_is_release(const struct firmware *fw);
+
 bool _aoc_fw_is_compatible(const struct firmware *fw);
 
 bool _aoc_fw_is_valid(const struct firmware *fw);

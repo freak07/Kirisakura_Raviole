@@ -21,7 +21,7 @@
 
 struct aoc_superbin_header {
 	u32 magic;
-	u32 container_version;
+	u32 release_type;
 	u32 firmware_version;
 	u32 image_size;
 	u32 bootloader_low;
@@ -95,11 +95,22 @@ bool _aoc_fw_is_valid(const struct firmware *fw)
 	return true;
 }
 
+bool _aoc_fw_is_release(const struct firmware *fw)
+{
+	const struct aoc_superbin_header *header =
+		(const struct aoc_superbin_header *)fw->data;
+
+	return (le32_to_cpu(header->release_type) == 1);
+}
+
 bool _aoc_fw_is_compatible(const struct firmware *fw)
 {
 	const struct aoc_superbin_header *header =
 		(const struct aoc_superbin_header *)fw->data;
 	u32 uuid_offset, uuid_size;
+
+	if (!_aoc_fw_is_release(fw))
+		return true;
 
 	uuid_offset = le32_to_cpu(header->uuid_table_offset);
 	uuid_size = le32_to_cpu(header->uuid_table_size);

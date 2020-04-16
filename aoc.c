@@ -323,8 +323,10 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	ipc_offset = _aoc_fw_ipc_offset(fw);
 	bootloader_offset = _aoc_fw_bootloader_offset(fw);
 
-	pr_notice("successfully loaded firmware version %u buildtime \'%s\'",
-		  _aoc_fw_version(fw), builddate ? builddate : "unknown");
+	pr_notice("successfully loaded firmware version %u type %s buildtime \'%s\'",
+		  _aoc_fw_version(fw),
+		  _aoc_fw_is_release(fw) ? "release" : "development",
+		  builddate ? builddate : "unknown");
 
 	if (!_aoc_fw_is_compatible(fw)) {
 		dev_err(dev, "firmware and drivers are incompatible\n");
@@ -947,7 +949,7 @@ static void aoc_did_become_online(struct work_struct *work)
 
 	aoc_req_assert(prvdata, false);
 
-	pr_notice("firmware v%u did become online with %d services\n",
+	pr_notice("firmware version %u did become online with %d services\n",
 		  le32_to_cpu(aoc_control->fw_version), aoc_num_services());
 
 	if (!service_names_are_valid(prvdata)) {
