@@ -66,6 +66,61 @@ static const char * const service_names[] = {
 	NULL,
 };
 
+static ssize_t read_core_build_info(int core, struct device *dev, char *buf)
+{
+	struct stats_prvdata *prvdata = dev_get_drvdata(dev);
+	struct CMD_SYS_VERSION_GET version_get = { 0 };
+	int ret;
+
+	AocCmdHdrSet(&version_get.parent.parent, CMD_SYS_VERSION_GET_ID,
+		     sizeof(version_get));
+
+	version_get.parent.core = core;
+
+	ret = read_attribute(prvdata, &version_get, sizeof(version_get),
+			     &version_get, sizeof(version_get));
+
+	if (ret < 0)
+		return ret;
+
+	if (strnlen(version_get.version, sizeof(version_get.version)) ==
+			sizeof(version_get.version))
+		dev_err(dev, "invalid version string returned\n");
+
+	if (strnlen(version_get.link_time, sizeof(version_get.link_time)) ==
+			sizeof(version_get.link_time))
+		dev_err(dev, "invalid link time string returned\n");
+
+	ret = scnprintf(buf, PAGE_SIZE, "Build Hash: %.64s\nLink Time: %.64s\n",
+			version_get.version, version_get.link_time);
+
+	return ret;
+}
+
+static ssize_t a32_build_info_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
+{
+	return read_core_build_info(1, dev, buf);
+}
+
+static DEVICE_ATTR_RO(a32_build_info);
+
+static ssize_t f1_build_info_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	return read_core_build_info(2, dev, buf);
+}
+
+static DEVICE_ATTR_RO(f1_build_info);
+
+static ssize_t hf_build_info_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	return read_core_build_info(3, dev, buf);
+}
+
+static DEVICE_ATTR_RO(hf_build_info);
+
 static ssize_t read_timed_stat(struct device *dev, char *buf, int index)
 {
 	struct stats_prvdata *prvdata = dev_get_drvdata(dev);
@@ -195,6 +250,9 @@ DECLARE_STAT("V_SUD", voltage_super_underdrive);
 DECLARE_STAT("V_UUD", voltage_ultra_underdrive);
 
 static struct attribute *aoc_stats_attrs[] = {
+	&dev_attr_a32_build_info.attr,
+	&dev_attr_f1_build_info.attr,
+	&dev_attr_hf_build_info.attr,
 	&dev_attr_a32_wfi.attr,
 	&dev_attr_a32_retention.attr,
 	&dev_attr_a32_off.attr,
