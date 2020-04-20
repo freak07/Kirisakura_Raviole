@@ -28,8 +28,17 @@ static int snd_aoc_ctl_info(struct snd_kcontrol *kcontrol,
 		uinfo->count = 1;
 		uinfo->value.integer.min = 0;
 		uinfo->value.integer.max = 1;
+	} else if (kcontrol->private_value == BUILDIN_MIC_POWER_STATE) {
+		uinfo->type = SNDRV_CTL_ELEM_TYPE_BOOLEAN;
+		uinfo->count = NUM_OF_BUILTIN_MIC;
+		uinfo->value.integer.min = 0;
+		uinfo->value.integer.max = 1;
+	} else if (kcontrol->private_value == BUILDIN_MIC_CAPTURE_LIST) {
+		uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+		uinfo->count = NUM_OF_BUILTIN_MIC;
+		uinfo->value.integer.min = -1;
+		uinfo->value.integer.max = NUM_OF_BUILTIN_MIC - 1;
 	}
-
 	return 0;
 }
 
@@ -114,6 +123,114 @@ unlock:
 	return changed;
 }
 
+static int
+snd_aoc_buildin_mic_power_ctl_get(struct snd_kcontrol *kcontrol,
+				  struct snd_ctl_elem_value *ucontrol)
+{
+	int i;
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	for (i = 0; i < NUM_OF_BUILTIN_MIC; i++)
+		ucontrol->value.integer.value[i] =
+			aoc_get_builtin_mic_power_state(chip, i);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int
+snd_aoc_buildin_mic_power_ctl_put(struct snd_kcontrol *kcontrol,
+				  struct snd_ctl_elem_value *ucontrol)
+{
+	int i;
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	for (i = 0; i < NUM_OF_BUILTIN_MIC; i++)
+		aoc_set_builtin_mic_power_state(
+			chip, i, ucontrol->value.integer.value[i]);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int
+snd_aoc_buildin_mic_capture_list_ctl_get(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	int i;
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	for (i = 0; i < NUM_OF_BUILTIN_MIC; i++)
+		ucontrol->value.integer.value[i] =
+			chip->buildin_mic_id_list[i]; // geting power state;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int
+snd_aoc_buildin_mic_capture_list_ctl_put(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	int i;
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	for (i = 0; i < NUM_OF_BUILTIN_MIC; i++)
+		chip->buildin_mic_id_list[i] =
+			ucontrol->value.integer.value[i]; // geting power state;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int mic_power_ctl_get(struct snd_kcontrol *kcontrol,
+			     struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 mic_idx = (u32)mc->shift;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = aoc_get_builtin_mic_power_state(
+		chip, mic_idx); // geting power statef from AoC ;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int mic_power_ctl_set(struct snd_kcontrol *kcontrol,
+			     struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 mic_idx = (u32)mc->shift;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	aoc_set_builtin_mic_power_state(chip, mic_idx,
+					ucontrol->value.integer.value[0]);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static struct snd_kcontrol_new snd_aoc_ctl[] = {
 	{
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
@@ -138,6 +255,36 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		.put = snd_aoc_ctl_put,
 		.count = 1,
 	},
+	{
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+		.name = "BUILDIN MIC POWER STATE",
+		.index = 0,
+		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
+		.private_value = BUILDIN_MIC_POWER_STATE,
+		.info = snd_aoc_ctl_info,
+		.get = snd_aoc_buildin_mic_power_ctl_get,
+		.put = snd_aoc_buildin_mic_power_ctl_put,
+		.count = 1,
+	},
+	{
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+		.name = "BUILDIN MIC ID CAPTURE LIST",
+		.index = 0,
+		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
+		.private_value = BUILDIN_MIC_CAPTURE_LIST,
+		.info = snd_aoc_ctl_info,
+		.get = snd_aoc_buildin_mic_capture_list_ctl_get,
+		.put = snd_aoc_buildin_mic_capture_list_ctl_put,
+		.count = 1,
+	},
+	SOC_SINGLE_EXT("MIC0", SND_SOC_NOPM, BUILTIN_MIC0, 1, 0,
+		       mic_power_ctl_get, mic_power_ctl_set),
+	SOC_SINGLE_EXT("MIC1", SND_SOC_NOPM, BUILTIN_MIC1, 1, 0,
+		       mic_power_ctl_get, mic_power_ctl_set),
+	SOC_SINGLE_EXT("MIC2", SND_SOC_NOPM, BUILTIN_MIC2, 1, 0,
+		       mic_power_ctl_get, mic_power_ctl_set),
+	SOC_SINGLE_EXT("MIC3", SND_SOC_NOPM, BUILTIN_MIC3, 1, 0,
+		       mic_power_ctl_get, mic_power_ctl_set),
 };
 
 int snd_aoc_new_ctl(struct aoc_chip *chip)

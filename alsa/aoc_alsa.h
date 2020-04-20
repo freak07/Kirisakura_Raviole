@@ -28,6 +28,7 @@
 
 /* Default mic and sink for audio capturing/playback */
 #define DEFAULT_MICPHONE_ID 0
+#define NUM_OF_BUILTIN_MIC 4
 #define DEFAULT_AUDIO_SINK_ID 0
 #define MAX_NUM_OF_SINKS_PER_STREAM 2
 
@@ -45,7 +46,14 @@
 #define chip2alsa(vol) (vol) /* Convert chip to alsa volume */
 
 enum { CTRL_VOL_MUTE, CTRL_VOL_UNMUTE };
-enum { PCM_PLAYBACK_VOLUME, PCM_PLAYBACK_MUTE };
+enum {
+	PCM_PLAYBACK_VOLUME,
+	PCM_PLAYBACK_MUTE,
+	BUILDIN_MIC_POWER_STATE,
+	BUILDIN_MIC_CAPTURE_LIST
+};
+enum { ULL = 0, LL0, LL1, LL2, LL3, DEEP_BUFFER, OFF_LOAD, HAPTICS };
+enum { BUILTIN_MIC0 = 0, BUILTIN_MIC1, BUILTIN_MIC2, BUILTIN_MIC3 };
 
 struct aoc_chip {
 	struct snd_card *card;
@@ -59,6 +67,8 @@ struct aoc_chip {
 	struct aoc_service_dev *dev_alsa_stream[MAX_NUM_OF_SUBSTREAMS];
 
 	int default_mic_id;
+	int buildin_mic_id_list[NUM_OF_BUILTIN_MIC];
+
 	int default_sink_id;
 	int sink_id_list[MAX_NUM_OF_SINKS_PER_STREAM];
 
@@ -113,6 +123,8 @@ int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 int aoc_audio_start(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_set_ctls(struct aoc_chip *chip);
+int aoc_set_builtin_mic_power_state(struct aoc_chip *chip, int iMic, int state);
+int aoc_get_builtin_mic_power_state(struct aoc_chip *chip, int iMic);
 
 int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 		    uint32_t count);
