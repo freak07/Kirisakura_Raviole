@@ -77,11 +77,6 @@ bool _aoc_fw_is_valid(const struct firmware *fw)
 		return false;
 	}
 
-	if (AocInterfaceCheck(fw->data + uuid_offset, uuid_size) != 0) {
-		pr_err("failed to validate method signature table\n");
-		return false;
-	}
-
 	ipc_offset = _aoc_fw_bootloader_offset(fw);
 	bootloader_offset = _aoc_fw_bootloader_offset(fw);
 
