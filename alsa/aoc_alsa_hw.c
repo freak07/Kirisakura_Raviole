@@ -60,7 +60,7 @@ static int aoc_service_audio_control(struct aoc_service_dev *dev,
 	int buffer_size = 1024;
 	struct timeval tv0, tv1;
 
-	buffer = kmalloc_array(buffer_size, sizeof(*buffer), GFP_KERNEL);
+	buffer = kmalloc_array(buffer_size, sizeof(*buffer), GFP_ATOMIC);
 	if (!buffer) {
 		err = -ENOMEM;
 		pr_err("memory allocation error!\n");
