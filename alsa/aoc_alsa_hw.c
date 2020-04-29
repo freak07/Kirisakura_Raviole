@@ -187,7 +187,8 @@ static int aoc_haptics_set_mode(struct aoc_alsa_stream *alsa_stream, int mode)
 
 	cmd.mode = mode;
 
-	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd), NULL);
+	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd),
+					NULL);
 	if (err < 0)
 		pr_err("Error in set haptics mode !\n");
 
@@ -345,8 +346,8 @@ int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 				 uint32_t channels, uint32_t samplerate,
 				 uint32_t bps, bool pcm_float_fmt)
 {
-	int err = 0;
-	int left, right; // two channels
+	int i, iMic, err = 0;
+	//int left, right; // two channels
 	struct CMD_AUDIO_INPUT_MIC_RECORD_AP_SET_PARAMS cmd;
 	struct aoc_service_dev *dev;
 
@@ -361,9 +362,20 @@ int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_MIC_RECORD_AP_SET_PARAMS_ID,
 		     sizeof(cmd));
 
-	left = alsa_stream->chip->default_mic_id;
-	right = (channels > 1) ? left + 1 : left;
-	cmd.pdm_mask = (1 << left) | (1 << right);
+	if (channels < 1 || channels > NUM_OF_BUILTIN_MIC)
+		pr_err("wrong channel number in capture parameter setup\n");
+
+	/* TODO: more checks on mic id */
+	cmd.pdm_mask = 0; /* in case it is not initialized as zero */
+	for (i = 0; i < channels; i++) {
+		iMic = alsa_stream->chip->buildin_mic_id_list[i];
+		if (iMic != -1) {
+			cmd.pdm_mask = cmd.pdm_mask | (1 << iMic);
+		} else {
+			pr_err("wrong mic id for caputring! mic id = -1\n");
+		}
+	}
+
 	cmd.period_ms = 10; /*TODO: how to make it configuratable*/
 	cmd.num_periods = 4; /*TODO: how to make it configuratable*/
 
@@ -389,7 +401,7 @@ int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 		cmd.requested_format.bits = WIDTH_32_BIT;
 		break;
 	case 24:
-		cmd.requested_format.bits = WIDTH_24_BIT;
+		cmd.requested_format.bits = WIDTH_32_BIT; /* TODO: tinycap limitation */
 		break;
 	case 16:
 		cmd.requested_format.bits = WIDTH_16_BIT;

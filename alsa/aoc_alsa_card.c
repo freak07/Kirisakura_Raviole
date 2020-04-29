@@ -1239,6 +1239,12 @@ static int snd_aoc_create(struct aoc_chip **rchip)
 	chip->mic_loopback_enabled = 0;
 
 	chip->default_mic_id = DEFAULT_MICPHONE_ID;
+	chip->buildin_mic_id_list[0] = DEFAULT_MICPHONE_ID;
+
+	for (i = 1; i < NUM_OF_BUILTIN_MIC; i++) {
+		chip->buildin_mic_id_list[i] = -1;
+	}
+
 	chip->default_sink_id = DEFAULT_AUDIO_SINK_ID;
 	chip->sink_id_list[0] = DEFAULT_AUDIO_SINK_ID;
 

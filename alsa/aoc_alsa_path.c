@@ -173,7 +173,7 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 					SNDRV_PCM_FMTBIT_S24_LE |
 					SNDRV_PCM_FMTBIT_S32_LE,
 			.channels_min = 1,
-			.channels_max = 2,
+			.channels_max = 4,
 		},
 		.name = "EP1 CAP",
 		.id = IDX_EP1_TX,
@@ -187,7 +187,7 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 					SNDRV_PCM_FMTBIT_S24_LE |
 					SNDRV_PCM_FMTBIT_S32_LE,
 			.channels_min = 1,
-			.channels_max = 2,
+			.channels_max = 4,
 		},
 		.name = "EP2 CAP",
 		.id = IDX_EP2_TX,
@@ -201,7 +201,7 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 					SNDRV_PCM_FMTBIT_S24_LE |
 					SNDRV_PCM_FMTBIT_S32_LE,
 			.channels_min = 1,
-			.channels_max = 2,
+			.channels_max = 4,
 		},
 		.name = "EP3 CAP",
 		.id = IDX_EP3_TX,
@@ -215,7 +215,7 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 					SNDRV_PCM_FMTBIT_S24_LE |
 					SNDRV_PCM_FMTBIT_S32_LE,
 			.channels_min = 1,
-			.channels_max = 2,
+			.channels_max = 4,
 		},
 		.name = "EP4 CAP",
 		.id = IDX_EP4_TX,
@@ -229,7 +229,7 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 					SNDRV_PCM_FMTBIT_S24_LE |
 					SNDRV_PCM_FMTBIT_S32_LE,
 			.channels_min = 1,
-			.channels_max = 2,
+			.channels_max = 4,
 		},
 		.name = "EP5 CAP",
 		.id = IDX_EP5_TX,
@@ -243,7 +243,7 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 					SNDRV_PCM_FMTBIT_S24_LE |
 					SNDRV_PCM_FMTBIT_S32_LE,
 			.channels_min = 1,
-			.channels_max = 2,
+			.channels_max = 4,
 		},
 		.name = "EP6 CAP",
 		.id = IDX_EP6_TX,
@@ -504,7 +504,7 @@ static int aoc_default_sink_put(struct snd_kcontrol *kcontrol,
 		chip->default_sink_id = sink;
 		/* for a new default sink value, the sink list will be reset */
 		chip->sink_id_list[0] = sink;
-		chip->sink_id_list[1] = -1;
+		chip->sink_id_list[1] = -1; /*TODO: refactor needed */
 		pr_notice("Default sink: %d", sink);
 	}
 	mutex_unlock(&chip->audio_mutex);
@@ -530,6 +530,7 @@ static int aoc_default_mic_get(struct snd_kcontrol *kcontrol,
 static int aoc_default_mic_put(struct snd_kcontrol *kcontrol,
 			       struct snd_ctl_elem_value *ucontrol)
 {
+	int i;
 	int mic = ucontrol->value.integer.value[0];
 	struct snd_soc_component *component =
 		(struct snd_soc_component *)snd_kcontrol_chip(kcontrol);
@@ -537,8 +538,13 @@ static int aoc_default_mic_put(struct snd_kcontrol *kcontrol,
 		(struct aoc_chip *)snd_soc_card_get_drvdata(component->card);
 
 	mutex_lock(&chip->audio_mutex);
-	if (chip->default_mic_id != mic)
+
+	if (chip->default_mic_id != mic) {
 		chip->default_mic_id = mic;
+		chip->buildin_mic_id_list[0] = mic;
+		for (i = 1; i < NUM_OF_BUILTIN_MIC; i++)
+			chip->buildin_mic_id_list[i] = -1;
+	}
 
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
@@ -553,8 +559,11 @@ static int aoc_sink_get(struct snd_kcontrol *kcontrol,
 		(struct aoc_chip *)snd_soc_card_get_drvdata(component->card);
 
 	mutex_lock(&chip->audio_mutex);
-	ucontrol->value.integer.value[0] = chip->sink_id_list[0];
+
+	ucontrol->value.integer.value[0] =
+		chip->sink_id_list[0]; /*TODO: refactor needed */
 	ucontrol->value.integer.value[1] = chip->sink_id_list[1];
+
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
 }
@@ -568,7 +577,8 @@ static int aoc_sink_put(struct snd_kcontrol *kcontrol,
 		(struct aoc_chip *)snd_soc_card_get_drvdata(component->card);
 
 	mutex_lock(&chip->audio_mutex);
-	chip->sink_id_list[0] = ucontrol->value.integer.value[0];
+	chip->sink_id_list[0] =
+		ucontrol->value.integer.value[0]; /*TODO: refactor needed*/
 	chip->sink_id_list[1] = ucontrol->value.integer.value[1];
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
