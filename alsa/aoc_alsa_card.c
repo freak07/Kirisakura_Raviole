@@ -385,13 +385,22 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 			pr_warn("%s: set codec set_tdm_slot %s fail %d",
 				__func__, codec_dais[i]->name, ret);
 
+		ret = snd_soc_component_set_pll(
+			codec_dais[i]->component, 0,
+			RT5682_PLL1_S_BCLK1, (48000 * 64), (48000 * 512));
+		if (ret && ret != -ENOTSUPP) {
+			pr_warn("%s: set codec pll clk %s fail %d", __func__,
+				codec_dais[i]->name, ret);
+		}
+
 		ret = snd_soc_component_set_sysclk(codec_dais[i]->component,
-						   RT5682_SCLK_S_MCLK, 0,
+						   RT5682_SCLK_S_PLL1, 0,
 						   (48000 * 512),
 						   SND_SOC_CLOCK_IN);
-		if (ret && ret != -ENOTSUPP)
+		if (ret && ret != -ENOTSUPP) {
 			pr_warn("%s: set codec clk %s fail %d", __func__,
 				codec_dais[i]->name, ret);
+		}
 
 		/*
 	 	 * Headset buttons map to the google Reference headset.
@@ -422,14 +431,6 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 				ret);
 			return ret;
 		}
-
-		/*
-		ret = snd_soc_component_set_sysclk(codec_dais[i]->component,
-					 clk_id, 0, clk, SND_SOC_CLOCK_IN);
-		if (ret && ret != -ENOTSUPP)
-			pr_warn("%s: set codec clk %s fail %d", __func__,
-					 codec_dais[i]->name, ret);
-*/
 	}
 	return 0;
 }
