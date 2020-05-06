@@ -943,6 +943,7 @@ static void aoc_did_become_online(struct work_struct *work)
 {
 	struct aoc_prvdata *prvdata =
 		container_of(work, struct aoc_prvdata, online_work);
+	struct device *dev = prvdata->dev;
 	int i, s;
 
 	s = aoc_num_services();
@@ -952,9 +953,20 @@ static void aoc_did_become_online(struct work_struct *work)
 	pr_notice("firmware version %u did become online with %d services\n",
 		  le32_to_cpu(aoc_control->fw_version), aoc_num_services());
 
+	if (s > AOC_MAX_ENDPOINTS) {
+		dev_err(dev, "Firmware supports too many (%d) services\n", s);
+		return;
+	}
+
 	if (!service_names_are_valid(prvdata)) {
 		pr_err("invalid service names found.  Ignoring\n");
 		return;
+	}
+
+	metadata = kmalloc(s * sizeof(struct aoc_service_metadata), GFP_KERNEL);
+	for (i = 0; i < s; i++) {
+		init_waitqueue_head(&metadata[i].read_queue);
+		init_waitqueue_head(&metadata[i].write_queue);
 	}
 
 	for (i = 0; i < s; i++) {
@@ -1059,7 +1071,7 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	struct aoc_prvdata *prvdata = NULL;
 	struct device_node *aoc_node, *mem_node;
 	struct resource *rsrc;
-	int i, ret;
+	int ret;
 
 	if (aoc_platform_device != NULL) {
 		dev_err(dev,
@@ -1130,14 +1142,6 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	pr_notice("found aoc with interrupt:%d sram:%pR dram:%pR\n", aoc_irq,
 		  aoc_sram_resource, &prvdata->dram_resource);
 	aoc_platform_device = pdev;
-
-	metadata =
-		kmalloc(AOC_MAX_ENDPOINTS * sizeof(struct aoc_service_metadata),
-			GFP_KERNEL);
-	for (i = 0; i < AOC_MAX_ENDPOINTS; i++) {
-		init_waitqueue_head(&metadata[i].read_queue);
-		init_waitqueue_head(&metadata[i].write_queue);
-	}
 
 	aoc_sram_virt_mapping = devm_ioremap_resource(dev, aoc_sram_resource);
 	aoc_dram_virt_mapping =
