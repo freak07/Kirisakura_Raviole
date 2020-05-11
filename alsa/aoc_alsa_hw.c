@@ -87,8 +87,8 @@ static int aoc_service_audio_control(struct aoc_service_dev *dev,
 		pr_debug("%d messages read for previous commands\n", count);
 
 	/* Sending cmd to AoC */
-	if ((aoc_service_write(dev, cmd, cmd_size, BLOCKING)) != cmd_size) {
-		pr_err("failed to source command to audio-control\n");
+	if ((aoc_service_write(dev, cmd, cmd_size, NONBLOCKING)) != cmd_size) {
+		pr_err("failed to send command to audio-control\n");
 		return -EAGAIN;
 	}
 
