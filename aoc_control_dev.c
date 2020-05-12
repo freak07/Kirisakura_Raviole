@@ -246,6 +246,7 @@ DECLARE_STAT("PDM-SW", pdm_16khz);
 DECLARE_STAT("TDM", tdm);
 DECLARE_STAT("MIF_UP", mif_up);
 DECLARE_STAT("SLC_UP", slc_up);
+DECLARE_STAT("SLEEP", sleep);
 DECLARE_STAT("V_NOM", voltage_nominal);
 DECLARE_STAT("V_UD", voltage_underdrive);
 DECLARE_STAT("V_SUD", voltage_super_underdrive);
@@ -281,6 +282,7 @@ static struct attribute *aoc_stats_attrs[] = {
 	&dev_attr_tdm.attr,
 	&dev_attr_mif_up.attr,
 	&dev_attr_slc_up.attr,
+	&dev_attr_sleep.attr,
 	&dev_attr_voltage_nominal.attr,
 	&dev_attr_voltage_underdrive.attr,
 	&dev_attr_voltage_super_underdrive.attr,
