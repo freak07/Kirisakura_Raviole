@@ -75,4 +75,7 @@ void aoc_driver_unregister(struct aoc_driver *driver);
 #define AOC_BINARY_LOAD_ADDRESS 0x98000000
 #define AOC_BINARY_DRAM_OFFSET (AOC_BINARY_LOAD_ADDRESS - AOC_BINARY_DRAM_BASE)
 
+#define module_aoc_driver(__aoc_driver)                                        \
+	module_driver(__aoc_driver, aoc_driver_register, aoc_driver_unregister)
+
 #endif /* __KERNEL__ */

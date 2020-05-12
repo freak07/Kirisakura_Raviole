@@ -397,23 +397,6 @@ static struct aoc_driver aoc_control_driver = {
 	.remove = aoc_control_remove,
 };
 
-static int __init aoc_control_init(void)
-{
-	pr_debug("driver init\n");
-
-	aoc_driver_register(&aoc_control_driver);
-
-	return 0;
-}
-
-static void __exit aoc_control_exit(void)
-{
-	pr_debug("driver exit\n");
-
-	aoc_driver_unregister(&aoc_control_driver);
-}
-
-module_init(aoc_control_init);
-module_exit(aoc_control_exit);
+module_aoc_driver(aoc_control_driver);
 
 MODULE_LICENSE("GPL v2");

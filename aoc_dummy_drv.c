@@ -46,29 +46,6 @@ static int aoc_dummy_remove(struct aoc_service_dev *dev)
 	return 0;
 }
 
-static void cleanup_resources(void)
-{
-}
-
-static int __init aoc_dummy_init(void)
-{
-	pr_notice("driver init\n");
-
-	aoc_driver_register(&aoc_dummy_driver);
-
-	return 0;
-}
-
-static void __exit aoc_dummy_exit(void)
-{
-	pr_notice("driver exit\n");
-
-	aoc_driver_unregister(&aoc_dummy_driver);
-
-	cleanup_resources();
-}
-
-module_init(aoc_dummy_init);
-module_exit(aoc_dummy_exit);
+module_aoc_driver(aoc_dummy_driver);
 
 MODULE_LICENSE("GPL v2");
