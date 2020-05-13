@@ -33,6 +33,7 @@
 #include <linux/timer.h>
 #include <linux/uaccess.h>
 #include <linux/uio.h>
+#include <linux/workqueue.h>
 
 #include "aoc_firmware.h"
 #include "aoc_ipc_core.h"
@@ -62,6 +63,9 @@ struct aoc_prvdata {
 	size_t sram_size;
 	size_t dram_size;
 	size_t aoc_req_size;
+
+	int watchdog_irq;
+	struct work_struct watchdog_work;
 
 	char firmware_name[MAX_FIRMWARE_LENGTH];
 };
@@ -117,6 +121,9 @@ static void aoc_take_offline(void);
 static void signal_aoc(struct mbox_chan *channel);
 
 static void aoc_process_services(struct aoc_prvdata *prvdata);
+
+static irqreturn_t watchdog_int_handler(int irq, void *dev);
+static void aoc_watchdog(struct work_struct *work);
 
 static inline void *aoc_sram_translate(u32 offset)
 {
@@ -1031,6 +1038,25 @@ static irqreturn_t aoc_int_handler(int irq, void *dev)
 
 	return IRQ_HANDLED;
 }
+#else
+static irqreturn_t watchdog_int_handler(int irq, void *dev)
+{
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+
+	/* AP shouldn't access AoC registers to clear the IRQ. */
+	/* Mask the IRQ until the IRQ gets cleared by AoC reset during SSR. */
+	disable_irq_nosync(irq);
+	schedule_work(&prvdata->watchdog_work);
+
+	return IRQ_HANDLED;
+}
+
+static void aoc_watchdog(struct work_struct *work)
+{
+	struct aoc_prvdata *prvdata =
+		container_of(work, struct aoc_prvdata, watchdog_work);
+	dev_err(prvdata->dev, "aoc watchdog triggered\n");
+}
 #endif
 
 static void aoc_cleanup_resources(struct platform_device *pdev)
@@ -1139,6 +1165,22 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to find mailbox interface : %ld\n",
 			PTR_ERR(prvdata->mbox_channel));
 		prvdata->mbox_channel = NULL;
+		return -EIO;
+	}
+
+	INIT_WORK(&prvdata->watchdog_work, aoc_watchdog);
+
+	prvdata->watchdog_irq = platform_get_irq_byname(pdev, "watchdog");
+	if (prvdata->watchdog_irq < 0) {
+		dev_err(dev, "failed to find watchdog irq\n");
+		return -EIO;
+	}
+
+	ret = devm_request_irq(dev, prvdata->watchdog_irq, watchdog_int_handler,
+			       IRQF_TRIGGER_HIGH, dev_name(dev), dev);
+	if (ret != 0) {
+		dev_err(dev, "failed to register watchdog irq handler: %d\n",
+			ret);
 		return -EIO;
 	}
 #endif
