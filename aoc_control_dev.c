@@ -84,11 +84,11 @@ static ssize_t read_core_build_info(int core, struct device *dev, char *buf)
 		return ret;
 
 	if (strnlen(version_get.version, sizeof(version_get.version)) ==
-			sizeof(version_get.version))
+	    sizeof(version_get.version))
 		dev_err(dev, "invalid version string returned\n");
 
 	if (strnlen(version_get.link_time, sizeof(version_get.link_time)) ==
-			sizeof(version_get.link_time))
+	    sizeof(version_get.link_time))
 		dev_err(dev, "invalid link time string returned\n");
 
 	ret = scnprintf(buf, PAGE_SIZE, "Build Hash: %.64s\nLink Time: %.64s\n",
@@ -354,7 +354,7 @@ static void discovery_workitem(struct work_struct *work)
 	device_add_groups(&prvdata->service->dev, aoc_stats_groups);
 
 out:
-	do_exit(0);
+	return;
 }
 
 static int aoc_control_probe(struct aoc_service_dev *sd)

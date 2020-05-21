@@ -369,6 +369,9 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 	if (!dev || !buffer || !count)
 		return -EINVAL;
 
+	if (!aoc_online)
+		return -ENODEV;
+
 	service_number = dev->service_index;
 	service = service_at_index(prvdata, dev->service_index);
 
@@ -384,9 +387,13 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 		set_bit(service_number, &read_blocked_mask);
 		ret = wait_event_interruptible(
 			metadata[service_number].read_queue,
-			aoc_service_can_read_message(service, AOC_UP));
+			aoc_service_can_read_message(service, AOC_UP) ||
+				!aoc_online);
 		clear_bit(service_number, &read_blocked_mask);
 	}
+
+	if (!aoc_online)
+		return -ENODEV;
 
 	/*
 	 * The wait can fail if the AoC goes offline in the middle of a
@@ -421,6 +428,9 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 	if (!dev || !buffer || !count)
 		return -EINVAL;
 
+	if (!aoc_online)
+		return -ENODEV;
+
 	service_number = dev->service_index;
 	service = service_at_index(prvdata, service_number);
 
@@ -439,9 +449,13 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 		set_bit(service_number, &write_blocked_mask);
 		ret = wait_event_interruptible(
 			metadata[service_number].write_queue,
-			aoc_service_can_write_message(service, AOC_DOWN));
+			aoc_service_can_write_message(service, AOC_DOWN) ||
+				!aoc_online);
 		clear_bit(service_number, &write_blocked_mask);
 	}
+
+	if (!aoc_online)
+		return -ENODEV;
 
 	/*
 	 * The wait can fail if the AoC goes offline in the middle of a
@@ -708,6 +722,7 @@ ATTRIBUTE_GROUPS(aoc);
 
 static int aoc_platform_probe(struct platform_device *dev);
 static int aoc_platform_remove(struct platform_device *dev);
+static void aoc_platform_shutdown(struct platform_device *dev);
 
 static const struct of_device_id aoc_match[] = {
 	{
@@ -719,6 +734,7 @@ static const struct of_device_id aoc_match[] = {
 static struct platform_driver aoc_driver = {
 	.probe = aoc_platform_probe,
 	.remove = aoc_platform_remove,
+	.shutdown = aoc_platform_shutdown,
 	.driver = {
 			.name = "aoc",
 			.owner = THIS_MODULE,
@@ -822,7 +838,14 @@ static void aoc_configure_interrupt(void)
 
 static int aoc_remove_device(struct device *dev, void *ctx)
 {
-	pr_debug("%s %s\n", __func__, dev_name(dev));
+	struct aoc_service_dev *the_dev = AOC_DEVICE(dev);
+	int service_number;
+
+	// Allow any pending reads and writes to finish before removing devices
+	service_number = the_dev->service_index;
+	wake_up(&metadata[service_number].read_queue);
+	wake_up(&metadata[service_number].write_queue);
+
 	device_unregister(dev);
 
 	return 0;
@@ -994,12 +1017,12 @@ static void aoc_take_offline(void)
 {
 	pr_notice("taking aoc offline\n");
 
+	aoc_online = false;
+
 	bus_for_each_dev(&aoc_bus_type, NULL, NULL, aoc_remove_device);
 
 	if (aoc_control)
 		aoc_control->magic = 0;
-
-	aoc_online = false;
 }
 
 static void aoc_process_services(struct aoc_prvdata *prvdata)
@@ -1271,6 +1294,11 @@ static int aoc_platform_remove(struct platform_device *pdev)
 	aoc_platform_device = NULL;
 
 	return 0;
+}
+
+static void aoc_platform_shutdown(struct platform_device *pdev)
+{
+	aoc_take_offline();
 }
 
 /* Module methods */
