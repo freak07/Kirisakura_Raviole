@@ -466,7 +466,7 @@ static int snd_aoc_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		pr_debug("aoc_AUDIO_TRIGGER_STOP running=%d draining=%d\n",
 			 alsa_stream->running,
 			 runtime->status->state == SNDRV_PCM_STATE_DRAINING);
-		aoc_timer_stop(alsa_stream);
+
 		if (runtime->status->state == SNDRV_PCM_STATE_DRAINING) {
 			pr_debug("DRAINING\n");
 			alsa_stream->draining = 1;
