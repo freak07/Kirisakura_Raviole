@@ -929,8 +929,8 @@ static void aoc_configure_sysmmu(struct aoc_prvdata *p)
 	iommu_map(domain, 0x9A000000, 0x17600000, SZ_1M,
 		  IOMMU_READ | IOMMU_WRITE);
 
-	/* Map in BLK_ALIVE for MIF status */
-	iommu_map(domain, 0x9A263000, 0x17463000, SZ_4K,
+	/* Map in USB for low power audio */
+	iommu_map(domain, 0x9A200000, 0x11100000, SZ_1M,
 		  IOMMU_READ | IOMMU_WRITE);
 
 	/* Map in GSA mailbox */
