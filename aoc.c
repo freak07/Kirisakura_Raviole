@@ -306,10 +306,48 @@ static void aoc_req_assert(struct aoc_prvdata *p, bool assert)
 	iowrite32(!!assert, p->aoc_req_virt);
 }
 
+struct aoc_fw_data {
+	u32 key;
+	u32 value;
+};
+
+static u32 dt_property(struct device_node *node, const char *key)
+{
+	u32 ret;
+
+	if (of_property_read_u32(node, key, &ret))
+		return 0xffffffff;
+
+	return ret;
+}
+
+static void aoc_pass_fw_information(void *base, const struct aoc_fw_data *fwd,
+				    size_t num)
+{
+	u32 *data = base;
+	int i;
+
+	iowrite32(AOC_PARAMETER_MAGIC, data++);
+	iowrite32(num, data++);
+	iowrite32(12 + (num * (3 * sizeof(u32))), data++);
+
+	for (i = 0; i < num; i++) {
+		iowrite32(fwd[i].key, data++);
+		iowrite32(sizeof(u32), data++);
+		iowrite32(fwd[i].value, data++);
+	}
+}
+
 static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 {
 	struct device *dev = ctx;
 	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+	struct device_node *rootnode = of_root;
+	u32 board_id = dt_property(rootnode, "board_id");
+	u32 board_rev = dt_property(rootnode, "board_rev");
+	struct aoc_fw_data fw_data[] = {
+		{ .key = kAOCBoardID, .value = board_id },
+		{ .key = kAOCBoardRevision, .value = board_rev } };
 	const char *version;
 
 	u32 ipc_offset, bootloader_offset;
@@ -344,6 +382,9 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	aoc_fpga_reset(prvdata);
 
 	_aoc_fw_commit(fw, aoc_dram_virt_mapping + AOC_BINARY_DRAM_OFFSET);
+
+	aoc_pass_fw_information(aoc_dram_translate(prvdata, ipc_offset),
+				fw_data, ARRAY_SIZE(fw_data));
 
 	write_reset_trampoline(AOC_BINARY_LOAD_ADDRESS + bootloader_offset);
 
