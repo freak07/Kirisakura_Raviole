@@ -24,10 +24,7 @@ u32 _aoc_fw_bootloader_offset(const struct firmware *fw);
 
 u32 _aoc_fw_ipc_offset(const struct firmware *fw);
 
-/* Returns firmware version, or 0 on error */
-u32 _aoc_fw_version(const struct firmware *fw);
-
-/* Returns firmware build date, or NULL on error */
-const char *_aoc_fw_builddate(const struct firmware *fw);
+/* Returns firmware version, or NULL on error */
+const char *_aoc_fw_version(const struct firmware *fw);
 
 bool _aoc_fw_commit(const struct firmware *fw, void *dest);

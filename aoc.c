@@ -310,7 +310,7 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 {
 	struct device *dev = ctx;
 	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
-	const char *builddate;
+	const char *version;
 
 	u32 ipc_offset, bootloader_offset;
 
@@ -326,14 +326,13 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		goto free_fw;
 	}
 
-	builddate = _aoc_fw_builddate(fw);
 	ipc_offset = _aoc_fw_ipc_offset(fw);
 	bootloader_offset = _aoc_fw_bootloader_offset(fw);
+	version = _aoc_fw_version(fw);
 
-	pr_notice("successfully loaded firmware version %u type %s buildtime \'%s\'",
-		  _aoc_fw_version(fw),
-		  _aoc_fw_is_release(fw) ? "release" : "development",
-		  builddate ? builddate : "unknown");
+	pr_notice("successfully loaded firmware version %s type %s",
+		  version ? version : "unknown",
+		  _aoc_fw_is_release(fw) ? "release" : "development");
 
 	if (!_aoc_fw_is_compatible(fw)) {
 		dev_err(dev, "firmware and drivers are incompatible\n");

@@ -22,7 +22,7 @@
 struct aoc_superbin_header {
 	u32 magic;
 	u32 release_type;
-	u32 firmware_version;
+	u32 _reserved0;
 	u32 image_size;
 	u32 bootloader_low;
 	u32 bootloader_high;
@@ -30,10 +30,13 @@ struct aoc_superbin_header {
 	u32 bootloader_size;
 	u32 uuid_table_offset;
 	u32 uuid_table_size;
-	u8 date_time[20];
+	u8 version_prefix[8];
+	u8 version_string[64];
 	u32 section_table_offset;
 	u32 section_table_entry_size;
+	u32 section_table_entry_count;
 	u32 sram_offset;
+	u32 repo_info_offset;
 	u32 a32_data_offset;
 	u32 a32_data_size;
 	u32 ff1_data_offset;
@@ -133,25 +136,16 @@ u32 _aoc_fw_ipc_offset(const struct firmware *fw)
 }
 
 /* Returns firmware version, or 0 on error */
-u32 _aoc_fw_version(const struct firmware *fw)
+const char* _aoc_fw_version(const struct firmware *fw)
 {
 	const struct aoc_superbin_header *header =
 		(const struct aoc_superbin_header *)fw->data;
-	return le32_to_cpu(header->firmware_version);
-}
+	size_t maxlen = sizeof(header->version_string);
 
-/* Returns firmware build date, or NULL on error */
-const char *_aoc_fw_builddate(const struct firmware *fw)
-{
-	const struct aoc_superbin_header *header =
-		(const struct aoc_superbin_header *)fw->data;
-	size_t field_size = sizeof(header->date_time);
-	const char *date = &header->date_time[0];
+	if (strnlen(header->version_string, maxlen) == maxlen)
+		return NULL;
 
-	if (strnlen(date, field_size) < field_size)
-		return date;
-
-	return NULL;
+	return (const char *)header->version_string;
 }
 
 bool _aoc_fw_commit(const struct firmware *fw, void *dest)
