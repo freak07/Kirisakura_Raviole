@@ -134,8 +134,8 @@ snd_aoc_buildin_mic_power_ctl_get(struct snd_kcontrol *kcontrol,
 		return -EINTR;
 
 	for (i = 0; i < NUM_OF_BUILTIN_MIC; i++)
-		ucontrol->value.integer.value[i] = 0;
-		//	aoc_get_builtin_mic_power_state(chip, i);
+		ucontrol->value.integer.value[i] =
+			aoc_get_builtin_mic_power_state(chip, i);
 
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
@@ -145,15 +145,14 @@ static int
 snd_aoc_buildin_mic_power_ctl_put(struct snd_kcontrol *kcontrol,
 				  struct snd_ctl_elem_value *ucontrol)
 {
-	//int i;
+	int i;
 	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
 
 	if (mutex_lock_interruptible(&chip->audio_mutex))
 		return -EINTR;
 
-	//for (i = 0; i < NUM_OF_BUILTIN_MIC; i++)
-		//aoc_set_builtin_mic_power_state(
-		//	chip, i, ucontrol->value.integer.value[i]);
+	for (i = 0; i < NUM_OF_BUILTIN_MIC; i++)
+		aoc_set_builtin_mic_power_state(chip, i, ucontrol->value.integer.value[i]);
 
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
@@ -199,16 +198,16 @@ static int mic_power_ctl_get(struct snd_kcontrol *kcontrol,
 			     struct snd_ctl_elem_value *ucontrol)
 {
 	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
-	//struct soc_mixer_control *mc =
-	//	(struct soc_mixer_control *)kcontrol->private_value;
-	//u32 mic_idx = (u32)mc->shift;
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 mic_idx = (u32)mc->shift;
 
 	if (mutex_lock_interruptible(&chip->audio_mutex))
 		return -EINTR;
 
-	ucontrol->value.integer.value[0] = 1;
-	//aoc_get_builtin_mic_power_state(
-	//	chip, mic_idx); // geting power statef from AoC ;
+	/* geting power statef from AoC ; */
+	ucontrol->value.integer.value[0] =
+		aoc_get_builtin_mic_power_state(chip, mic_idx);
 
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
@@ -218,15 +217,15 @@ static int mic_power_ctl_set(struct snd_kcontrol *kcontrol,
 			     struct snd_ctl_elem_value *ucontrol)
 {
 	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
-	//struct soc_mixer_control *mc =
-	//	(struct soc_mixer_control *)kcontrol->private_value;
-	//u32 mic_idx = (u32)mc->shift;
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 mic_idx = (u32)mc->shift;
 
 	if (mutex_lock_interruptible(&chip->audio_mutex))
 		return -EINTR;
 
-	//aoc_set_builtin_mic_power_state(chip, mic_idx,
-	//				ucontrol->value.integer.value[0]);
+	aoc_set_builtin_mic_power_state(chip, mic_idx,
+					ucontrol->value.integer.value[0]);
 
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
