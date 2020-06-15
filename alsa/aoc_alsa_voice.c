@@ -96,6 +96,7 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 	/* Initialise alsa_stream */
 	alsa_stream->chip = chip;
 	alsa_stream->substream = substream;
+	alsa_stream->cstream = NULL;
 	alsa_stream->dev = NULL;
 	alsa_stream->idx = idx;
 
@@ -117,6 +118,7 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 	alsa_stream->open = 1;
 	alsa_stream->draining = 1;
 
+	alsa_stream->timer_interval_ns = PCM_TIMER_INTERVAL_NANOSECS;
 	timer_setup(&(alsa_stream->timer), aoc_pcm_timer_irq_handler, 0);
 	hrtimer_init( &(alsa_stream->hr_timer), CLOCK_MONOTONIC, HRTIMER_MODE_REL );
 	alsa_stream->hr_timer.function = &aoc_pcm_hrtimer_irq_handler;

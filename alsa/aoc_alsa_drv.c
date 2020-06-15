@@ -159,30 +159,37 @@ static int snd_aoc_alsa_probe(void)
 	err = aoc_pcm_init();
 	if (err) {
 		pr_err("ERR:fail to init aoc pcm\n");
-		goto err_free;
+		goto out;
 	}
 
 	err = aoc_voice_init();
 	if (err) {
 		pr_err("ERR: fail to init aoc voice\n");
-		goto err_free;
+		goto out;
+	}
+
+	err = aoc_compr_init();
+	if (err) {
+		pr_err("ERR:%d failed to init aoc compress offload\n", err);
+		goto out;
 	}
 
 	err = aoc_path_init();
 	if (err) {
 		pr_err("ERR: fail to init aoc path\n");
-		goto err_free;
+		goto out;
 	}
 
 	return 0;
 
-err_free:
+out:
 	return err;
 }
 
 static int snd_aoc_alsa_remove(void)
 {
 	aoc_path_exit();
+	aoc_compr_exit();
 	aoc_voice_exit();
 	aoc_pcm_exit();
 

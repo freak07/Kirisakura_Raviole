@@ -16,11 +16,15 @@
 enum { NONBLOCKING = 0, BLOCKING = 1 };
 enum { START, STOP, VOICE_TX_MODE, VOICE_RX_MODE, OFFLOAD_MODE };
 
+#ifndef ALSA_AOC_CMD_LOG_DISABLE
+static int cmd_count;
+#endif
+
 static int aoc_service_audio_control(const char *cmd_channel,
 				     const uint8_t *cmd, size_t cmd_size,
 				     uint8_t *response, struct aoc_chip *chip);
 
-static int aoc_audio_volume_set(struct aoc_chip *chip, uint32_t volume,
+int aoc_audio_volume_set(struct aoc_chip *chip, uint32_t volume,
 			 int src, int dst)
 {
 	int err;
@@ -75,10 +79,12 @@ static int aoc_service_audio_control(const char *cmd_channel,
 		return err;
 	}
 
-
 #ifndef ALSA_AOC_CMD_LOG_DISABLE
-	pr_notice(ALSA_AOC_CMD " cmd [%s] id %#06x, size %zu\n",
-		  CMD_CHANNEL(dev), ((struct CMD_HDR *)cmd)->id, cmd_size);
+	cmd_count++;
+	pr_notice_ratelimited(ALSA_AOC_CMD
+			      " cmd [%s] id %#06x, size %zu, cntr %d\n",
+			      CMD_CHANNEL(dev), ((struct CMD_HDR *)cmd)->id,
+			      cmd_size, cmd_count);
 #endif
 
 	buffer = kmalloc_array(buffer_size, sizeof(*buffer), GFP_KERNEL);
@@ -342,6 +348,7 @@ static int aoc_audio_playback_set_params(struct aoc_alsa_stream *alsa_stream,
 {
 	int err;
 	struct CMD_AUDIO_OUTPUT_EP_SETUP cmd;
+	int source_mode;
 
 	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_EP_SETUP_ID, sizeof(cmd));
 	cmd.d.channel = alsa_stream->entry_point_idx;
@@ -399,7 +406,11 @@ static int aoc_audio_playback_set_params(struct aoc_alsa_stream *alsa_stream,
 		goto exit;
 	}
 
-	err = aoc_audio_playback_trigger_source(alsa_stream, START,
+	if (alsa_stream->cstream)
+		source_mode = OFFLOAD_MODE;
+	else
+		source_mode = START;
+	err = aoc_audio_playback_trigger_source(alsa_stream, source_mode,
 						alsa_stream->entry_point_idx);
 	if (err < 0)
 		pr_err("ERR:%d in source on\n", err);
@@ -550,7 +561,8 @@ int aoc_audio_start(struct aoc_alsa_stream *alsa_stream)
 	src = alsa_stream->entry_point_idx;
 	dst = alsa_stream->chip->default_sink_id;
 
-	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+	if (alsa_stream->cstream ||
+	    (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK)) {
 		for (i = 0; i < MAX_NUM_OF_SINKS_PER_STREAM; i++) {
 			/* TODO  should change to list for each stream */
 			dst = alsa_stream->chip->sink_id_list[i];
@@ -582,7 +594,8 @@ int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream)
 	int src, dst;
 
 	src = alsa_stream->entry_point_idx;
-	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+	if (alsa_stream->cstream ||
+	    (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK)) {
 		/* Unbinding source/sinks */
 		for (i = MAX_NUM_OF_SINKS_PER_STREAM - 1; i >= 0; i--) {
 			dst = alsa_stream->chip->sink_id_list[i];
@@ -664,8 +677,11 @@ int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 		err = -EFAULT;
 		goto out;
 	}
+	if (alsa_stream->substream)
+		tmp = alsa_stream->substream->runtime->dma_area;
+	else
+		tmp = alsa_stream->cstream->runtime->buffer;
 
-	tmp = (void *)(alsa_stream->substream->runtime->dma_area);
 	err = copy_from_user(tmp, src, count);
 	if (err != 0) {
 		pr_err("ERR: %d bytes not read from user space\n",
@@ -748,11 +764,11 @@ int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 {
 	int err = 0;
 
-	pr_debug(
-		"setting ALSA channels(%d), samplerate(%d), bits-per-sample(%d)\n",
+	pr_debug("setting ALSA channels(%d), samplerate(%d), bits-per-sample(%d)\n",
 		channels, samplerate, bps);
 
-	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+	if (alsa_stream->cstream ||
+	    alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		err = aoc_audio_playback_set_params(
 			alsa_stream, channels, samplerate, bps, pcm_float_fmt);
 	} else {
@@ -764,7 +780,8 @@ int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 		goto out;
 
 	/* Resend volume ctls-alsa_stream may not be open when first send */
-	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+	if (alsa_stream->cstream ||
+	    alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		err = aoc_audio_set_ctls_chan(alsa_stream, alsa_stream->chip);
 		if (err != 0) {
 			pr_debug(
@@ -901,6 +918,86 @@ int teardown_phonecall(struct aoc_alsa_stream *alsa_stream)
 
 exit:
 	return err;
+}
+
+int aoc_compr_offload_setup(struct aoc_alsa_stream *alsa_stream, int type)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_DECODE cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_DECODE_ID, sizeof(cmd));
+	cmd.codec = type;
+	cmd.address = 0;
+	cmd.size = 0;
+
+	/* TODO: refactor may be needed for passing codec info from HAL to AoC */
+
+	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+					NULL, alsa_stream->chip);
+	if (err < 0) {
+		pr_err("ERR:%d in set compress offload codec\n", err);
+		goto out;
+	}
+
+	/* TODO: refactor needed */
+	err = aoc_audio_playback_trigger_source(alsa_stream, OFFLOAD_MODE,
+						alsa_stream->entry_point_idx);
+	if (err < 0)
+		pr_err("ERR:%d compress offload source start fail\n", err);
+out:
+	return err;
+}
+
+int aoc_compr_offload_get_io_samples(struct aoc_alsa_stream *alsa_stream)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_GET_EP_SAMPLES cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_EP_CUR_SAMPLES_ID,
+		     sizeof(cmd));
+	cmd.source = alsa_stream->entry_point_idx;
+
+	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+					(uint8_t *)&cmd, alsa_stream->chip);
+	if (err < 0)
+		pr_err("ERR:%d in getting compress offload io-sample number\n", err);
+
+	return err < 0 ? err : cmd.samples;
+}
+
+int aoc_compr_offload_flush_buffer(struct aoc_alsa_stream *alsa_stream)
+{
+	int err;
+	struct CMD_HDR cmd;
+
+	AocCmdHdrSet(&cmd, CMD_AUDIO_OUTPUT_DECODE_FLUSH_RB_ID, sizeof(cmd));
+
+	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+					NULL, alsa_stream->chip);
+	if (err < 0)
+		pr_err("ERR:%d flush compress offload buffer fail!\n", err);
+
+	return err;
+}
+
+int aoc_compr_pause(struct aoc_alsa_stream *alsa_stream)
+{
+	int err;
+
+	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 6,  0);
+	if (err < 0)
+		pr_err("ERR:%d aoc_compr_pause fail\n", err);
+	return 0;
+}
+
+int aoc_compr_resume(struct aoc_alsa_stream *alsa_stream)
+{
+	int err;
+
+	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 6, 0);
+	if (err < 0)
+		pr_err("ERR:%d aoc_compr_resume fail\n", err);
+	return 0;
 }
 
 int aoc_audio_setup(struct aoc_alsa_stream *alsa_stream)

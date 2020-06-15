@@ -4,7 +4,8 @@
 obj-$(CONFIG_AOC_DRIVER) += snd_soc_google_aoc.o
 obj-$(CONFIG_AOC_DRIVER) += snd_soc_google_aoc_util.o
 snd_soc_google_aoc_util-objs := aoc_alsa_path.o aoc_alsa_drv.o \
-                                aoc_alsa_pcm.o aoc_alsa_voice.o aoc_alsa_ctl.o aoc_alsa_hw.o
+                                aoc_alsa_pcm.o aoc_alsa_voice.o \
+                                aoc_alsa_compr.o aoc_alsa_ctl.o aoc_alsa_hw.o
 snd_soc_google_aoc-objs := aoc_alsa_card.o
 
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build

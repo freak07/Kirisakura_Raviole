@@ -35,6 +35,8 @@ static struct be_path_cache port_array[PORT_MAX] = {
 static const struct snd_soc_dai_ops be_dai_ops;
 static struct mutex path_mutex;
 
+static int aoc_compress_new(struct snd_soc_pcm_runtime *rtd, int num);
+
 static struct snd_soc_dai_driver aoc_dai_drv[] = {
 	/* FE dai */
 	{
@@ -145,6 +147,7 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 			.channels_min = 1,
 			.channels_max = 2,
 		},
+		.compress_new = aoc_compress_new,
 		.name = "EP7 PB",
 		.id = IDX_EP7_RX,
 	},
@@ -400,6 +403,12 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 		.id = TDM_1_TX,
 	},
 };
+
+
+static int aoc_compress_new(struct snd_soc_pcm_runtime *rtd, int num)
+{
+	return snd_soc_new_compress(rtd, num);
+}
 
 static int be_startup(struct snd_pcm_substream *stream, struct snd_soc_dai *dai)
 {

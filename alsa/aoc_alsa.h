@@ -23,6 +23,10 @@
 #include <sound/jack.h>
 #include <sound/soc.h>
 
+#include <sound/compress_params.h>
+#include <sound/compress_offload.h>
+#include <sound/compress_driver.h>
+
 #define ALSA_AOC_CMD "alsa-aoc"
 #define CMD_INPUT_CHANNEL "audio_input_control"
 #define CMD_OUTPUT_CHANNEL "audio_output_control"
@@ -31,6 +35,9 @@
 
 #define AOC_CMD_DEBUG_ENABLE
 #define WAITING_TIME_MS 100
+
+#define PCM_TIMER_INTERVAL_NANOSECS 10e6
+#define COMPR_OFFLOAD_TIMER_INTERVAL_NANOSECS 5000e6
 
 /* Default mic and sink for audio capturing/playback */
 #define DEFAULT_MICPHONE_ID 0
@@ -90,8 +97,10 @@ struct aoc_chip {
 struct aoc_alsa_stream {
 	struct aoc_chip *chip;
 	struct snd_pcm_substream *substream;
+	struct snd_compr_stream *cstream; /* compress offload stream */
 	struct timer_list timer; /* For advancing the hw ptr */
 	struct hrtimer hr_timer; /* For advancing the hw ptr */
+	unsigned long timer_interval_ns;
 
 	struct aoc_service_dev *dev;
 	int idx; /* PCM device number */
@@ -140,9 +149,17 @@ int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 		    uint32_t count);
 int aoc_audio_read(struct aoc_alsa_stream *alsa_stream, void *dest,
 		   uint32_t count);
+int aoc_audio_volume_set(struct aoc_chip *chip, uint32_t volume,
+			 int src, int dst);
 
 int prepare_phonecall(struct aoc_alsa_stream *alsa_stream);
 int teardown_phonecall(struct aoc_alsa_stream *alsa_stream);
+
+int aoc_compr_offload_setup(struct aoc_alsa_stream *alsa_stream, int type);
+int aoc_compr_offload_get_io_samples(struct aoc_alsa_stream *alsa_stream);
+int aoc_compr_offload_flush_buffer(struct aoc_alsa_stream *alsa_stream);
+int aoc_compr_pause(struct aoc_alsa_stream *alsa_stream);
+int aoc_compr_resume(struct aoc_alsa_stream *alsa_stream);
 
 int aoc_mic_loopback(struct aoc_chip *chip, int enable);
 
@@ -150,6 +167,8 @@ int aoc_pcm_init(void);
 void aoc_pcm_exit(void);
 int aoc_voice_init(void);
 void aoc_voice_exit(void);
+int aoc_compr_init(void);
+void aoc_compr_exit(void);
 int aoc_path_init(void);
 void aoc_path_exit(void);
 #endif
