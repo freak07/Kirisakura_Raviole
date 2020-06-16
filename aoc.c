@@ -113,11 +113,11 @@ static unsigned long read_blocked_mask;
 static unsigned long write_blocked_mask;
 static struct aoc_service_metadata *metadata;
 
-static bool aoc_fpga_reset(void);
+static bool aoc_fpga_reset(struct aoc_prvdata *prvdata);
 static bool write_reset_trampoline(u32 addr);
 static bool aoc_a32_reset(void);
 
-static void aoc_take_offline(void);
+static void aoc_take_offline(struct aoc_prvdata *prvdata);
 static void signal_aoc(struct mbox_chan *channel);
 
 static void aoc_process_services(struct aoc_prvdata *prvdata);
@@ -341,7 +341,7 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 
 	aoc_control = aoc_dram_translate(prvdata, ipc_offset);
 
-	aoc_fpga_reset();
+	aoc_fpga_reset(prvdata);
 
 	_aoc_fw_commit(fw, aoc_dram_virt_mapping + AOC_BINARY_DRAM_OFFSET);
 
@@ -508,7 +508,7 @@ static bool write_reset_trampoline(u32 addr)
 	return true;
 }
 
-static bool aoc_fpga_reset(void)
+static bool aoc_fpga_reset(struct aoc_prvdata *prvdata)
 {
 #ifdef AOC_JUNO
 	u32 *reset = aoc_sram_translate(0x1000000);
@@ -516,7 +516,7 @@ static bool aoc_fpga_reset(void)
 	if (!reset)
 		return false;
 
-	aoc_take_offline();
+	aoc_take_offline(prvdata);
 
 	/* Assert and deassert reset */
 	iowrite32(0, reset);
@@ -1012,9 +1012,14 @@ static void aoc_did_become_online(struct work_struct *work)
 	}
 }
 
-static void aoc_take_offline(void)
+static void aoc_take_offline(struct aoc_prvdata *prvdata)
 {
 	pr_notice("taking aoc offline\n");
+
+	if (prvdata->mbox_channel) {
+		mbox_free_channel(prvdata->mbox_channel);
+		prvdata->mbox_channel = NULL;
+	}
 
 	aoc_online = false;
 
@@ -1088,17 +1093,12 @@ static void aoc_cleanup_resources(struct platform_device *pdev)
 	pr_notice("cleaning up resources\n");
 
 	if (prvdata) {
+		aoc_take_offline(prvdata);
+
 		if (prvdata->domain) {
 			aoc_clear_sysmmu(prvdata);
 			prvdata->domain = NULL;
 		}
-
-		if (prvdata->mbox_channel) {
-			mbox_free_channel(prvdata->mbox_channel);
-			prvdata->mbox_channel = NULL;
-		}
-
-		aoc_take_offline();
 
 #ifdef AOC_JUNO
 		free_irq(aoc_irq, prvdata->dev);
@@ -1297,7 +1297,9 @@ static int aoc_platform_remove(struct platform_device *pdev)
 
 static void aoc_platform_shutdown(struct platform_device *pdev)
 {
-	aoc_take_offline();
+	struct aoc_prvdata *prvdata = platform_get_drvdata(pdev);
+
+	aoc_take_offline(prvdata);
 }
 
 /* Module methods */
