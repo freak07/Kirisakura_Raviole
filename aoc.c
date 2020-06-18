@@ -1133,6 +1133,8 @@ static void aoc_watchdog(struct work_struct *work)
 	struct aoc_prvdata *prvdata =
 		container_of(work, struct aoc_prvdata, watchdog_work);
 	dev_err(prvdata->dev, "aoc watchdog triggered\n");
+
+	aoc_take_offline(prvdata);
 }
 #endif
 
