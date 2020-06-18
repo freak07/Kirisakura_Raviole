@@ -992,12 +992,16 @@ static void aoc_configure_sysmmu(struct aoc_prvdata *p)
 	iommu_map(domain, 0x9A000000, 0x17600000, SZ_1M,
 		  IOMMU_READ | IOMMU_WRITE);
 
+	/* Map in GSA mailbox */
+	iommu_map(domain, 0x9A100000, 0x17C00000, SZ_1M,
+		  IOMMU_READ | IOMMU_WRITE);
+
 	/* Map in USB for low power audio */
 	iommu_map(domain, 0x9A200000, 0x11100000, SZ_1M,
 		  IOMMU_READ | IOMMU_WRITE);
 
-	/* Map in GSA mailbox */
-	iommu_map(domain, 0x9A100000, 0x17C00000, SZ_1M,
+	/* Map in modem registers */
+	iommu_map(domain, 0x9A300000, 0x40000000, SZ_1M,
 		  IOMMU_READ | IOMMU_WRITE);
 #endif
 }
@@ -1007,9 +1011,14 @@ static void aoc_clear_sysmmu(struct aoc_prvdata *p)
 #ifndef AOC_JUNO
 	struct iommu_domain *domain = p->domain;
 
+	/* Memory carveout */
 	iommu_unmap(domain, 0x98000000, p->dram_size);
 
+	/* Device registers */
 	iommu_unmap(domain, 0x9A000000, SZ_1M);
+	iommu_unmap(domain, 0x9A100000, SZ_1M);
+	iommu_unmap(domain, 0x9A200000, SZ_1M);
+	iommu_unmap(domain, 0x9A300000, SZ_1M);
 #endif
 }
 
