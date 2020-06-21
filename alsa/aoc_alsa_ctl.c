@@ -231,6 +231,61 @@ static int mic_power_ctl_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static const char *dsp_state_texts[] = { "Idle", "Playback", "Telephony" };
+
+static int aoc_dsp_state_ctl_info(struct snd_kcontrol *kcontrol,
+				  struct snd_ctl_elem_info *uinfo)
+{
+	return snd_ctl_enum_info(uinfo, 1, ARRAY_SIZE(dsp_state_texts),
+				 dsp_state_texts);
+}
+
+static int aoc_dsp_state_ctl_get(struct snd_kcontrol *kcontrol,
+				 struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.enumerated.item[0] = aoc_get_dsp_state(chip);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int aoc_sink_state_ctl_get(struct snd_kcontrol *kcontrol,
+				  struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_enum *mc = (struct soc_enum *)kcontrol->private_value;
+	u32 sink_idx = (u32)mc->shift_l;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.enumerated.item[0] = aoc_get_sink_state(chip, sink_idx);
+	pr_debug("sink %d - %d\n", sink_idx,
+		 ucontrol->value.enumerated.item[0]);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+/* TODO: seek better way to create a series of controls  */
+static const char *sink_processing_state_texts[] = { "Idle", "Active",
+						     "Bypass" };
+static SOC_ENUM_SINGLE_DECL(sink_0_state_enum, 1, 0,
+			    sink_processing_state_texts);
+static SOC_ENUM_SINGLE_DECL(sink_1_state_enum, 1, 1,
+			    sink_processing_state_texts);
+static SOC_ENUM_SINGLE_DECL(sink_2_state_enum, 1, 2,
+			    sink_processing_state_texts);
+static SOC_ENUM_SINGLE_DECL(sink_3_state_enum, 1, 3,
+			    sink_processing_state_texts);
+static SOC_ENUM_SINGLE_DECL(sink_4_state_enum, 1, 4,
+			    sink_processing_state_texts);
+
 static struct snd_kcontrol_new snd_aoc_ctl[] = {
 	{
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
@@ -277,6 +332,27 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		.put = snd_aoc_buildin_mic_capture_list_ctl_put,
 		.count = 1,
 	},
+	{
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+		.name = "Audio DSP State",
+		.index = 0,
+		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
+		.info = aoc_dsp_state_ctl_info,
+		.get = aoc_dsp_state_ctl_get,
+		.count = 1,
+	},
+
+	SOC_ENUM_EXT("Audio Sink 0 Processing State", sink_0_state_enum,
+		     aoc_sink_state_ctl_get, aoc_sink_state_ctl_get),
+	SOC_ENUM_EXT("Audio Sink 1 Processing State", sink_1_state_enum,
+		     aoc_sink_state_ctl_get, aoc_sink_state_ctl_get),
+	SOC_ENUM_EXT("Audio Sink 2 Processing State", sink_2_state_enum,
+		     aoc_sink_state_ctl_get, aoc_sink_state_ctl_get),
+	SOC_ENUM_EXT("Audio Sink 3 Processing State", sink_3_state_enum,
+		     aoc_sink_state_ctl_get, aoc_sink_state_ctl_get),
+	SOC_ENUM_EXT("Audio Sink 4 Processing State", sink_4_state_enum,
+		     aoc_sink_state_ctl_get, aoc_sink_state_ctl_get),
+
 	SOC_SINGLE_EXT("MIC0", SND_SOC_NOPM, BUILTIN_MIC0, 1, 0,
 		       mic_power_ctl_get, mic_power_ctl_set),
 	SOC_SINGLE_EXT("MIC1", SND_SOC_NOPM, BUILTIN_MIC1, 1, 0,

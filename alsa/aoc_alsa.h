@@ -123,8 +123,11 @@ int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 int aoc_audio_start(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_set_ctls(struct aoc_chip *chip);
+
 int aoc_set_builtin_mic_power_state(struct aoc_chip *chip, int iMic, int state);
 int aoc_get_builtin_mic_power_state(struct aoc_chip *chip, int iMic);
+int aoc_get_dsp_state(struct aoc_chip *chip);
+int aoc_get_sink_state(struct aoc_chip *chip, int iSink);
 
 int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 		    uint32_t count);

@@ -178,6 +178,45 @@ int aoc_get_builtin_mic_power_state(struct aoc_chip *chip, int iMic)
 	return err < 0 ? err : cmd.power_state;
 }
 
+int aoc_get_dsp_state(struct aoc_chip *chip)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_GET_DSP_STATE cmd;
+	struct aoc_service_dev *dev;
+
+	dev = chip->dev_alsa_output_control;
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_DSP_STATE_ID,
+		     sizeof(cmd));
+
+	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd),
+					(uint8_t *)&cmd);
+	if (err < 0)
+		pr_err("Error in get aoc dsp state !\n");
+
+	return err < 0 ? err : cmd.mode;
+}
+
+int aoc_get_sink_state(struct aoc_chip *chip, int iSink)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_GET_SINK_PROCESSING_STATE cmd;
+	struct aoc_service_dev *dev;
+
+	dev = chip->dev_alsa_output_control;
+	AocCmdHdrSet(&(cmd.parent),
+		     CMD_AUDIO_OUTPUT_GET_SINK_PROCESSING_STATE_ID,
+		     sizeof(cmd));
+
+	cmd.sink = iSink;
+	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd),
+					(uint8_t *)&cmd);
+	if (err < 0)
+		pr_err("Error in get aoc sink processing state !\n");
+
+	pr_info("sink_state:%d - %d\n", iSink, cmd.mode);
+	return err < 0 ? err : cmd.mode;
+}
+
 static int aoc_haptics_set_mode(struct aoc_alsa_stream *alsa_stream, int mode)
 {
 	int err;
