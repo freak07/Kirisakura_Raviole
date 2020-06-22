@@ -14,7 +14,7 @@
 
 #include <asm/cacheflush.h>
 
-#include "ion.h"
+#include "ion_physical_heap.h"
 #include "ion_exynos.h"
 #include "ion_debug.h"
 
@@ -28,9 +28,6 @@ struct ion_physical_heap {
 	size_t size;
 	size_t alloc_align;
 };
-
-struct ion_heap *ion_physical_heap_create(struct ion_platform_heap *heap_data,
-					  struct device *dev);
 
 static int _clear_pages(struct page **pages, int num, pgprot_t pgprot)
 {

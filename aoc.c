@@ -39,6 +39,8 @@
 #include <linux/uio.h>
 #include <linux/workqueue.h>
 
+#include "ion_physical_heap.h"
+
 #include "aoc_firmware.h"
 #include "aoc_ipc_core.h"
 #include "aoc_ramdump_regions.h"
@@ -56,6 +58,8 @@ struct aoc_prvdata {
 	struct mbox_client mbox_client;
 	struct work_struct online_work;
 	struct resource dram_resource;
+	struct ion_platform_heap ion_heap;
+	struct ion_heap *sensor_heap;
 	aoc_map_handler map_handler;
 	void *map_handler_ctx;
 
@@ -1154,6 +1158,40 @@ void aoc_remove_map_handler(struct aoc_service_dev *dev)
 }
 EXPORT_SYMBOL(aoc_remove_map_handler);
 
+static int aoc_dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
+			  enum dma_data_direction dir, unsigned long attrs)
+{
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+	phys_addr_t phys = sg_phys(sg);
+	size_t size = sg->length;
+
+	if (prvdata->map_handler) {
+		prvdata->map_handler(0, phys, size, true,
+				     prvdata->map_handler_ctx);
+	}
+
+	return 1;
+}
+
+static void aoc_dma_unmap_sg(struct device *dev, struct scatterlist *sg,
+			     int nents, enum dma_data_direction dir,
+			     unsigned long attrs)
+{
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+	phys_addr_t phys = sg_phys(sg);
+	size_t size = sg_dma_len(sg);
+
+	if (prvdata->map_handler) {
+		prvdata->map_handler(0, phys, size, false,
+				     prvdata->map_handler_ctx);
+	}
+}
+
+const struct dma_map_ops aoc_dma_map_ops = {
+	.map_sg = aoc_dma_map_sg,
+	.unmap_sg = aoc_dma_unmap_sg,
+};
+
 #ifdef AOC_JUNO
 static irqreturn_t aoc_int_handler(int irq, void *dev)
 {
@@ -1267,6 +1305,24 @@ static void aoc_configure_workarounds(void)
 	val = ioread32(gpio_reg);
 	val &= ~(1 << 5);
 	iowrite32(val, gpio_reg);
+}
+
+static bool aoc_create_ion_heap(struct aoc_prvdata *prvdata)
+{
+	prvdata->ion_heap.type = ION_HEAP_TYPE_CARVEOUT;
+	prvdata->ion_heap.name = "sensor_direct_heap";
+	prvdata->ion_heap.base = prvdata->dram_resource.start + (30 * SZ_1M);
+	prvdata->ion_heap.size = SZ_2M;
+	prvdata->ion_heap.align = SZ_16K;
+
+	prvdata->sensor_heap =
+		ion_physical_heap_create(&prvdata->ion_heap, prvdata->dev);
+	if (IS_ERR(prvdata->sensor_heap))
+		pr_err("ION heap failure: %ld\n", PTR_ERR(prvdata->sensor_heap));
+	else
+		ion_device_add_heap(prvdata->sensor_heap);
+
+	return !IS_ERR(prvdata->sensor_heap);
 }
 
 static void aoc_cleanup_resources(struct platform_device *pdev)
@@ -1394,6 +1450,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		  aoc_sram_resource, &prvdata->dram_resource);
 	aoc_platform_device = pdev;
 
+	dev->dma_ops = &aoc_dma_map_ops;
+
 	aoc_sram_virt_mapping = devm_ioremap_resource(dev, aoc_sram_resource);
 	aoc_dram_virt_mapping =
 		devm_ioremap_resource(dev, &prvdata->dram_resource);
@@ -1433,6 +1491,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	}
 
 	aoc_configure_sysmmu(prvdata);
+
+	aoc_create_ion_heap(prvdata);
 #endif
 
 	/* Default to 6MB if we are not loading the firmware (i.e. trace32) */
