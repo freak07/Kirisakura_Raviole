@@ -1,7 +1,7 @@
 obj-$(CONFIG_WC_MBOX) += mailbox-wc.o
 
 obj-$(CONFIG_AOC_DRIVER)	+= aoc_core.o
-aoc_core-objs := aoc.o ../aoc_ipc/aoc_ipc_core.o aoc_firmware.o
+aoc_core-objs := aoc.o ../aoc_ipc/aoc_ipc_core.o aoc_firmware.o ion_physical_heap.o
 
 obj-$(CONFIG_AOC_CHAR_DRIVER)   += aoc_char_dev.o
 obj-$(CONFIG_AOC_CONTROL_DRIVER)   += aoc_control_dev.o
@@ -14,7 +14,8 @@ KBUILD_OPTIONS += CONFIG_AOC_DRIVER=m CONFIG_WC_MBOX=m \
 		  CONFIG_AOC_CHAR_DRIVER=m CONFIG_AOC_CHAN_DRIVER=m \
 		  CONFIG_AOC_CONTROL_DRIVER=m
 
-EXTRA_CFLAGS=-I$(KERNEL_SRC)/../google-modules/aoc_ipc
+ccflags-y := -I$(KERNEL_SRC)/../google-modules/aoc_ipc \
+	-I$(KERNEL_SRC)/drivers/staging/android/ion
 
 modules modules_install clean:
 	$(MAKE) -C $(KERNEL_SRC) M=$(M) $(KBUILD_OPTIONS) W=1 $(@)

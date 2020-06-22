@@ -56,6 +56,8 @@ struct aoc_prvdata {
 	struct mbox_client mbox_client;
 	struct work_struct online_work;
 	struct resource dram_resource;
+	aoc_map_handler map_handler;
+	void *map_handler_ctx;
 
 	struct mbox_chan *mbox_channel;
 	struct device *dev;
@@ -1130,6 +1132,27 @@ static void aoc_process_services(struct aoc_prvdata *prvdata)
 			wake_up(&metadata[i].write_queue);
 	}
 }
+
+void aoc_set_map_handler(struct aoc_service_dev *dev, aoc_map_handler handler,
+			 void *ctx)
+{
+	struct device *parent = dev->dev.parent;
+	struct aoc_prvdata *prvdata = dev_get_drvdata(parent);
+
+	prvdata->map_handler = handler;
+	prvdata->map_handler_ctx = ctx;
+}
+EXPORT_SYMBOL(aoc_set_map_handler);
+
+void aoc_remove_map_handler(struct aoc_service_dev *dev)
+{
+	struct device *parent = dev->dev.parent;
+	struct aoc_prvdata *prvdata = dev_get_drvdata(parent);
+
+	prvdata->map_handler = NULL;
+	prvdata->map_handler_ctx = NULL;
+}
+EXPORT_SYMBOL(aoc_remove_map_handler);
 
 #ifdef AOC_JUNO
 static irqreturn_t aoc_int_handler(int irq, void *dev)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+/* SPDX-License-Identifier: GPL-2.0 OR Apache-2.0 */
 /*
  * Google Whitechapel AoC Core Driver
  *
@@ -32,13 +32,19 @@ struct aoc_driver {
 
 	/* Array of service names to match against.  Last entry must be NULL */
 	const char * const *service_names;
-	int (*probe)(struct aoc_service_dev *);
-	int (*remove)(struct aoc_service_dev *);
+	int (*probe)(struct aoc_service_dev *dev);
+	int (*remove)(struct aoc_service_dev *dev);
 };
 #define AOC_DRIVER(_d) container_of((_d), struct aoc_driver, drv)
 
 int aoc_driver_register(struct aoc_driver *driver);
 void aoc_driver_unregister(struct aoc_driver *driver);
+
+typedef int (*aoc_map_handler)(u32 handle, phys_addr_t p, size_t size,
+				bool mapped, void *ctx);
+void aoc_set_map_handler(struct aoc_service_dev *dev, aoc_map_handler handler,
+			 void *ctx);
+void aoc_remove_map_handler(struct aoc_service_dev *dev);
 
 #define AOC_IOCTL_MAGIC 0xac
 #define AOC_SERVICE_NAME_LENGTH 32
@@ -55,7 +61,8 @@ void aoc_driver_unregister(struct aoc_driver *driver);
 #ifdef __KERNEL__
 
 /* Rings should have the ring flag set, slots = 1, size = ring size
- * tx/rx stats for rings are measured in bytes, otherwise msg sends */
+ * tx/rx stats for rings are measured in bytes, otherwise msg sends
+ */
 #define AOC_MAX_ENDPOINTS 64
 #define AOC_ENDPOINT_NONE 0xffffffff
 
