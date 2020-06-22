@@ -294,6 +294,31 @@ static struct attribute *aoc_stats_attrs[] = {
 
 ATTRIBUTE_GROUPS(aoc_stats);
 
+static int aoc_control_map_handler(u32 handle, phys_addr_t p, size_t size,
+				    bool mapped, void *ctx)
+{
+	struct device *dev = ctx;
+	struct stats_prvdata *prvdata = dev_get_drvdata(dev);
+	struct CMD_MEM_MAP_REGION mem_map_region = { 0 };
+	int ret;
+
+	AocCmdHdrSet(&mem_map_region.parent.parent, CMD_MEM_MAP_REGION_ID,
+		     sizeof(mem_map_region));
+
+	mem_map_region.handle = handle;
+	mem_map_region.base = (u32)p;
+	mem_map_region.size = size;
+	mem_map_region.mapped = mapped;
+
+	ret = read_attribute(prvdata, &mem_map_region, sizeof(mem_map_region),
+			     &mem_map_region, sizeof(mem_map_region));
+
+	if (ret < 0)
+		pr_notice("CMD_MEM_MAP_REGION_ID returned %d\n", ret);
+
+	return ret;
+}
+
 static void discovery_workitem(struct work_struct *work)
 {
 	struct stats_prvdata *prvdata =
@@ -355,6 +380,7 @@ static void discovery_workitem(struct work_struct *work)
 	prvdata->discovered_stats = stats;
 	ret = device_add_groups(&prvdata->service->dev, aoc_stats_groups);
 
+	aoc_set_map_handler(prvdata->service, aoc_control_map_handler, dev);
 out:
 	return;
 }
@@ -384,6 +410,8 @@ static int aoc_control_remove(struct aoc_service_dev *sd)
 	struct stats_prvdata *prvdata = dev_get_drvdata(dev);
 
 	pr_debug("remove service with name %s\n", dev_name(dev));
+
+	aoc_remove_map_handler(prvdata->service);
 
 	device_remove_groups(dev, aoc_stats_groups);
 
