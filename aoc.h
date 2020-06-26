@@ -65,6 +65,7 @@ void aoc_driver_unregister(struct aoc_driver *driver);
 #define AOC_DOWNCALL_DOORBELL 12
 
 #define AOC_GPIO_BASE 0xB70000
+#define AOC_TOUCH_GPIO_OFFSET 0xB080A0
 
 #define AOC_PCU_BASE 0xB00000
 #define AOC_PCU_DB_SET_OFFSET 0xD004
