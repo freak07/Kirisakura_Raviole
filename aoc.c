@@ -15,6 +15,7 @@
 
 #include <linux/atomic.h>
 #include <linux/cdev.h>
+#include <linux/delay.h>
 #include <linux/firmware.h>
 #include <linux/fs.h>
 #include <linux/glob.h>
@@ -22,12 +23,14 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/iommu.h>
+#include <linux/jiffies.h>
 #include <linux/list.h>
 #include <linux/mailbox_client.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/platform_data/sscoredump.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/timer.h>
@@ -37,6 +40,7 @@
 
 #include "aoc_firmware.h"
 #include "aoc_ipc_core.h"
+#include "aoc_ramdump_regions.h"
 
 /* TODO: Remove internal calls, or promote to "public" */
 #include "aoc_ipc_core_internal.h"
@@ -73,6 +77,26 @@ struct aoc_prvdata {
 /* TODO: Reduce the global variables (move into a driver structure) */
 /* Resources found from the device tree */
 static struct resource *aoc_sram_resource;
+
+struct sscd_info {
+	char *name;
+	struct sscd_segment segs[256];
+	u16 seg_count;
+};
+
+static void sscd_release(struct device *dev);
+
+static struct sscd_info sscd_info;
+static struct sscd_platform_data sscd_pdata;
+static struct platform_device sscd_dev = {
+	.name = "aoc",
+	.driver_override = SSCD_NAME,
+	.id = -1,
+	.dev = {
+		.platform_data = &sscd_pdata,
+		.release = sscd_release,
+	}
+};
 
 static void *aoc_sram_virt_mapping;
 static void *aoc_dram_virt_mapping;
@@ -1132,7 +1156,50 @@ static void aoc_watchdog(struct work_struct *work)
 {
 	struct aoc_prvdata *prvdata =
 		container_of(work, struct aoc_prvdata, watchdog_work);
-	dev_err(prvdata->dev, "aoc watchdog triggered\n");
+
+	struct aoc_ramdump_header *ramdump_header = (struct aoc_ramdump_header *)
+		((unsigned long)prvdata->dram_virt + RAMDUMP_HEADER_OFFSET);
+	unsigned long ramdump_timeout;
+	unsigned long carveout_paddr_from_aoc;
+	unsigned long carveout_vaddr_from_aoc;
+
+	dev_err(prvdata->dev, "aoc watchdog triggered, generating coredump\n");
+	if (!sscd_pdata.sscd_report) {
+		dev_err(prvdata->dev, "aoc coredump failed: no sscd driver\n");
+		return;
+	}
+
+	ramdump_timeout = jiffies + (5 * HZ);
+	while (time_before(jiffies, ramdump_timeout)) {
+		if (ramdump_header->valid)
+			break;
+		msleep(100);
+	}
+
+	if (!ramdump_header->valid) {
+		dev_err(prvdata->dev, "aoc coredump failed: timed out\n");
+		return;
+	}
+
+	if (memcmp(ramdump_header, RAMDUMP_MAGIC, sizeof(RAMDUMP_MAGIC))) {
+		dev_err(prvdata->dev, "aoc coredump failed: invalid magic (corruption or incompatible firmware?)\n");
+		return;
+	}
+
+	sscd_info.name = "aoc";
+
+	/* TODO(siqilin): Get paddr and vaddr base from firmware instead */
+	carveout_paddr_from_aoc = 0x98000000;
+	carveout_vaddr_from_aoc = 0x78000000;
+	/* Entire AoC DRAM carveout, coredump is stored within the carveout */
+	sscd_info.segs[0].addr = prvdata->dram_virt;
+	sscd_info.segs[0].size = prvdata->dram_size;
+	sscd_info.segs[0].paddr = (void *)carveout_paddr_from_aoc;
+	sscd_info.segs[0].vaddr = (void *)carveout_vaddr_from_aoc;
+	sscd_info.seg_count = 1;
+	sscd_pdata.sscd_report(&sscd_dev, sscd_info.segs, sscd_info.seg_count,
+		SSCD_FLAGS_ELFARM64HDR, "aoc_coredump");
+	dev_info(prvdata->dev, "aoc coredump done\n");
 
 	aoc_take_offline(prvdata);
 }
@@ -1360,6 +1427,10 @@ static int aoc_platform_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void sscd_release(struct device *dev)
+{
+}
+
 static void aoc_platform_shutdown(struct platform_device *pdev)
 {
 	struct aoc_prvdata *prvdata = platform_get_drvdata(pdev);
@@ -1374,16 +1445,27 @@ static int __init aoc_init(void)
 
 	if (bus_register(&aoc_bus_type) != 0) {
 		pr_err("failed to register AoC bus\n");
-		return -1;
+		goto err_aoc_bus;
 	}
 
 	if (platform_driver_register(&aoc_driver) != 0) {
 		pr_err("failed to register platform driver\n");
-		bus_unregister(&aoc_bus_type);
-		return -1;
+		goto err_aoc_driver;
+	}
+
+	if (platform_device_register(&sscd_dev) != 0) {
+		pr_err("failed to register AoC coredump device\n");
+		goto err_aoc_coredump;
 	}
 
 	return 0;
+
+err_aoc_coredump:
+	platform_driver_unregister(&aoc_driver);
+err_aoc_driver:
+	bus_unregister(&aoc_bus_type);
+err_aoc_bus:
+	return -ENODEV;
 }
 
 static void __exit aoc_exit(void)
