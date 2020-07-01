@@ -1138,7 +1138,8 @@ static void aoc_watchdog(struct work_struct *work)
 }
 #endif
 
-static void aoc_configure_workarounds(void) {
+static void aoc_configure_workarounds(void)
+{
 	/* Configure the Touch GPIO state to prevent interrupt storms */
 	void *gpio_reg = aoc_sram_translate(AOC_TOUCH_GPIO_OFFSET);
 	u32 val;
