@@ -403,7 +403,7 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 
 static int be_startup(struct snd_pcm_substream *stream, struct snd_soc_dai *dai)
 {
-	pr_info("%s: dai %s id 0x%x", __func__, dai->name, dai->id);
+	pr_debug("%s: dai %s id 0x%x", __func__, dai->name, dai->id);
 	return 0;
 }
 
@@ -411,8 +411,8 @@ static int be_hw_params(struct snd_pcm_substream *stream,
 			struct snd_pcm_hw_params *params,
 			struct snd_soc_dai *dai)
 {
-	pr_info("%s: dai %s id 0x%x", __func__, dai->name, dai->id);
-	pr_info("%s: ch %d rate %d bit %d", __func__, params_channels(params),
+	pr_debug("%s: dai %s id 0x%x", __func__, dai->name, dai->id);
+	pr_debug("%s: ch %d rate %d bit %d", __func__, params_channels(params),
 		params_rate(params),
 		snd_pcm_format_width(params_format(params)));
 	return 0;
@@ -420,14 +420,14 @@ static int be_hw_params(struct snd_pcm_substream *stream,
 
 static int be_prepare(struct snd_pcm_substream *stream, struct snd_soc_dai *dai)
 {
-	pr_info("%s: dai %s id 0x%x", __func__, dai->name, dai->id);
+	pr_debug("%s: dai %s id 0x%x", __func__, dai->name, dai->id);
 	return 0;
 }
 
 static void be_shutdown(struct snd_pcm_substream *stream,
 			struct snd_soc_dai *dai)
 {
-	pr_info("%s: dai %s id 0x%x", __func__, dai->name, dai->id);
+	pr_debug("%s: dai %s id 0x%x", __func__, dai->name, dai->id);
 }
 
 static const struct snd_soc_dai_ops be_dai_ops = {
@@ -644,7 +644,7 @@ static int aoc_path_put(uint32_t ep_idx, uint32_t hw_idx,
 		return -EINVAL;
 	}
 
-	pr_info("%s: set ep %u hw_id 0x%x enable %d chip %p", __func__, ep_idx,
+	pr_debug("%s: set ep %u hw_id 0x%x enable %d chip %p", __func__, ep_idx,
 		hw_idx, enable, chip);
 
 	mutex_lock(&path_mutex);

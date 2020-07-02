@@ -268,7 +268,7 @@ static int hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	fmt = be_params[id].format;
 	mutex_unlock(&card_mutex);
 
-	pr_info("%s: fixup ch %u rate %u fmt %u for %s", __func__, ch, sr, fmt,
+	pr_debug("%s: fixup ch %u rate %u fmt %u for %s", __func__, ch, sr, fmt,
 		rtd->dai_link->name);
 
 	rate->min = rate->max = sr;
@@ -289,8 +289,7 @@ static int i2s_startup(struct snd_pcm_substream *substream)
 	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 	int i, ret;
 
-	pr_notice("%s: startup\n", __func__);
-	printk("i2s startup\n");
+	pr_debug("i2s startup\n");
 
 	ret = snd_soc_dai_set_fmt(cpu_dai, dai_link->dai_fmt);
 	if (ret && ret != -ENOTSUPP) {
@@ -301,7 +300,7 @@ static int i2s_startup(struct snd_pcm_substream *substream)
 	for (i = 0; i < rtd->num_codecs; i++) {
 		ret = snd_soc_dai_set_fmt(codec_dais[i], dai_link->dai_fmt);
 
-		pr_notice("dai_link->dai_fmt = %d\n", dai_link->dai_fmt);
+		pr_debug("dai_link->dai_fmt = %u\n", dai_link->dai_fmt);
 
 		if (ret && ret != -ENOTSUPP) {
 			pr_warn("%s: set fmt 0x%x for %s fail %d", __func__,
@@ -330,8 +329,8 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 	struct aoc_chip *chip =
 		(struct aoc_chip *)snd_soc_card_get_drvdata(rtd->card); //XH
 
-	printk("rt5682 start\n");
-	printk("i2s hw_params\n");
+	pr_debug("rt5682 start\n");
+	pr_debug("i2s hw_params\n");
 	if (id >= ARRAY_SIZE(be_params)) {
 		pr_err("%s: invalid id %u found for %s", __func__, id,
 		       rtd->dai_link->name);
@@ -406,7 +405,7 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 	 	 * Headset buttons map to the google Reference headset.
 	 	 * These can be configured by userspace.
 	 	 */
-		printk("rt5682 set jack start\n");
+		pr_debug("rt5682 set jack start\n");
 		ret = snd_soc_card_jack_new(
 			rtd->card, "Headset Jack",
 			SND_JACK_HEADSET | SND_JACK_BTN_0 | SND_JACK_BTN_1 |
@@ -445,10 +444,8 @@ static int tdm_hw_params(struct snd_pcm_substream *substream,
 	int i, bit_width, ret, slot_width, clk_id;
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id);
 
-	pr_notice("%s: startup\n", __func__);
-	printk("tdm hw_params\n");
+	pr_debug("%s: startup\n", __func__);
 
-	printk("tdm start\n");
 	if (id >= ARRAY_SIZE(be_params)) {
 		pr_err("%s: invalid id %u found for %s", __func__, id,
 		       rtd->dai_link->name);
@@ -878,7 +875,7 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 	if (ret) {
 		ret = snd_soc_of_get_dai_link_codecs(dev, np_codec, dai);
 
-		printk("dai->num_codecs = %d\n", dai->num_codecs);
+		pr_debug("dai->num_codecs = %d\n", dai->num_codecs);
 
 		if (ret) {
 			if (ret == -EPROBE_DEFER)
