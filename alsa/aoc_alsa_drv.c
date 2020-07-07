@@ -50,6 +50,7 @@ static struct aoc_service_resource
 
 static struct mutex service_mutex;
 static int8_t n_services;
+static bool drv_registered;
 
 void print_aoc_dev_info(struct aoc_service_dev *dev)
 {
@@ -193,8 +194,10 @@ static int aoc_alsa_probe(struct aoc_service_dev *dev)
 	nservices = n_services;
 	mutex_unlock(&service_mutex);
 
-	if (nservices == ARRAY_SIZE(service_lists))
+	if (nservices == ARRAY_SIZE(service_lists) && !drv_registered) {
 		snd_aoc_alsa_probe();
+		drv_registered = true;
+	}
 
 	return 0;
 }
@@ -217,8 +220,6 @@ static int aoc_alsa_remove(struct aoc_service_dev *dev)
 	mutex_unlock(&service_mutex);
 
 	pr_notice("remove service with name %s\n", dev_name(&dev->dev));
-	if (nservices == ARRAY_SIZE(service_lists))
-		snd_aoc_alsa_remove();
 
 	return 0;
 }
@@ -243,6 +244,7 @@ static int __init aoc_alsa_init(void)
 
 	pr_debug("aoc alsa driver init\n");
 	mutex_init(&service_mutex);
+	drv_registered = false;
 
 	for (i = 0; i < ARRAY_SIZE(service_lists); i++)
 		service_lists[i].name = audio_service_names[i];
@@ -255,6 +257,10 @@ static void __exit aoc_alsa_exit(void)
 {
 	pr_debug("aoc driver exit\n");
 
+	if (drv_registered) {
+		snd_aoc_alsa_remove();
+		drv_registered = false;
+	}
 	aoc_driver_unregister(&aoc_alsa_driver);
 	cleanup_resources();
 	mutex_destroy(&service_mutex);
