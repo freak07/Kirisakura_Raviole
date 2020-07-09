@@ -178,8 +178,8 @@ static int aocc_demux_kthread(void *data)
 		read_unlock(&s_open_files_lock);
 
 		if (!handler_found) {
-			pr_warn("Could not find handler for channel %d",
-				channel);
+			pr_warn_ratelimited("Could not find handler for channel %d",
+				            channel);
 			kfree(node);
 			continue;
 		}
