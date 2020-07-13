@@ -24,6 +24,7 @@
 #include <linux/io.h>
 #include <linux/iommu.h>
 #include <linux/jiffies.h>
+#include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/mailbox_client.h>
 #include <linux/module.h>
@@ -1162,11 +1163,15 @@ static void aoc_watchdog(struct work_struct *work)
 	unsigned long ramdump_timeout;
 	unsigned long carveout_paddr_from_aoc;
 	unsigned long carveout_vaddr_from_aoc;
+	size_t i;
+	size_t num_pages;
+	struct page **dram_pages;
+	void *dram_cached;
 
 	dev_err(prvdata->dev, "aoc watchdog triggered, generating coredump\n");
 	if (!sscd_pdata.sscd_report) {
 		dev_err(prvdata->dev, "aoc coredump failed: no sscd driver\n");
-		return;
+		goto err_coredump;
 	}
 
 	ramdump_timeout = jiffies + (5 * HZ);
@@ -1178,12 +1183,26 @@ static void aoc_watchdog(struct work_struct *work)
 
 	if (!ramdump_header->valid) {
 		dev_err(prvdata->dev, "aoc coredump failed: timed out\n");
-		return;
+		goto err_coredump;
 	}
 
 	if (memcmp(ramdump_header, RAMDUMP_MAGIC, sizeof(RAMDUMP_MAGIC))) {
 		dev_err(prvdata->dev, "aoc coredump failed: invalid magic (corruption or incompatible firmware?)\n");
-		return;
+		goto err_coredump;
+	}
+
+	num_pages = DIV_ROUND_UP(prvdata->dram_size, PAGE_SIZE);
+	dram_pages = kmalloc_array(num_pages, sizeof(*dram_pages), GFP_KERNEL);
+	if (!dram_pages) {
+		dev_err(prvdata->dev, "aoc coredump failed: alloc dram_pages failed\n");
+		goto err_kmalloc;
+	}
+	for (i = 0; i < num_pages; i++)
+		dram_pages[i] = phys_to_page(prvdata->dram_resource.start + (i * PAGE_SIZE));
+	dram_cached = vmap(dram_pages, num_pages, VM_MAP, PAGE_KERNEL_RO);
+	if (!dram_cached) {
+		dev_err(prvdata->dev, "aoc coredump failed: vmap dram_pages failed\n");
+		goto err_vmap;
 	}
 
 	sscd_info.name = "aoc";
@@ -1192,7 +1211,7 @@ static void aoc_watchdog(struct work_struct *work)
 	carveout_paddr_from_aoc = 0x98000000;
 	carveout_vaddr_from_aoc = 0x78000000;
 	/* Entire AoC DRAM carveout, coredump is stored within the carveout */
-	sscd_info.segs[0].addr = prvdata->dram_virt;
+	sscd_info.segs[0].addr = dram_cached;
 	sscd_info.segs[0].size = prvdata->dram_size;
 	sscd_info.segs[0].paddr = (void *)carveout_paddr_from_aoc;
 	sscd_info.segs[0].vaddr = (void *)carveout_vaddr_from_aoc;
@@ -1201,6 +1220,11 @@ static void aoc_watchdog(struct work_struct *work)
 		SSCD_FLAGS_ELFARM64HDR, "aoc_coredump");
 	dev_info(prvdata->dev, "aoc coredump done\n");
 
+	vunmap(dram_cached);
+err_vmap:
+	kfree(dram_pages);
+err_kmalloc:
+err_coredump:
 	aoc_take_offline(prvdata);
 }
 #endif
