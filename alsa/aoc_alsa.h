@@ -30,7 +30,7 @@
 	(strcmp(dev_name(&(_dev)->dev), CMD_INPUT_CHANNEL)) ? "output" : "input"
 
 #define AOC_CMD_DEBUG_ENABLE
-#define MAX_NUM_TRIALS_TO_GET_RESPONSE_FROM_AOC 1000000
+#define WAITING_TIME_MS 100
 
 /* Default mic and sink for audio capturing/playback */
 #define DEFAULT_MICPHONE_ID 0
@@ -68,8 +68,6 @@ struct aoc_chip {
 	uint32_t avail_substreams;
 	struct aoc_alsa_stream *alsa_stream[MAX_NUM_OF_SUBSTREAMS];
 
-	struct aoc_service_dev *dev_alsa_output_control;
-	struct aoc_service_dev *dev_alsa_input_control;
 	struct aoc_service_dev *dev_alsa_stream[MAX_NUM_OF_SUBSTREAMS];
 
 	int default_mic_id;
@@ -86,6 +84,7 @@ struct aoc_chip {
 	int mic_loopback_enabled;
 	unsigned int opened;
 	struct mutex audio_mutex;
+	spinlock_t audio_lock;
 };
 
 struct aoc_alsa_stream {

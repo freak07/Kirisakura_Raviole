@@ -1250,7 +1250,7 @@ static int snd_aoc_create(struct aoc_chip **rchip)
 	chip->voice_call_mic_mute = 0;
 
 	mutex_init(&chip->audio_mutex);
-
+	spin_lock_init(&chip->audio_lock);
 	*rchip = chip;
 	return 0;
 }
@@ -1261,12 +1261,14 @@ static int aoc_snd_card_probe(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	struct snd_soc_card *card;
 	int ret;
+	struct aoc_service_dev *aoc_dev;
+
 	pr_info("%s", __func__);
 	if (!np)
 		return -ENOSYS;
 
-	ret = alloc_aoc_audio_service("audio_output_control",
-				      &g_chip->dev_alsa_output_control);
+	/* Check if the AoC service is up */
+	ret = alloc_aoc_audio_service(CMD_OUTPUT_CHANNEL, &aoc_dev);
 	if (ret < 0) {
 		if (ret == -EPROBE_DEFER)
 			pr_info("%s: wait for aoc output ctrl\n", __func__);
@@ -1274,17 +1276,8 @@ static int aoc_snd_card_probe(struct platform_device *pdev)
 			pr_err("%s: Failed to get aoc output ctrl %d\n",
 			       __func__, ret);
 		goto err;
-	}
-
-	ret = alloc_aoc_audio_service("audio_input_control",
-				      &g_chip->dev_alsa_input_control);
-	if (ret < 0) {
-		if (ret == -EPROBE_DEFER)
-			pr_info("%s: wait for aoc input ctrl\n", __func__);
-		else
-			pr_err("%s: Failed to get aoc input ctrl %d\n",
-			       __func__, ret);
-		goto err;
+	} else {
+		free_aoc_audio_service(CMD_OUTPUT_CHANNEL, aoc_dev);
 	}
 
 	/* Allocate the private data and the DAI link array */
@@ -1316,17 +1309,6 @@ static int aoc_snd_card_probe(struct platform_device *pdev)
 	return 0;
 
 err:
-	if (g_chip->dev_alsa_output_control) {
-		free_aoc_audio_service("audio_output_control",
-				       g_chip->dev_alsa_output_control);
-		g_chip->dev_alsa_output_control = NULL;
-	}
-
-	if (g_chip->dev_alsa_input_control) {
-		free_aoc_audio_service("audio_input_control",
-				       g_chip->dev_alsa_input_control);
-		g_chip->dev_alsa_input_control = NULL;
-	}
 	return ret;
 }
 
@@ -1337,18 +1319,6 @@ static int aoc_snd_card_remove(struct platform_device *pdev)
 	if (card) {
 		snd_soc_unregister_card(card);
 		snd_soc_card_set_drvdata(card, NULL);
-	}
-
-	if (g_chip->dev_alsa_output_control) {
-		free_aoc_audio_service("audio_output_control",
-				       g_chip->dev_alsa_output_control);
-		g_chip->dev_alsa_output_control = NULL;
-	}
-
-	if (g_chip->dev_alsa_input_control) {
-		free_aoc_audio_service("audio_input_control",
-				       g_chip->dev_alsa_input_control);
-		g_chip->dev_alsa_input_control = NULL;
 	}
 
 	return 0;

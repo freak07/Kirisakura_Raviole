@@ -24,6 +24,8 @@ struct aoc_service_resource {
 	const char *name;
 	struct aoc_service_dev *dev;
 	int ref;
+	bool waiting;
+	wait_queue_head_t wait_head;
 };
 
 /* TODO: audio_haptics should be added, capture1-3 needs to be determined */
@@ -48,7 +50,7 @@ static const char *const audio_service_names[] = {
 static struct aoc_service_resource
 	service_lists[ARRAY_SIZE(audio_service_names) - 1];
 
-static struct mutex service_mutex;
+static spinlock_t service_lock;
 static int8_t n_services;
 static bool drv_registered;
 
@@ -67,26 +69,34 @@ int alloc_aoc_audio_service(const char *name, struct aoc_service_dev **dev)
 
 	*dev = NULL;
 
-	mutex_lock(&service_mutex);
+	spin_lock(&service_lock);
 	for (i = 0; i < ARRAY_SIZE(service_lists); i++) {
-		if (!strcmp(name, service_lists[i].name)) {
-			/*Only can be allocated by one client?*/
-			if (service_lists[i].dev) {
-				if (service_lists[i].ref != 0) {
-					pr_err("ERR: %s already alloctaed, ref= %d\n",
-					       name, service_lists[i].ref);
-				} else {
-					*dev = service_lists[i].dev;
-					service_lists[i].ref++;
-					err = 0;
-				}
-			} else {
-				err = -EPROBE_DEFER;
-			}
+		if (strcmp(name, service_lists[i].name) == 0)
 			break;
-		}
 	}
-	mutex_unlock(&service_mutex);
+
+	if (i == ARRAY_SIZE(service_lists))
+		goto done;
+
+	/* the AoC is not up yet, retrun -EPROBE_DEFER */
+	if (!service_lists[i].dev) {
+		err = -EPROBE_DEFER;
+		goto done;
+	}
+
+	/* Only can be allocated by one client? */
+	if (service_lists[i].ref != 0) {
+		pr_err("%s has been allocated %d\n", name,
+		       service_lists[i].ref);
+		goto done;
+	}
+
+	*dev = service_lists[i].dev;
+	service_lists[i].ref++;
+	err = 0;
+
+done:
+	spin_unlock(&service_lock);
 
 	return err;
 }
@@ -99,20 +109,41 @@ int free_aoc_audio_service(const char *name, struct aoc_service_dev *dev)
 	if (!name || !dev)
 		return -EINVAL;
 
-	mutex_lock(&service_mutex);
+	spin_lock(&service_lock);
 	for (i = 0; i < ARRAY_SIZE(service_lists); i++) {
-		if (dev == service_lists[i].dev) {
-			if (service_lists[i].ref > 0) {
-				service_lists[i].ref--;
-				err = 0;
-			} else {
-				pr_err("ERR: %s ref = %d abnormal\n", name,
-				       service_lists[i].ref);
-			}
+		/*
+		 * In normal case, we can find the service by testing
+		 * the address of dev, but in AoC crash case, we should
+		 * check the service name as well since the dev might
+		 * have been set to NULL
+		 */
+		if (service_lists[i].dev) {
+			if (dev == service_lists[i].dev)
+				break;
+		} else if (strcmp(name, service_lists[i].name) == 0)
 			break;
-		}
 	}
-	mutex_unlock(&service_mutex);
+
+	if (i == ARRAY_SIZE(service_lists))
+		goto done;
+
+	if (service_lists[i].ref <= 0) {
+		pr_err("ERR: %s ref = %d abnormal\n", name,
+		       service_lists[i].ref);
+		goto done;
+	}
+
+	service_lists[i].ref--;
+
+	/* Wake up the remove thread if necessary */
+	if (service_lists[i].ref == 0 &&
+	    service_lists[i].waiting)
+		wake_up(&service_lists[i].wait_head);
+
+	err = 0;
+
+done:
+	spin_unlock(&service_lock);
 
 	if (err != 0)
 		pr_err("ERR: %s can't free audio service\n", name);
@@ -160,24 +191,34 @@ static int snd_aoc_alsa_remove(void)
 
 static int aoc_alsa_probe(struct aoc_service_dev *dev)
 {
-	int i = 0;
+	int i;
 	int8_t nservices;
 
-	mutex_lock(&service_mutex);
-	/* put the aoc service devices in order */
+	spin_lock(&service_lock);
+
+	/* Put the aoc service devices in order */
 	for (i = 0; i < ARRAY_SIZE(service_lists); i++) {
-		if (!strcmp(service_lists[i].name, dev_name(&dev->dev))) {
-			service_lists[i].dev = dev;
-			service_lists[i].ref = 0;
-			pr_notice("aoc service %d: %s\n", n_services, service_lists[i].name);
+		if (strcmp(service_lists[i].name, dev_name(&dev->dev)) == 0)
 			break;
-		}
 	}
 
-	BUG_ON(i == ARRAY_SIZE(service_lists));
+	if (i == ARRAY_SIZE(service_lists)) {
+		pr_err("%s: invalid dev %s", __func__, dev_name(&dev->dev));
+		spin_unlock(&service_lock);
+		return -EINVAL;
+	}
+
+	service_lists[i].dev = dev;
+	service_lists[i].ref = 0;
+	service_lists[i].waiting = false;
+	pr_notice("services %d: %s vs. %s\n", n_services,
+		  service_lists[i].name, dev_name(&dev->dev));
+
+
 	n_services++;
 	nservices = n_services;
-	mutex_unlock(&service_mutex);
+
+	spin_unlock(&service_lock);
 
 	if (nservices == ARRAY_SIZE(service_lists) && !drv_registered) {
 		snd_aoc_alsa_probe();
@@ -190,21 +231,54 @@ static int aoc_alsa_probe(struct aoc_service_dev *dev)
 
 static int aoc_alsa_remove(struct aoc_service_dev *dev)
 {
-	int8_t nservices;
 	int i = 0;
 
-	mutex_lock(&service_mutex);
-	for (i = 0; i < ARRAY_SIZE(service_lists); i++) {
-		if (!strcmp(service_lists[i].name, dev_name(&dev->dev))) {
-			service_lists[i].dev = NULL;
-			service_lists[i].ref = 0;
-			break;
-		}
-	}
-	nservices = n_services;
-	n_services--;
-	mutex_unlock(&service_mutex);
+	spin_lock(&service_lock);
 
+	for (i = 0; i < ARRAY_SIZE(service_lists); i++) {
+		if (strcmp(service_lists[i].name, dev_name(&dev->dev)) == 0)
+			break;
+	}
+
+	if (i == ARRAY_SIZE(service_lists)) {
+		pr_err("%s: invalid dev %s\n", __func__, dev_name(&dev->dev));
+		spin_unlock(&service_lock);
+		return -EINVAL;
+	}
+
+	service_lists[i].dev = NULL;
+
+	if (service_lists[i].ref < 0) {
+		pr_warn("%s: invalid ref %d for %s\n", __func__,
+			service_lists[i].ref, dev_name(&dev->dev));
+		service_lists[i].ref = 0;
+	}
+
+	/*
+	 * All clients have released the resource
+	 */
+	if (service_lists[i].ref == 0)
+		goto done;
+
+	service_lists[i].waiting = true;
+	spin_unlock(&service_lock);
+	pr_info("alsa wait %s\n", dev_name(&dev->dev));
+
+	/*
+	 * We should block the remove function until the ref
+	 * is 0, otherwise, it might cause "use after free".
+	 */
+	wait_event(service_lists[i].wait_head,
+		   service_lists[i].ref == 0);
+
+	pr_info("alsa wait %s done\n", dev_name(&dev->dev));
+	spin_lock(&service_lock);
+	service_lists[i].waiting = false;
+
+done:
+	n_services--;
+
+	spin_unlock(&service_lock);
 	pr_notice("remove service %s\n", dev_name(&dev->dev));
 
 	return 0;
@@ -229,11 +303,14 @@ static int __init aoc_alsa_init(void)
 	int i;
 
 	pr_debug("aoc alsa driver init\n");
-	mutex_init(&service_mutex);
-	drv_registered = false;
 
-	for (i = 0; i < ARRAY_SIZE(service_lists); i++)
+	drv_registered = false;
+	spin_lock_init(&service_lock);
+
+	for (i = 0; i < ARRAY_SIZE(service_lists); i++) {
 		service_lists[i].name = audio_service_names[i];
+		init_waitqueue_head(&service_lists[i].wait_head);
+	}
 
 	aoc_driver_register(&aoc_alsa_driver);
 	return 0;
@@ -241,15 +318,15 @@ static int __init aoc_alsa_init(void)
 
 static void __exit aoc_alsa_exit(void)
 {
-	pr_debug("aoc driver exit\n");
+	pr_debug("aoc alsa driver exit\n");
 
 	if (drv_registered) {
 		snd_aoc_alsa_remove();
 		drv_registered = false;
 	}
+
 	aoc_driver_unregister(&aoc_alsa_driver);
 	cleanup_resources();
-	mutex_destroy(&service_mutex);
 }
 
 module_init(aoc_alsa_init);

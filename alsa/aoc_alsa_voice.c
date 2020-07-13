@@ -73,7 +73,6 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
 	struct aoc_alsa_stream *alsa_stream = NULL;
-	struct aoc_service_dev *dev = NULL;
 	int idx;
 	int err;
 
@@ -87,13 +86,6 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 	pr_debug("pcm device open (%d)\n", idx);
 	pr_debug("chip open (%d)\n", chip->opened);
 
-	/* Find the corresponding aoc audio service */
-	err = alloc_aoc_audio_service(rtd->dai_link->name, &dev);
-	if (err < 0) {
-		pr_err("ERR: fail to alloc service for %s", rtd->dai_link->name);
-		goto out;
-	}
-
 	alsa_stream = kzalloc(sizeof(struct aoc_alsa_stream), GFP_KERNEL);
 	if (alsa_stream == NULL) {
 		err = -ENOMEM;
@@ -104,14 +96,11 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 	/* Initialise alsa_stream */
 	alsa_stream->chip = chip;
 	alsa_stream->substream = substream;
-	alsa_stream->dev = dev;
+	alsa_stream->dev = NULL;
 	alsa_stream->idx = idx;
 
 	/* Ring buffer will be flushed at prepare() before playback/capture */
-	alsa_stream->hw_ptr_base =
-		(substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ?
-			aoc_ring_bytes_read(dev->service, AOC_DOWN) :
-			aoc_ring_bytes_written(dev->service, AOC_UP);
+	alsa_stream->hw_ptr_base = 0;
 	alsa_stream->prev_consumed = alsa_stream->hw_ptr_base;
 	alsa_stream->n_overflow = 0;
 
@@ -140,10 +129,6 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 	return 0;
 out:
 	kfree(alsa_stream);
-	if (dev) {
-		free_aoc_audio_service(rtd->dai_link->name, dev);
-		dev = NULL;
-	}
 	mutex_unlock(&chip->audio_mutex);
 
 	pr_debug("pcm open err=%d\n", err);
@@ -169,7 +154,7 @@ static int snd_aoc_pcm_close(struct snd_pcm_substream *substream)
 		return -EINTR;
 	}
 
-	/* Stop phone call (Refactor needed)*/
+	/* Stop phone call (Refactor needed) */
 	pr_notice("Stop voice call\n");
 	err = teardown_phonecall(alsa_stream);
 	if (err < 0)
@@ -179,11 +164,10 @@ static int snd_aoc_pcm_close(struct snd_pcm_substream *substream)
 	alsa_stream = runtime->private_data;
 
 	pr_debug("alsa pcm close\n");
-	free_aoc_audio_service(rtd->dai_link->name, alsa_stream->dev);
 	/*
-   * Call stop if it's still running. This happens when app
-   * is force killed and we don't get a stop trigger.
-   */
+	 * Call stop if it's still running. This happens when app
+	 * is force killed and we don't get a stop trigger.
+	 */
 	if (alsa_stream->running) {
 		err = aoc_audio_stop(alsa_stream);
 		alsa_stream->running = 0;
@@ -201,9 +185,9 @@ static int snd_aoc_pcm_close(struct snd_pcm_substream *substream)
 	if (alsa_stream->chip)
 		alsa_stream->chip->alsa_stream[alsa_stream->idx] = NULL;
 	/*
-   * Do not free up alsa_stream here, it will be freed up by
-   * runtime->private_free callback we registered in *_open above
-   */
+	 * Do not free up alsa_stream here, it will be freed up by
+	 * runtime->private_free callback we registered in *_open above
+	 */
 
 	chip->opened &= ~(1 << alsa_stream->idx);
 
@@ -271,12 +255,7 @@ static int snd_aoc_pcm_prepare(struct snd_pcm_substream *substream)
 	alsa_stream->buffer_size = snd_pcm_lib_buffer_bytes(substream);
 	alsa_stream->period_size = snd_pcm_lib_period_bytes(substream);
 	alsa_stream->pos = 0;
-	alsa_stream->hw_ptr_base =
-		(substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ?
-			aoc_ring_bytes_read(alsa_stream->dev->service,
-					    AOC_DOWN) :
-			aoc_ring_bytes_written(alsa_stream->dev->service,
-					       AOC_UP);
+	alsa_stream->hw_ptr_base = 0;
 	alsa_stream->prev_consumed = alsa_stream->hw_ptr_base;
 	alsa_stream->n_overflow = 0;
 
