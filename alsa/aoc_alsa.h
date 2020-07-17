@@ -23,6 +23,12 @@
 #include <sound/jack.h>
 #include <sound/soc.h>
 
+#define ALSA_AOC_CMD "alsa-aoc"
+#define CMD_INPUT_CHANNEL "audio_input_control"
+#define CMD_OUTPUT_CHANNEL "audio_output_control"
+#define CMD_CHANNEL(_dev)                                                      \
+	(strcmp(dev_name(&(_dev)->dev), CMD_INPUT_CHANNEL)) ? "output" : "input"
+
 #define AOC_CMD_DEBUG_ENABLE
 #define MAX_NUM_TRIALS_TO_GET_RESPONSE_FROM_AOC 1000000
 

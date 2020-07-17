@@ -52,17 +52,6 @@ static struct mutex service_mutex;
 static int8_t n_services;
 static bool drv_registered;
 
-void print_aoc_dev_info(struct aoc_service_dev *dev)
-{
-	pr_notice("--------------------------------\n");
-	pr_notice("probe service with name (alsa) %s\n", dev_name(&dev->dev));
-	pr_notice("name:  %s\n", dev_name(&dev->dev));
-	pr_notice("service index:  %d\n", dev->service_index);
-	pr_notice("ipc base:  %p\n", dev->ipc_base);
-	pr_notice("--------------------------------\n");
-}
-EXPORT_SYMBOL(print_aoc_dev_info);
-
 int8_t aoc_audio_service_num(void)
 {
 	return n_services;
@@ -84,7 +73,7 @@ int alloc_aoc_audio_service(const char *name, struct aoc_service_dev **dev)
 			/*Only can be allocated by one client?*/
 			if (service_lists[i].dev) {
 				if (service_lists[i].ref != 0) {
-					pr_err("%s has been alloctaed %d\n",
+					pr_err("ERR: %s already alloctaed, ref= %d\n",
 					       name, service_lists[i].ref);
 				} else {
 					*dev = service_lists[i].dev;
@@ -117,7 +106,7 @@ int free_aoc_audio_service(const char *name, struct aoc_service_dev *dev)
 				service_lists[i].ref--;
 				err = 0;
 			} else {
-				pr_err("%s ref is abnormal %d\n", name,
+				pr_err("ERR: %s ref = %d abnormal\n", name,
 				       service_lists[i].ref);
 			}
 			break;
@@ -126,7 +115,7 @@ int free_aoc_audio_service(const char *name, struct aoc_service_dev *dev)
 	mutex_unlock(&service_mutex);
 
 	if (err != 0)
-		pr_err("%s can't free audio service\n", name);
+		pr_err("ERR: %s can't free audio service\n", name);
 
 	return err;
 }
@@ -138,19 +127,19 @@ static int snd_aoc_alsa_probe(void)
 
 	err = aoc_pcm_init();
 	if (err) {
-		pr_err("%s: failed to init aoc pcm\n", __func__);
+		pr_err("ERR:fail to init aoc pcm\n");
 		goto err_free;
 	}
 
 	err = aoc_voice_init();
 	if (err) {
-		pr_err("%s: failed to init aoc voice\n", __func__);
+		pr_err("ERR: fail to init aoc voice\n");
 		goto err_free;
 	}
 
 	err = aoc_path_init();
 	if (err) {
-		pr_err("%s: failed to init aoc path\n", __func__);
+		pr_err("ERR: fail to init aoc path\n");
 		goto err_free;
 	}
 
@@ -174,17 +163,13 @@ static int aoc_alsa_probe(struct aoc_service_dev *dev)
 	int i = 0;
 	int8_t nservices;
 
-	print_aoc_dev_info(dev);
-	pr_notice("num of aoc services : %ld\n", ARRAY_SIZE(service_lists));
-
 	mutex_lock(&service_mutex);
 	/* put the aoc service devices in order */
 	for (i = 0; i < ARRAY_SIZE(service_lists); i++) {
 		if (!strcmp(service_lists[i].name, dev_name(&dev->dev))) {
 			service_lists[i].dev = dev;
 			service_lists[i].ref = 0;
-			pr_notice("services %d: %s vs. %s\n", n_services,
-				  service_lists[i].name, dev_name(&dev->dev));
+			pr_notice("aoc service %d: %s\n", n_services, service_lists[i].name);
 			break;
 		}
 	}
@@ -197,6 +182,7 @@ static int aoc_alsa_probe(struct aoc_service_dev *dev)
 	if (nservices == ARRAY_SIZE(service_lists) && !drv_registered) {
 		snd_aoc_alsa_probe();
 		drv_registered = true;
+		pr_notice("alsa-aoc communication is ready!\n");
 	}
 
 	return 0;
@@ -219,7 +205,7 @@ static int aoc_alsa_remove(struct aoc_service_dev *dev)
 	n_services--;
 	mutex_unlock(&service_mutex);
 
-	pr_notice("remove service with name %s\n", dev_name(&dev->dev));
+	pr_notice("remove service %s\n", dev_name(&dev->dev));
 
 	return 0;
 }

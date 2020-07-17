@@ -115,7 +115,7 @@ static int snd_aoc_ctl_put(struct snd_kcontrol *kcontrol,
 
 	if (changed) {
 		if (aoc_audio_set_ctls(chip))
-			pr_err("failed to set ALSA controls\n");
+			pr_err("ERR: fail in set ALSA controls\n");
 	}
 
 unlock:
