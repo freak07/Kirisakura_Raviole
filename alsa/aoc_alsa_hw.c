@@ -50,7 +50,7 @@ int aoc_audio_volume_set(struct aoc_alsa_stream *alsa_stream, uint32_t volume,
 	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd),
 					NULL);
 	if (err < 0)
-		pr_err("error in volme set\n");
+		pr_err("ERR:%d in volume set\n", err);
 
 	return err;
 }
@@ -66,20 +66,25 @@ static int aoc_service_audio_control(struct aoc_service_dev *dev,
 	int buffer_size = 1024;
 	struct timeval tv0, tv1;
 
-	if (!dev)
+	if (!dev || !cmd)
 		return -EINVAL;
+
+#ifndef ALSA_AOC_CMD_LOG_DISABLE
+	pr_notice(ALSA_AOC_CMD " cmd [%s] id %#06x, size %zu\n",
+		  CMD_CHANNEL(dev), ((struct CMD_HDR *)cmd)->id, cmd_size);
+#endif
 
 	buffer = kmalloc_array(buffer_size, sizeof(*buffer), GFP_KERNEL);
 	if (!buffer) {
 		err = -ENOMEM;
-		pr_err("memory allocation error!\n");
+		pr_err("ERR: no memory!\n");
 		return err;
 	}
 
 	/*
-   * TODO:   assuming only one user for the audio control channel.
-   * clear all the response messages from previous commands
-   */
+	 * TODO: assuming only one user for the audio control channel.
+	 * clear all the response messages from previous commands
+	 */
 	count = 0;
 	while (((err = aoc_service_read(dev, buffer, buffer_size,
 					NONBLOCKING)) >= 1) &&
@@ -91,7 +96,8 @@ static int aoc_service_audio_control(struct aoc_service_dev *dev,
 
 	/* Sending cmd to AoC */
 	if ((aoc_service_write(dev, cmd, cmd_size, NONBLOCKING)) != cmd_size) {
-		pr_err("failed to send command to audio-control\n");
+		pr_err(ALSA_AOC_CMD " ERR: ring full - cmd id %#06x\n",
+		  ((struct CMD_HDR *)cmd)->id);
 		return -EAGAIN;
 	}
 
@@ -116,11 +122,20 @@ static int aoc_service_audio_control(struct aoc_service_dev *dev,
 #endif /* AOC_CMD_DEBUG_ENABLE */
 
 	if (err < 1) {
-		pr_err("failed to get reply from audio-control: err %d\n", err);
+		pr_err(ALSA_AOC_CMD " ERR:timeout - cmd [%s] id %#06x\n",
+		       CMD_CHANNEL(dev), ((struct CMD_HDR *)cmd)->id);
+		print_hex_dump(KERN_ERR, ALSA_AOC_CMD" :mem ", DUMP_PREFIX_OFFSET, 16,
+			       1, cmd, cmd_size, false);
 	} else if (err == 4) {
-		pr_debug("audio control err code %#x\n", *(uint32_t *)buffer);
+		pr_err(ALSA_AOC_CMD " ERR:%#x - cmd [%s] id %#06x\n",
+		       *(uint32_t *)buffer, CMD_CHANNEL(dev),
+		       ((struct CMD_HDR *)cmd)->id);
+		print_hex_dump(KERN_ERR, ALSA_AOC_CMD" :mem ", DUMP_PREFIX_OFFSET, 16,
+			       1, cmd, cmd_size, false);
 	} else {
-		pr_debug("audio control err struct %d bytes\n", err);
+		pr_debug(ALSA_AOC_CMD
+			 " cmd [%s] id %#06x, reply mesg size %d\n",
+			 ((struct CMD_HDR *)cmd)->id, err);
 	}
 
 	if (response != NULL)
@@ -153,7 +168,7 @@ int aoc_set_builtin_mic_power_state(struct aoc_chip *chip, int iMic, int state)
 	}
 
 	if (err < 0)
-		pr_err("Error in set mic power state !\n");
+		pr_err("ERR:%d in set mic state\n", err);
 
 	return err < 0 ? err : 0;
 }
@@ -173,7 +188,7 @@ int aoc_get_builtin_mic_power_state(struct aoc_chip *chip, int iMic)
 	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd),
 					(uint8_t *)&cmd);
 	if (err < 0)
-		pr_err("Error in get mic power state !\n");
+		pr_err("ERR:%d in get mic state\n", err);
 
 	return err < 0 ? err : cmd.power_state;
 }
@@ -232,7 +247,7 @@ static int aoc_haptics_set_mode(struct aoc_alsa_stream *alsa_stream, int mode)
 	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd),
 					NULL);
 	if (err < 0)
-		pr_err("Error in set haptics mode !\n");
+		pr_err("ERR:%d in set haptics mode\n", err);
 
 	return err < 0 ? err : 0;
 }
@@ -285,7 +300,7 @@ aoc_audio_playback_trigger_source(struct aoc_alsa_stream *alsa_stream, int cmd,
 		//source.mode = ENTRYPOINT_MODE_HAPTICS ;
 		err = aoc_haptics_set_mode(alsa_stream, HAPTICS_MODE_PCM);
 		if (err < 0)
-			pr_err("Error in aoc haptics setup \n");
+			pr_err("ERR:%d in haptics setup\n", err);
 	}
 
 	return err;
@@ -374,12 +389,12 @@ int aoc_audio_playback_set_params(struct aoc_alsa_stream *alsa_stream,
 	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd),
 					NULL);
 	if (err < 0)
-		pr_err("Error in set parameters\n");
+		pr_err("ERR:%d in set parameters\n", err);
 
 	err = aoc_audio_playback_trigger_source(alsa_stream, START,
 						alsa_stream->entry_point_idx);
 	if (err < 0)
-		pr_err("Error in set the source on\n");
+		pr_err("ERR:%d in source on\n", err);
 
 	return err;
 }
@@ -395,7 +410,7 @@ int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 
 	dev = alsa_stream->chip->dev_alsa_input_control;
 	if (!aoc_ring_flush_read_data(alsa_stream->dev->service, AOC_UP, 0)) {
-		pr_err("aoc ring buffer could not be flushed\n");
+		pr_err("ERR: ring buffer flush fail\n");
 		/* TODO differentiate different cases */
 		return -EINVAL;
 	}
@@ -405,7 +420,7 @@ int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 		     sizeof(cmd));
 
 	if (channels < 1 || channels > NUM_OF_BUILTIN_MIC)
-		pr_err("wrong channel number in capture parameter setup\n");
+		pr_err("ERR: wrong channel number %d for capture\n", channels);
 
 	/* TODO: more checks on mic id */
 	cmd.pdm_mask = 0; /* in case it is not initialized as zero */
@@ -414,7 +429,7 @@ int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 		if (iMic != -1) {
 			cmd.pdm_mask = cmd.pdm_mask | (1 << iMic);
 		} else {
-			pr_err("wrong mic id for caputring! mic id = -1\n");
+			pr_err("ERR: wrong mic id -1\n");
 		}
 	}
 
@@ -464,7 +479,7 @@ int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd),
 					NULL);
 	if (err < 0)
-		pr_err("capture parameter setup fail. errcode = %d\n", err);
+		pr_err("ERR:%d in capture parameter setup\n", err);
 
 	return err;
 }
@@ -487,7 +502,7 @@ static int aoc_audio_capture_trigger(struct aoc_alsa_stream *alsa_stream,
 	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd),
 					NULL);
 	if (err < 0)
-		pr_err("capture trigger fail!\n");
+		pr_err("ERR:%d in capture trigger\n", err);
 
 	return err;
 }
@@ -508,7 +523,7 @@ int aoc_mic_loopback(struct aoc_chip *chip, int enable)
 	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd),
 					NULL);
 	if (err < 0)
-		pr_err("loopback fail!\n");
+		pr_err("ERR:%d in mic loopback\n", err);
 
 	return err;
 }
@@ -538,15 +553,13 @@ int aoc_audio_start(struct aoc_alsa_stream *alsa_stream)
 			err = aoc_audio_playback_trigger_bind(alsa_stream,
 							      START, src, dst);
 			if (err < 0)
-				pr_err("audio playback binding start failed. errcode = %d\n",
-				       err);
+				pr_err("ERR:%d in playback bind start\n", err);
 		}
 
 	} else {
 		err = aoc_audio_capture_trigger(alsa_stream, START);
 		if (err < 0)
-			pr_err("audio capture triggering start failed. errcode = %d\n",
-			       err);
+			pr_err("ERR:%d in capture start\n", err);
 	}
 
 	return err;
@@ -571,20 +584,17 @@ int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream)
 			err = aoc_audio_playback_trigger_bind(alsa_stream, STOP,
 							      src, dst);
 			if (err < 0)
-				pr_err("audio playback unbinding failed. errcode = %d\n",
-				       err);
+				pr_err("ERR:%d in playback unbind\n", err);
 		}
 
 		/* Turn off audio source after unbinding source/sinks */
 		err = aoc_audio_playback_trigger_source(alsa_stream, STOP, src);
 		if (err < 0)
-			pr_err("audio playback close source failed. errcode = %d\n",
-			       err);
+			pr_err("ERR:%d in playback source off\n", err);
 	} else {
 		err = aoc_audio_capture_trigger(alsa_stream, STOP);
 		if (err < 0)
-			pr_err("audio capture stop failed. errcode = %d\n",
-			       err);
+			pr_err("ERR:%d in capture stop\n",err);
 	}
 
 	return err;
@@ -604,7 +614,7 @@ int aoc_audio_read(struct aoc_alsa_stream *alsa_stream, void *dest,
 	avail = aoc_ring_bytes_available_to_read(dev->service, AOC_UP);
 
 	if (unlikely(avail < count)) {
-		pr_err("error in read data from ringbuffer. avail = %d, toread = %d\n",
+		pr_err("ERR: overrun in audio capture. avail = %d, toread = %d\n",
 		       avail, count);
 	}
 
@@ -616,14 +626,12 @@ int aoc_audio_read(struct aoc_alsa_stream *alsa_stream, void *dest,
 	tmp = (void *)(alsa_stream->substream->runtime->dma_area);
 	err = aoc_service_read(dev, (void *)tmp, count, NONBLOCKING);
 	if (unlikely(err != count)) {
-		pr_err("error in read from buffer, unread data: %d bytes\n",
-		       count - err);
+		pr_err("ERR: %d bytes not read from ring buffer\n", count - err);
 	}
 
 	err = copy_to_user(dest, tmp, count);
 	if (err != 0) {
-		pr_err("error in copy data to user space. data uncopied = %d\n",
-		       err);
+		pr_err("ERR: %d bytes not copied to user space\n", err);
 		err = -EFAULT;
 	}
 
@@ -640,8 +648,8 @@ int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 
 	avail = aoc_ring_bytes_available_to_write(dev->service, AOC_DOWN);
 	if (unlikely(avail < count)) {
-		pr_err("error in write data to ringbuffer. avail = %d, towrite = %d\n",
-		       avail, count);
+		pr_err("ERR: inconsistent write/read pointers, avail = %d, towrite = %d\n", avail,
+		       count);
 		err = -EFAULT;
 		goto out;
 	}
@@ -649,7 +657,7 @@ int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 	tmp = (void *)(alsa_stream->substream->runtime->dma_area);
 	err = copy_from_user(tmp, src, count);
 	if (err != 0) {
-		pr_err("error in copy data from user space. data unread = %d\n",
+		pr_err("ERR: %d bytes not read from user space\n",
 		       err);
 		err = -EFAULT;
 		goto out;
@@ -657,8 +665,7 @@ int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 
 	err = aoc_service_write(dev, tmp, count, NONBLOCKING);
 	if (err != count) {
-		pr_err("error in write data to buffer, unwritten data: %d bytes\n",
-		       count - err);
+		pr_err("ERR: unwritten data - %d bytes\n", count - err);
 		err = -EFAULT;
 	}
 
@@ -681,8 +688,7 @@ static int aoc_audio_set_ctls_chan(struct aoc_alsa_stream *alsa_stream,
 			err = aoc_audio_volume_set(alsa_stream, chip->volume,
 						   src, dst);
 			if (err < 0) {
-				pr_err("error in volume setting. errcode = %d\n",
-				       err);
+				pr_err("ERR:%d in volume setting\n", err);
 				goto out;
 			}
 		}
@@ -711,7 +717,7 @@ int aoc_audio_set_ctls(struct aoc_chip *chip)
 				err = 0;
 			} else if (aoc_audio_set_ctls_chan(chip->alsa_stream[i],
 							   chip) != 0) {
-				pr_err("couldn't set the controls for stream %d\n",
+				pr_err("ERR: couldn't set controls for stream %d\n",
 				       i);
 				err = -EINVAL;
 			} else
@@ -772,7 +778,7 @@ static int aoc_audio_modem_input(struct aoc_alsa_stream *alsa_stream,
 	err = aoc_service_audio_control(dev, (uint8_t *)&cmd, sizeof(cmd),
 					NULL);
 	if (err < 0)
-		pr_err("aoc modem input setup fail!\n");
+		pr_err("ERR:%d modem input setup fail!\n", err);
 
 	return err;
 }
@@ -783,47 +789,43 @@ int prepare_phonecall(struct aoc_alsa_stream *alsa_stream)
 	int err;
 	int src = alsa_stream->entry_point_idx;
 
-	printk("prepare phone call - dev %d\n", alsa_stream->entry_point_idx);
+	pr_debug("prepare phone call - dev %d\n", alsa_stream->entry_point_idx);
 	if (src != 4)
 		return 0;
 
 	err = aoc_audio_modem_input(alsa_stream, START);
 	if (err < 0)
-		pr_err("audio modem input start failed. errcode = %d\n", err);
-	pr_notice("audio modem input STARTED\n");
+		pr_err("ERR:%d modem input start fail\n", err);
+	pr_notice("modem input STARTED\n");
 
 	/* Tx */
 	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 3, 3);
 	if (err < 0)
-		pr_err("audio playback binding start failed. errcode = %d\n",
-		       err);
+		pr_err("ERR:%d playback bind start fail\n", err);
 
 	/* refactor needed */
 	alsa_stream->entry_point_idx = 3;
 	err = aoc_audio_playback_set_params(alsa_stream, 2, 48000, 32, false);
 	alsa_stream->entry_point_idx = 4;
 	if (err < 0)
-		pr_err("audio playback set params failed. errcode = %d\n", err);
+		pr_err("ERR:%d playback set params fail\n", err);
 
 	err = aoc_audio_playback_trigger_source(alsa_stream, VOICE_TX_MODE, 3);
 	if (err < 0)
-		pr_err("audio playback source start failed. errcode = %d\n",
-		       err);
+		pr_err("ERR:%d playback source start fail\n", err);
 
 	/* Rx */
 	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 4, 0);
 	if (err < 0)
-		pr_err("audio playback binding start failed. errcode = %d\n",
-		       err);
+		pr_err("ERR:%d playback bind start fail\n", err);
 
 	err = aoc_audio_playback_set_params(alsa_stream, 2, 48000, 32, false);
 	if (err < 0)
-		pr_err("audio playback set params failed. errcode = %d\n", err);
+		pr_err("ERR:%d playback set params fail\n", err);
 
 	err = aoc_audio_playback_trigger_source(alsa_stream, VOICE_RX_MODE, 4);
 	if (err < 0)
-		pr_err("audio playback source  voice RX mode setup failed. errcode = %d\n",
-		       err);
+		pr_err("ERR:%d playback source voice RX mode setup fail\n", err);
 
 	return 0;
 }
@@ -833,37 +835,33 @@ int teardown_phonecall(struct aoc_alsa_stream *alsa_stream)
 	int err = 0;
 	int src = alsa_stream->entry_point_idx;
 
-	printk("stop phone call - dev %d\n", alsa_stream->entry_point_idx);
+	pr_debug("stop phone call - dev %d\n", alsa_stream->entry_point_idx);
 	if (src != 4)
 		return 0;
 
 	/* unbind */
 	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 4, 0);
 	if (err < 0)
-		pr_err("audio playback binding stop failed. errcode = %d\n",
-		       err);
+		pr_err("ERR:%d playback bind stop fail\n", err);
 
 	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 3, 3);
 	if (err < 0)
-		pr_err("audio playback binding stop failed. errcode = %d\n",
-		       err);
+		pr_err("ERR:%d playback bind stop fail\n", err);
 
 	/* source off */
 	err = aoc_audio_playback_trigger_source(alsa_stream, STOP, 4);
 	if (err < 0)
-		pr_err("audio playback source stop failed. errcode = %d\n",
-		       err);
+		pr_err("ERR:%d playback source stop fail\n", err);
 
 	err = aoc_audio_playback_trigger_source(alsa_stream, STOP, 3);
 	if (err < 0)
-		pr_err("audio playback source stop failed. errcode = %d\n",
-		       err);
+		pr_err("ERR:%d playback source stop fail\n", err);
 
 	err = aoc_audio_modem_input(alsa_stream, STOP);
 	if (err < 0)
-		pr_err("audio modem input stop failed. errcode = %d\n", err);
+		pr_err("ERR:%d modem input stop fail\n", err);
 
-	pr_notice("audio modem input STOPPED\n");
+	pr_notice("modem input STOPPED\n");
 
 	return 0;
 }

@@ -13,7 +13,7 @@
 #define AOC_ALSA_DRV_H
 
 #undef pr_fmt
-#define pr_fmt(fmt) "aoc_alsa: " fmt
+#define pr_fmt(fmt) "alsa: " fmt
 
 #include "aoc.h"
 
@@ -23,5 +23,4 @@
 int alloc_aoc_audio_service(const char *name, struct aoc_service_dev **dev);
 int free_aoc_audio_service(const char *name, struct aoc_service_dev *dev);
 int8_t aoc_audio_service_num(void);
-void print_aoc_dev_info(struct aoc_service_dev *dev);
 #endif

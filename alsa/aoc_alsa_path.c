@@ -616,7 +616,7 @@ static int aoc_path_get(uint32_t ep_idx, uint32_t hw_idx,
 
 	ucontrol->value.integer.value[0] = enable;
 
-	pr_info("%s: get ep %u hw_id 0x%x enable %d", __func__, ep_idx, hw_idx,
+	pr_debug("%s: get ep %u hw_id 0x%x enable %d", __func__, ep_idx, hw_idx,
 		enable);
 	return 0;
 }

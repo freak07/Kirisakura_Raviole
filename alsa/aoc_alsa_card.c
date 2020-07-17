@@ -471,7 +471,7 @@ static int tdm_hw_params(struct snd_pcm_substream *substream,
 	clk_id = (int)be_params[id].clk_id;
 	rate = params_rate(param);
 	clk = rate * ((u32)slot_width) * tdmslot;
-	pr_info("ch %u tdm slot %u bit %d, slot_bit %d", channel, tdmslot,
+	pr_debug("ch %u tdm slot %u bit %d, slot_bit %d", channel, tdmslot,
 		bit_width, slot_width);
 
 	ret = snd_soc_dai_set_sysclk(cpu_dai, 0, clk, SND_SOC_CLOCK_OUT);
@@ -948,7 +948,7 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 		dai->dai_fmt =
 			snd_soc_of_parse_daifmt(daifmt, NULL, NULL, NULL);
 		of_node_put(daifmt);
-		pr_info("%s: daifmt 0x%x for %s", __func__, dai->dai_fmt,
+		pr_debug("%s: daifmt 0x%x for %s", __func__, dai->dai_fmt,
 			dai->name);
 	}
 
