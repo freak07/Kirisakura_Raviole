@@ -152,7 +152,8 @@ snd_aoc_buildin_mic_power_ctl_put(struct snd_kcontrol *kcontrol,
 		return -EINTR;
 
 	for (i = 0; i < NUM_OF_BUILTIN_MIC; i++)
-		aoc_set_builtin_mic_power_state(chip, i, ucontrol->value.integer.value[i]);
+		aoc_set_builtin_mic_power_state(
+			chip, i, ucontrol->value.integer.value[i]);
 
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
@@ -226,6 +227,37 @@ static int mic_power_ctl_set(struct snd_kcontrol *kcontrol,
 
 	aoc_set_builtin_mic_power_state(chip, mic_idx,
 					ucontrol->value.integer.value[0]);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int voice_call_mic_mute_get(struct snd_kcontrol *kcontrol,
+				   struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = chip->voice_call_mic_mute;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int voice_call_mic_mute_set(struct snd_kcontrol *kcontrol,
+				   struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	if (chip->voice_call_mic_mute != ucontrol->value.integer.value[0]) {
+		chip->voice_call_mic_mute = ucontrol->value.integer.value[0];
+		aoc_voice_call_mic_mute(chip, ucontrol->value.integer.value[0]);
+	}
 
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
@@ -352,6 +384,9 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		     aoc_sink_state_ctl_get, aoc_sink_state_ctl_get),
 	SOC_ENUM_EXT("Audio Sink 4 Processing State", sink_4_state_enum,
 		     aoc_sink_state_ctl_get, aoc_sink_state_ctl_get),
+
+	SOC_SINGLE_EXT("Voice Call Mic Mute", SND_SOC_NOPM, 0, 1, 0,
+		       voice_call_mic_mute_get, voice_call_mic_mute_set),
 
 	SOC_SINGLE_EXT("MIC0", SND_SOC_NOPM, BUILTIN_MIC0, 1, 0,
 		       mic_power_ctl_get, mic_power_ctl_set),

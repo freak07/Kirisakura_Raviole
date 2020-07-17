@@ -20,7 +20,7 @@ static int aoc_service_audio_control(struct aoc_service_dev *dev,
 				     const uint8_t *cmd, size_t cmd_size,
 				     uint8_t *response);
 
-int aoc_audio_volume_set(struct aoc_alsa_stream *alsa_stream, uint32_t volume,
+int aoc_audio_volume_set(struct aoc_chip *chip, uint32_t volume,
 			 int src, int dst)
 {
 	int err;
@@ -28,14 +28,11 @@ int aoc_audio_volume_set(struct aoc_alsa_stream *alsa_stream, uint32_t volume,
 	struct CMD_AUDIO_OUTPUT_SET_PARAMETER cmd;
 
 	/* No volume control for capturing */
-	if (alsa_stream->substream->stream != SNDRV_PCM_STREAM_PLAYBACK)
-		return 0;
-
 	/* Haptics in AoC does not have adjustable volume */
 	if (src == HAPTICS)
 		return 0;
 
-	dev = alsa_stream->chip->dev_alsa_output_control;
+	dev = chip->dev_alsa_output_control;
 	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SET_PARAMETER_ID,
 		     sizeof(cmd));
 
@@ -191,6 +188,19 @@ int aoc_get_builtin_mic_power_state(struct aoc_chip *chip, int iMic)
 		pr_err("ERR:%d in get mic state\n", err);
 
 	return err < 0 ? err : cmd.power_state;
+}
+
+/* TODO: temporary solution for mic muting, has to be revised using DSP modules instead of mixer */
+int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute)
+{
+	int volume = (mute == 1) ? 0 : 1000;
+	int src = 3;
+	int dst = 3;
+
+	if (chip)
+		aoc_audio_volume_set(chip, volume, src, dst);
+
+	return 0;
 }
 
 int aoc_get_dsp_state(struct aoc_chip *chip)
@@ -681,16 +691,21 @@ static int aoc_audio_set_ctls_chan(struct aoc_alsa_stream *alsa_stream,
 	int src, dst, i;
 
 	pr_debug(" Setting ALSA  volume(%d)\n", chip->volume);
+
+	if (alsa_stream->substream &&
+	    alsa_stream->substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+		return 0;
+
 	src = alsa_stream->entry_point_idx;
 	for (i = 0; i < MAX_NUM_OF_SINKS_PER_STREAM; i++) {
 		dst = alsa_stream->chip->sink_id_list[i];
-		if (dst != -1) {
-			err = aoc_audio_volume_set(alsa_stream, chip->volume,
-						   src, dst);
-			if (err < 0) {
-				pr_err("ERR:%d in volume setting\n", err);
-				goto out;
-			}
+		if (dst == -1)
+			continue;
+
+		err = aoc_audio_volume_set(chip, chip->volume, src, dst);
+		if (err < 0) {
+			pr_err("ERR:%d in volume setting\n", err);
+			goto out;
 		}
 	}
 

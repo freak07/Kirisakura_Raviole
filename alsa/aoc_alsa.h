@@ -81,6 +81,7 @@ struct aoc_chip {
 	int volume;
 	int old_volume; /* Store the volume value while muted */
 	int mute;
+	int voice_call_mic_mute;
 
 	int mic_loopback_enabled;
 	unsigned int opened;
@@ -132,6 +133,7 @@ int aoc_audio_set_ctls(struct aoc_chip *chip);
 
 int aoc_set_builtin_mic_power_state(struct aoc_chip *chip, int iMic, int state);
 int aoc_get_builtin_mic_power_state(struct aoc_chip *chip, int iMic);
+int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute);
 int aoc_get_dsp_state(struct aoc_chip *chip);
 int aoc_get_sink_state(struct aoc_chip *chip, int iSink);
 

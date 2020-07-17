@@ -134,6 +134,7 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 	alsa_stream->hr_timer.function = &aoc_pcm_hrtimer_irq_handler;
 
 	alsa_stream->entry_point_idx = substream->pcm->device;
+
 	mutex_unlock(&chip->audio_mutex);
 
 	return 0;
