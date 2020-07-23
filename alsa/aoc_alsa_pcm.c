@@ -229,7 +229,7 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 
 	pr_debug("stream (%d)\n", substream->number); /* Playback or capture */
 	if (mutex_lock_interruptible(&chip->audio_mutex)) {
-		pr_err("ERR: interrupted whilst waiting for lock\n");
+		pr_err("interrupted whilst waiting for lock\n");
 		return -EINTR;
 	}
 
@@ -240,14 +240,14 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 	/* Find the corresponding aoc audio service */
 	err = alloc_aoc_audio_service(rtd->dai_link->name, &dev);
 	if (err < 0) {
-		pr_err("ERR: fail to alloc service for %s", err, rtd->dai_link->name);
+		pr_err("fail to alloc service for %s", rtd->dai_link->name);
 		goto out;
 	}
 
 	alsa_stream = kzalloc(sizeof(struct aoc_alsa_stream), GFP_KERNEL);
 	if (alsa_stream == NULL) {
 		err = -ENOMEM;
-		pr_err("ERR: fail to alloc alsa_stream for %s", rtd->dai_link->name);
+		pr_err("fail to alloc alsa_stream for %s", rtd->dai_link->name);
 		goto out;
 	}
 
@@ -268,7 +268,7 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 	err = aoc_audio_open(alsa_stream);
 	if (err != 0) {
 		kfree(alsa_stream);
-		pr_err("ERR: fail to audio open for %s", rtd->dai_link->name);
+		pr_err("fail to audio open for %s", rtd->dai_link->name);
 		goto out;
 	}
 	runtime->private_data = alsa_stream;
@@ -313,7 +313,7 @@ static int snd_aoc_pcm_close(struct snd_pcm_substream *substream)
 	aoc_timer_stop_sync(alsa_stream);
 
 	if (mutex_lock_interruptible(&chip->audio_mutex)) {
-		pr_err("ERR: interrupted while waiting for lock\n");
+		pr_err("interrupted while waiting for lock\n");
 		return -EINTR;
 	}
 
@@ -330,7 +330,7 @@ static int snd_aoc_pcm_close(struct snd_pcm_substream *substream)
 		err = aoc_audio_stop(alsa_stream);
 		alsa_stream->running = 0;
 		if (err != 0)
-			pr_err("ERR: fail to stop alsa stream\n");
+			pr_err("failed to stop alsa device\n");
 	}
 
 	alsa_stream->period_size = 0;
@@ -364,7 +364,7 @@ static int snd_aoc_pcm_hw_params(struct snd_pcm_substream *substream,
 
 	err = snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
 	if (err < 0) {
-		pr_err("ERR:%d fail in pcm buffer allocation\n", err);
+		pr_err(" pcm_lib_malloc failed to allocated pages for buffers\n");
 		return err;
 	}
 
@@ -406,7 +406,7 @@ static int snd_aoc_pcm_prepare(struct snd_pcm_substream *substream)
 				   alsa_stream->pcm_format_width,
 				   alsa_stream->pcm_float_fmt);
 	if (err < 0)
-		pr_err("ERR:%d in setting pcm hw params\n", err);
+		pr_err("error in setting pcm hw params\n");
 
 	pr_debug("channels = %d, rate = %d, bits = %d, float-fmt = %d\n",
 		 channels, alsa_stream->params_rate,
@@ -457,7 +457,8 @@ static int snd_aoc_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 				alsa_stream->running = 1;
 				alsa_stream->draining = 1;
 			} else {
-				pr_err("ERR:%d fail to START stream\n", err);
+				pr_err(" Failed to START alsa device (%d)\n",
+				       err);
 			}
 		}
 		break;
@@ -476,7 +477,8 @@ static int snd_aoc_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		if (alsa_stream->running) {
 			err = aoc_audio_stop(alsa_stream);
 			if (err != 0)
-				pr_err("ERR:%d fail to STOP stream\n", err);
+				pr_err("failed to STOP alsa device (%d)\n",
+				       err);
 			alsa_stream->running = 0;
 		}
 		break;
@@ -498,7 +500,7 @@ static int snd_aoc_pcm_playback_copy_user(struct snd_pcm_substream *substream,
 
 	err = aoc_audio_write(alsa_stream, buf, count);
 	if (err)
-		pr_err("ERR:%d fail to send audio to aoc\n", err);
+		pr_err("failed to transfer to alsa device (%d)\n", err);
 
 	return err;
 }
@@ -514,7 +516,7 @@ static int snd_aoc_pcm_capture_copy_user(struct snd_pcm_substream *substream,
 
 	err = aoc_audio_read(alsa_stream, buf, count);
 	if (err)
-		pr_err("ERR:%d fail to get audio from aoc\n", err);
+		pr_err("fFailed to transfer to alsa device (%d)\n", err);
 
 	return err;
 }
@@ -626,11 +628,12 @@ static int aoc_pcm_probe(struct platform_device *pdev)
 #if (KERNEL_VERSION(4, 18, 0) <= LINUX_VERSION_CODE)
 	err = devm_snd_soc_register_component(dev, &aoc_pcm_component, NULL, 0);
 	if (err)
-		pr_err("ERR:%d fail to reigster aoc pcm comp", err);
+		pr_err("%s: fail to reigster aoc pcm comp %d", __func__, err);
 #else
 	err = devm_snd_soc_register_platform(dev, &aoc_pcm_platform);
 	if (err) {
-		pr_err("ERR:%d fail to reigster aoc pcm platform", err);
+		pr_err("%s: fail to reigster aoc pcm platform %d", __func__,
+		       err);
 	}
 #endif
 	return err;
@@ -660,7 +663,7 @@ int aoc_pcm_init(void)
 	pr_debug("%s", __func__);
 	err = platform_driver_register(&aoc_pcm_drv);
 	if (err) {
-		pr_err("ERR:%d in registering aoc pcm drv\n", err);
+		pr_err("error registering aoc pcm drv %d\n", err);
 		return err;
 	}
 
