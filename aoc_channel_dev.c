@@ -409,7 +409,7 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 
 	/* is message too big to fit into read buffer? */
 	if (count < (node->msg_size - sizeof(int))) {
-		pr_err("Message size %d bytes, read size %d", node->msg_size,
+		pr_err("Message size %zu bytes, read size %zu", node->msg_size,
 		       count);
 		node->msg_size = count + sizeof(int);
 	}

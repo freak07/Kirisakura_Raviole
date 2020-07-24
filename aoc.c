@@ -995,7 +995,7 @@ static int aoc_iommu_fault_handler(struct iommu_domain *domain,
 				   struct device *dev, unsigned long iova,
 				   int flags, void *token)
 {
-	dev_err(dev, "iommu fault at aoc address %#010x, flags %#010x\n", iova,
+	dev_err(dev, "iommu fault at aoc address %#010lx, flags %#010x\n", iova,
 		flags);
 
 	return 0;
@@ -1432,7 +1432,7 @@ static int aoc_platform_probe(struct platform_device *pdev)
 			pr_err("failed to start firmware download: %d\n", ret);
 	}
 
-	sysfs_create_groups(&dev->kobj, aoc_groups);
+	ret = sysfs_create_groups(&dev->kobj, aoc_groups);
 
 	pr_debug("platform_probe matched\n");
 

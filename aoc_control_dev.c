@@ -351,7 +351,7 @@ static void discovery_workitem(struct work_struct *work)
 	}
 
 	prvdata->discovered_stats = stats;
-	device_add_groups(&prvdata->service->dev, aoc_stats_groups);
+	ret = device_add_groups(&prvdata->service->dev, aoc_stats_groups);
 
 out:
 	return;
