@@ -17,7 +17,7 @@
 
 enum { NONBLOCKING = 0, BLOCKING = 1 };
 
-uint32_t aoc_usb_get_xhci_version(struct aoc_service_dev *adev)
+static uint32_t aoc_usb_get_xhci_version(struct aoc_service_dev *adev)
 {
 	int ret;
 	struct CMD_USB_CONTROL_GET_XHCI_VERSION cmd_get_xhci_version = {0};
