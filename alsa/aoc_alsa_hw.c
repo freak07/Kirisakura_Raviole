@@ -20,7 +20,7 @@ static int aoc_service_audio_control(struct aoc_service_dev *dev,
 				     const uint8_t *cmd, size_t cmd_size,
 				     uint8_t *response);
 
-int aoc_audio_volume_set(struct aoc_chip *chip, uint32_t volume,
+static int aoc_audio_volume_set(struct aoc_chip *chip, uint32_t volume,
 			 int src, int dst)
 {
 	int err;
@@ -323,9 +323,9 @@ static int aoc_audio_playback_trigger_bind(struct aoc_alsa_stream *alsa_stream,
 	return err;
 }
 
-int aoc_audio_playback_set_params(struct aoc_alsa_stream *alsa_stream,
-				  uint32_t channels, uint32_t samplerate,
-				  uint32_t bps, bool pcm_float_fmt)
+static int aoc_audio_playback_set_params(struct aoc_alsa_stream *alsa_stream,
+					 uint32_t channels, uint32_t samplerate,
+					 uint32_t bps, bool pcm_float_fmt)
 {
 	int err;
 	struct CMD_AUDIO_OUTPUT_EP_SETUP cmd;
@@ -394,9 +394,9 @@ int aoc_audio_playback_set_params(struct aoc_alsa_stream *alsa_stream,
 	return err;
 }
 
-int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
-				 uint32_t channels, uint32_t samplerate,
-				 uint32_t bps, bool pcm_float_fmt)
+static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
+					uint32_t channels, uint32_t samplerate,
+					uint32_t bps, bool pcm_float_fmt)
 {
 	int i, iMic, err = 0;
 	//int left, right; // two channels

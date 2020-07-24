@@ -86,7 +86,7 @@ static struct snd_pcm_hardware snd_aoc_playback_hw = {
 	.periods_max = 4,
 };
 
-enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
+static enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
 {
 	struct aoc_alsa_stream *alsa_stream;
 	struct aoc_service_dev *dev;
@@ -148,7 +148,7 @@ enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
 /* Timer interrupt handler to update the ring buffer reader/writer positions
  * during playback/capturing
  */
-void aoc_pcm_timer_irq_handler(struct timer_list *timer)
+static void aoc_pcm_timer_irq_handler(struct timer_list *timer)
 {
 	struct aoc_alsa_stream *alsa_stream;
 	struct aoc_service_dev *dev;
