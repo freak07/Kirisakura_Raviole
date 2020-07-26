@@ -259,12 +259,6 @@ static int snd_aoc_pcm_prepare(struct snd_pcm_substream *substream)
 		return -EINTR;
 
 	channels = alsa_stream->channels;
-	err = aoc_audio_set_params(alsa_stream, channels,
-				   alsa_stream->params_rate,
-				   alsa_stream->pcm_format_width,
-				   alsa_stream->pcm_float_fmt);
-	if (err < 0)
-		pr_err("ERR: %d in pcm hw params\n", err);
 
 	pr_debug("channels = %d, rate = %d, bits = %d, float-fmt = %d\n",
 		 channels, alsa_stream->params_rate,
