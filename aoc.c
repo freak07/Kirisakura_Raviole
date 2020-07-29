@@ -423,8 +423,8 @@ free_fw:
 ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 			 size_t count, bool block)
 {
-	const struct device *parent = dev->dev.parent;
-	struct aoc_prvdata *prvdata = dev_get_drvdata(parent);
+	const struct device *parent;
+	struct aoc_prvdata *prvdata;
 	aoc_service *service;
 
 	size_t msg_size;
@@ -436,6 +436,9 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 
 	if (!aoc_online)
 		return -ENODEV;
+
+	parent = dev->dev.parent;
+	prvdata = dev_get_drvdata(parent);
 
 	service_number = dev->service_index;
 	service = service_at_index(prvdata, dev->service_index);
@@ -483,8 +486,8 @@ EXPORT_SYMBOL(aoc_service_read);
 ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 			  size_t count, bool block)
 {
-	const struct device *parent = dev->dev.parent;
-	struct aoc_prvdata *prvdata = dev_get_drvdata(parent);
+	const struct device *parent;
+	struct aoc_prvdata *prvdata;
 
 	aoc_service *service;
 	int service_number;
@@ -495,6 +498,9 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 
 	if (!aoc_online)
 		return -ENODEV;
+
+	parent = dev->dev.parent;
+	prvdata = dev_get_drvdata(parent);
 
 	service_number = dev->service_index;
 	service = service_at_index(prvdata, service_number);
