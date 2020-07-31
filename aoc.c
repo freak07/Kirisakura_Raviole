@@ -352,14 +352,14 @@ static void aoc_pass_fw_information(void *base, const struct aoc_fw_data *fwd,
 	u32 *data = base;
 	int i;
 
-	iowrite32(AOC_PARAMETER_MAGIC, data++);
-	iowrite32(num, data++);
-	iowrite32(12 + (num * (3 * sizeof(u32))), data++);
+	writel_relaxed(AOC_PARAMETER_MAGIC, data++);
+	writel_relaxed(num, data++);
+	writel_relaxed(12 + (num * (3 * sizeof(u32))), data++);
 
 	for (i = 0; i < num; i++) {
-		iowrite32(fwd[i].key, data++);
-		iowrite32(sizeof(u32), data++);
-		iowrite32(fwd[i].value, data++);
+		writel_relaxed(fwd[i].key, data++);
+		writel_relaxed(sizeof(u32), data++);
+		writel_relaxed(fwd[i].value, data++);
 	}
 }
 
