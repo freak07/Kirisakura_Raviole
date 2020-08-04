@@ -204,7 +204,7 @@ int aoc_get_builtin_mic_power_state(struct aoc_chip *chip, int iMic)
 /* TODO: temporary solution for mic muting, has to be revised using DSP modules instead of mixer */
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute)
 {
-	int volume = (mute == 1) ? 0 : 1000;
+	int volume = (mute == 1) ? 0 : 4000;
 	int src = 3;
 	int dst = 3;
 

@@ -121,6 +121,10 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 	hrtimer_init( &(alsa_stream->hr_timer), CLOCK_MONOTONIC, HRTIMER_MODE_REL );
 	alsa_stream->hr_timer.function = &aoc_pcm_hrtimer_irq_handler;
 
+	/* Just to change the mic volume at the start of a voice call */
+	aoc_voice_call_mic_mute(chip, 1 - chip->voice_call_mic_mute);
+	aoc_voice_call_mic_mute(chip, chip->voice_call_mic_mute);
+
 	alsa_stream->entry_point_idx = substream->pcm->device;
 
 	mutex_unlock(&chip->audio_mutex);
