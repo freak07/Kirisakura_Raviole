@@ -237,6 +237,78 @@ static struct be_param_cache be_params[PORT_MAX] = {
 								SNDRV_PCM_FORMAT_S32_LE)
 };
 
+static __poll_t audio_state_poll(struct snd_info_entry *entry,
+		void *private_data, struct file *f, poll_table *wait)
+{
+	struct aoc_state_client_t *client = entry->private_data;
+
+	return aoc_audio_state_poll(f, wait, client);
+}
+
+static ssize_t audio_state_read(struct snd_info_entry *entry,
+		void *private_data, struct file *file, char __user *buf,
+		size_t count, loff_t pos)
+{
+	struct aoc_state_client_t *client = entry->private_data;
+
+	if (!client || !client->inuse)
+		return -ENODEV;
+
+	if (!buf || count != sizeof(client->online) || pos != 0)
+		return -EINVAL;
+
+	client->online = aoc_audio_current_state();
+
+	return copy_to_user(buf, &client->online, sizeof(client->online));
+}
+
+static int audio_state_open(struct snd_info_entry *entry,
+		unsigned short mode, void **private_data)
+{
+	struct aoc_state_client_t *client = entry->private_data;
+
+	/* Only allow one client */
+	if (!client || client->inuse)
+		return -ENODEV;
+
+	client->inuse = true;
+	client->exit = false;
+	return 0;
+}
+
+static int audio_state_release(struct snd_info_entry *entry,
+		unsigned short mode, void *private_data)
+{
+	struct aoc_state_client_t *client = entry->private_data;
+
+	if (!client)
+		return -ENODEV;
+
+	client->exit = true;
+	client->inuse = false;
+
+	return 0;
+}
+
+static struct snd_info_entry_ops audio_state_ops = {
+	.poll = audio_state_poll,
+	.read = audio_state_read,
+	.open = audio_state_open,
+	.release = audio_state_release,
+};
+
+static void audio_state_private_free(struct snd_info_entry *entry)
+{
+	struct aoc_state_client_t *client =
+		(struct aoc_state_client_t *)entry->private_data;
+
+	if (!client)
+		return;
+
+	entry->private_data = NULL;
+	free_audio_state_client(client);
+}
+
 #if (KERNEL_VERSION(4, 18, 0) <= LINUX_VERSION_CODE)
 static int hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 			   struct snd_pcm_hw_params *params, int stream)
@@ -1179,6 +1251,31 @@ err:
 	return ret;
 }
 
+static void init_audio_state_query(struct snd_soc_card *card)
+{
+	struct snd_info_entry *entry = NULL;
+	struct aoc_state_client_t *client;
+
+	client = alloc_audio_state_client();
+	if (!client) {
+		pr_err("fail to allocate audio state client\n");
+		return;
+	}
+
+	snd_card_proc_new(card->snd_card, "aoc_audio_state", &entry);
+	if (!entry) {
+		pr_warn("%s: fail to create aoc_state\n", __func__);
+		free_audio_state_client(client);
+		return;
+	}
+
+	entry->content = SNDRV_INFO_CONTENT_DATA;
+	entry->private_data = client;
+	entry->c.ops = &audio_state_ops;
+	entry->private_free = audio_state_private_free;
+	entry->size = sizeof(client->online);
+}
+
 static int aoc_card_late_probe(struct snd_soc_card *card)
 {
 	struct aoc_chip *chip =
@@ -1219,6 +1316,7 @@ static int aoc_card_late_probe(struct snd_soc_card *card)
 		}
 	}
 
+	init_audio_state_query(card);
 	return 0;
 }
 

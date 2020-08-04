@@ -53,6 +53,8 @@ static struct aoc_service_resource
 static spinlock_t service_lock;
 static int8_t n_services;
 static bool drv_registered;
+static bool aoc_audio_online;
+static wait_queue_head_t aoc_audio_state_wait_head;
 
 int8_t aoc_audio_service_num(void)
 {
@@ -152,6 +154,51 @@ done:
 }
 EXPORT_SYMBOL(free_aoc_audio_service);
 
+__poll_t aoc_audio_state_poll(struct file *f, poll_table *wait,
+		struct aoc_state_client_t *client)
+{
+	if (!f || !wait || !client || !client->inuse)
+		return POLLERR;
+
+	poll_wait(f, &aoc_audio_state_wait_head, wait);
+
+	if (client->exit ||
+		client->online != aoc_audio_online)
+		return EPOLLIN | EPOLLRDNORM;
+
+	return 0;
+}
+EXPORT_SYMBOL(aoc_audio_state_poll);
+
+bool aoc_audio_current_state(void)
+{
+    return aoc_audio_online;
+}
+EXPORT_SYMBOL(aoc_audio_current_state);
+
+struct aoc_state_client_t *alloc_audio_state_client(void)
+{
+	struct aoc_state_client_t *client;
+
+	client = kmalloc(sizeof(struct aoc_state_client_t), GFP_KERNEL);
+
+	if (!client)
+		return NULL;
+
+	client->online = aoc_audio_online;
+	client->exit = false;
+	client->inuse = false;
+
+	return client;
+}
+EXPORT_SYMBOL(alloc_audio_state_client);
+
+void free_audio_state_client(struct aoc_state_client_t *client)
+{
+	kfree(client);
+}
+EXPORT_SYMBOL(free_audio_state_client);
+
 static int snd_aoc_alsa_probe(void)
 {
 	int err;
@@ -225,6 +272,12 @@ static int aoc_alsa_probe(struct aoc_service_dev *dev)
 	n_services++;
 	nservices = n_services;
 
+	if (nservices == ARRAY_SIZE(service_lists)) {
+		if (!aoc_audio_online) {
+			aoc_audio_online = true;
+			wake_up(&aoc_audio_state_wait_head);
+		}
+	}
 	spin_unlock(&service_lock);
 
 	if (nservices == ARRAY_SIZE(service_lists) && !drv_registered) {
@@ -254,6 +307,11 @@ static int aoc_alsa_remove(struct aoc_service_dev *dev)
 	}
 
 	service_lists[i].dev = NULL;
+
+	if (aoc_audio_online) {
+		aoc_audio_online = false;
+		wake_up(&aoc_audio_state_wait_head);
+	}
 
 	if (service_lists[i].ref < 0) {
 		pr_warn("%s: invalid ref %d for %s\n", __func__,
@@ -311,8 +369,11 @@ static int __init aoc_alsa_init(void)
 
 	pr_debug("aoc alsa driver init\n");
 
+	aoc_audio_online = false;
 	drv_registered = false;
 	spin_lock_init(&service_lock);
+
+	init_waitqueue_head(&aoc_audio_state_wait_head);
 
 	for (i = 0; i < ARRAY_SIZE(service_lists); i++) {
 		service_lists[i].name = audio_service_names[i];
