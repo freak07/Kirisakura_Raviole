@@ -102,13 +102,8 @@ static struct aoc_chip *g_chip = NULL;
 
 #define MK_STR_MAP(xstr, xval) { .str = xstr, .value = xval },
 
-#if (KERNEL_VERSION(4, 18, 0) <= LINUX_VERSION_CODE)
-typedef int (*fixup_fn)(struct snd_soc_pcm_runtime *,
-			struct snd_pcm_hw_params *, int stream);
-#else
 typedef int (*fixup_fn)(struct snd_soc_pcm_runtime *,
 			struct snd_pcm_hw_params *);
-#endif
 
 struct dai_link_res_map {
 	const struct snd_soc_ops *ops;
@@ -136,13 +131,8 @@ static void i2s_shutdown(struct snd_pcm_substream *);
 static int i2s_hw_params(struct snd_pcm_substream *,
 			 struct snd_pcm_hw_params *);
 
-#if (KERNEL_VERSION(4, 18, 0) <= LINUX_VERSION_CODE)
-static int hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
-			   struct snd_pcm_hw_params *params, int stream);
-#else
 static int hw_params_fixup(struct snd_soc_pcm_runtime *,
 			   struct snd_pcm_hw_params *);
-#endif
 
 static int tdm_hw_params(struct snd_pcm_substream *substream,
 			 struct snd_pcm_hw_params *param);
@@ -309,13 +299,8 @@ static void audio_state_private_free(struct snd_info_entry *entry)
 	free_audio_state_client(client);
 }
 
-#if (KERNEL_VERSION(4, 18, 0) <= LINUX_VERSION_CODE)
-static int hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
-			   struct snd_pcm_hw_params *params, int stream)
-#else
 static int hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 			   struct snd_pcm_hw_params *params)
-#endif
 {
 	struct snd_mask *fmt_mask =
 		hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT);
@@ -341,7 +326,7 @@ static int hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	mutex_unlock(&card_mutex);
 
 	pr_debug("%s: fixup ch %u rate %u fmt %u for %s", __func__, ch, sr, fmt,
-		rtd->dai_link->name);
+		 rtd->dai_link->name);
 
 	rate->min = rate->max = sr;
 	channels->min = channels->max = ch;
@@ -884,6 +869,10 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 	struct device_node *np_cpu = NULL, *np_codec = NULL;
 	const char *str;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	struct snd_soc_dai_link_component *component;
+#endif
+
 	if (!node || !dai)
 		return -EINVAL;
 
@@ -899,6 +888,29 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 		goto err;
 	}
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	dai->num_platforms = 1;
+
+	component = devm_kzalloc(dev, sizeof(struct snd_soc_dai_link_component),
+				 GFP_KERNEL);
+	if (!component) {
+		ret = -ENOMEM;
+		goto err;
+	}
+	dai->platforms = component;
+
+	dai->platforms->of_node = of_parse_phandle(node, "platform", 0);
+	if (!dai->platforms->of_node) {
+		ret = of_property_read_string(node, "platform-name", &str);
+		if (ret) {
+			pr_err("%s: fail to get platform for %s", __func__,
+			       dai->name);
+			ret = -EINVAL;
+			goto err;
+		}
+		dai->platforms->name = str;
+	}
+#else
 	dai->platform_of_node = of_parse_phandle(node, "platform", 0);
 	if (!dai->platform_of_node) {
 		ret = of_property_read_string(node, "platform-name", &str);
@@ -910,6 +922,7 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 		}
 		dai->platform_name = str;
 	}
+#endif
 
 	np_cpu = of_get_child_by_name(node, "cpu");
 	if (!np_cpu) {
@@ -919,6 +932,33 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 	}
 
 	/* Only support single cpu dai */
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	dai->num_cpus = 1;
+	dai->cpus = devm_kzalloc(dev, sizeof(struct snd_soc_dai_link_component),
+				 GFP_KERNEL);
+	if (!dai->cpus) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	dai->cpus->of_node = of_parse_phandle(np_cpu, "sound-dai", 0);
+	if (!dai->cpus->of_node) {
+		pr_err("%s: fail to get cpu dai for %s", __func__, dai->name);
+		ret = -EINVAL;
+		goto err;
+	}
+
+	ret = snd_soc_of_get_dai_name(np_cpu, &dai->cpus->dai_name);
+	if (ret) {
+		if (ret == -EPROBE_DEFER) {
+			pr_info("%s: wait cpu_dai for %s", __func__, dai->name);
+		} else
+			pr_err("%s: get cpu_dai fail for %s", __func__,
+			       dai->name);
+		goto err;
+	}
+#else
 	dai->cpu_of_node = of_parse_phandle(np_cpu, "sound-dai", 0);
 	if (!dai->cpu_of_node) {
 		pr_err("%s: fail to get cpu dai for %s", __func__, dai->name);
@@ -935,6 +975,7 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 			       dai->name);
 		goto err;
 	}
+#endif
 
 	np_codec = of_get_child_by_name(node, "codec");
 	if (!np_codec) {
@@ -959,6 +1000,25 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 			goto err;
 		}
 	} else {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+		dai->num_codecs = 1;
+		dai->codecs =
+			devm_kzalloc(dev,
+				     sizeof(struct snd_soc_dai_link_component),
+				     GFP_KERNEL);
+		if (!dai->codecs) {
+			ret = -ENOMEM;
+			goto err;
+		}
+		dai->codecs->name = str;
+		ret = of_property_read_string(np_codec, "codec-dai-name", &str);
+		if (ret) {
+			pr_err("%s: %d fail to get codec dai for %s", __func__,
+			       ret, dai->name);
+			goto err;
+		} else
+			dai->codecs->dai_name = str;
+#else
 		dai->codec_name = str;
 		ret = of_property_read_string(np_codec, "codec-dai-name", &str);
 		if (ret) {
@@ -967,6 +1027,7 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 			goto err;
 		} else
 			dai->codec_dai_name = str;
+#endif
 	}
 
 	ret = of_property_read_u32_index(node, "trigger", 0, &trigger);
@@ -1036,6 +1097,17 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 	of_node_put(np_codec);
 	return 0;
 err:
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	if (dai->platforms->of_node) {
+		of_node_put(dai->platforms->of_node);
+		dai->platforms->of_node = NULL;
+	}
+
+	if (dai->cpus->of_node) {
+		of_node_put(dai->cpus->of_node);
+		dai->cpus->of_node = NULL;
+	}
+#else
 	if (dai->platform_of_node) {
 		of_node_put(dai->platform_of_node);
 		dai->platform_of_node = NULL;
@@ -1045,7 +1117,7 @@ err:
 		of_node_put(dai->cpu_of_node);
 		dai->cpu_of_node = NULL;
 	}
-
+#endif
 	if (dai->num_codecs > 0) {
 		int i;
 		for (i = 0; i < dai->num_codecs; i++) {

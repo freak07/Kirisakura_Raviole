@@ -63,7 +63,7 @@ static int aoc_service_audio_control(const char *cmd_channel,
 	struct aoc_service_dev *dev;
 	uint8_t *buffer;
 	int buffer_size = 1024;
-	struct timeval tv0, tv1;
+	struct timespec64 tv0, tv1;
 	int err, count;
 	unsigned long time_expired;
 
@@ -115,7 +115,7 @@ static int aoc_service_audio_control(const char *cmd_channel,
 	}
 
 #ifdef AOC_CMD_DEBUG_ENABLE
-	do_gettimeofday(&tv0);
+	ktime_get_real_ts64(&tv0);
 #endif /* AOC_CMD_DEBUG_ENABLE */
 
 	/* Getting responses from Aoc for the command just sent */
@@ -128,8 +128,10 @@ static int aoc_service_audio_control(const char *cmd_channel,
 	}
 
 #ifdef AOC_CMD_DEBUG_ENABLE
-	do_gettimeofday(&tv1);
-	pr_debug("Elapsed: %lu (usecs)\n", tv1.tv_usec - tv0.tv_usec);
+	ktime_get_real_ts64(&tv1);
+	pr_debug("Elapsed: %lld (usecs)\n",
+		 (tv1.tv_sec - tv0.tv_sec) * USEC_PER_SEC +
+			 (tv1.tv_nsec - tv0.tv_nsec) / NSEC_PER_USEC);
 
 	if (count > 0)
 		pr_debug("%d times tried for response\n", count);
