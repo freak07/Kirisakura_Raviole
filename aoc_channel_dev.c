@@ -197,6 +197,8 @@ static int aocc_demux_kthread(void *data)
 		if (!handler_found) {
 			pr_warn_ratelimited("Could not find handler for channel %d",
 				            channel);
+			/* Notifies AOC the channel is closed. */
+			aocc_send_cmd_msg(service, AOCC_CMD_CLOSE_CHANNEL, channel);
 			kfree(node);
 			continue;
 		}
