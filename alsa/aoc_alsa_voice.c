@@ -106,7 +106,6 @@ static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
 
 	err = aoc_audio_open(alsa_stream);
 	if (err != 0) {
-		kfree(alsa_stream);
 		pr_err("ERR: fail to audio open  %s", rtd->dai_link->name);
 		goto out;
 	}
