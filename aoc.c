@@ -1234,6 +1234,9 @@ static void aoc_watchdog(struct work_struct *work)
 	size_t num_pages;
 	struct page **dram_pages;
 	void *dram_cached;
+	int sscd_retries = 20;
+	const int sscd_retry_ms = 1000;
+	int sscd_rc;
 
 	dev_err(prvdata->dev, "aoc watchdog triggered, generating coredump\n");
 	if (!sscd_pdata.sscd_report) {
@@ -1283,9 +1286,23 @@ static void aoc_watchdog(struct work_struct *work)
 	sscd_info.segs[0].paddr = (void *)carveout_paddr_from_aoc;
 	sscd_info.segs[0].vaddr = (void *)carveout_vaddr_from_aoc;
 	sscd_info.seg_count = 1;
-	sscd_pdata.sscd_report(&sscd_dev, sscd_info.segs, sscd_info.seg_count,
-		SSCD_FLAGS_ELFARM64HDR, "aoc_coredump");
-	dev_info(prvdata->dev, "aoc coredump done\n");
+	/*
+	 * sscd_report() returns -EAGAIN if there are no readers to consume a
+	 * coredump. Retry sscd_report() with a sleep to handle the race condition
+	 * where AoC crashes before the userspace daemon starts running.
+	 */
+	for (i = 0; i <= sscd_retries; i++) {
+		sscd_rc = sscd_pdata.sscd_report(&sscd_dev, sscd_info.segs, sscd_info.seg_count,
+			SSCD_FLAGS_ELFARM64HDR, "aoc_coredump");
+		if (sscd_rc != -EAGAIN)
+			break;
+
+		msleep(sscd_retry_ms);
+	}
+	if (sscd_rc == 0)
+		dev_info(prvdata->dev, "aoc coredump done\n");
+	else
+		dev_err(prvdata->dev, "aoc coredump failed: sscd_rc = %d\n", sscd_rc);
 
 	vunmap(dram_cached);
 err_vmap:
