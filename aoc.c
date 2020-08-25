@@ -1313,17 +1313,6 @@ err_coredump:
 }
 #endif
 
-static void aoc_configure_workarounds(void)
-{
-	/* Configure the Touch GPIO state to prevent interrupt storms */
-	void *gpio_reg = aoc_sram_translate(AOC_TOUCH_GPIO_OFFSET);
-	u32 val;
-
-	val = ioread32(gpio_reg);
-	val &= ~(1 << 5);
-	iowrite32(val, gpio_reg);
-}
-
 static bool aoc_create_ion_heap(struct aoc_prvdata *prvdata)
 {
 	prvdata->ion_heap.type = ION_HEAP_TYPE_CARVEOUT;
@@ -1529,8 +1518,6 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 #endif
-
-	aoc_configure_workarounds();
 
 	if (aoc_autoload_firmware) {
 		ret = start_firmware_load(dev);
