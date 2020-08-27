@@ -325,15 +325,18 @@ static int snd_aoc_pcm_close(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *subst
 	pr_debug("alsa pcm close\n");
 	free_aoc_audio_service(rtd->dai_link->name, alsa_stream->dev);
 	/*
-   * Call stop if it's still running. This happens when app
-   * is force killed and we don't get a stop trigger.
-   */
+	* Call stop if it's still running. This happens when app
+   	* is force killed and we don't get a stop trigger.
+	*/
 	if (alsa_stream->running) {
 		err = aoc_audio_stop(alsa_stream);
 		alsa_stream->running = 0;
 		if (err != 0)
 			pr_err("ERR: fail to stop alsa stream\n");
 	}
+
+	if ((err = aoc_audio_path_close(alsa_stream)) < 0)
+		pr_err("ERR:%d in audio path close\n", err);
 
 	alsa_stream->period_size = 0;
 	alsa_stream->buffer_size = 0;
@@ -345,10 +348,9 @@ static int snd_aoc_pcm_close(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *subst
 	if (alsa_stream->chip)
 		alsa_stream->chip->alsa_stream[alsa_stream->idx] = NULL;
 	/*
-   * Do not free up alsa_stream here, it will be freed up by
-   * runtime->private_free callback we registered in *_open above
-   */
-
+	* Do not free up alsa_stream here, it will be freed up by
+   	* runtime->private_free callback we registered in *_open above
+   	*/
 	chip->opened &= ~(1 << alsa_stream->idx);
 
 	mutex_unlock(&chip->audio_mutex);
@@ -396,7 +398,7 @@ static int snd_aoc_pcm_prepare(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *sub
 	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
 	struct aoc_service_dev *dev = alsa_stream->dev;
 	struct aoc_chip *chip = alsa_stream->chip;
-	int channels, err;
+	int channels, source_mode, err;
 
 	aoc_timer_stop_sync(alsa_stream);
 
@@ -404,16 +406,40 @@ static int snd_aoc_pcm_prepare(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *sub
 		return -EINTR;
 
 	channels = alsa_stream->channels;
+
+	/* source_mode only used by playback */
+	if (alsa_stream->entry_point_idx == HAPTICS) {
+		source_mode = HAPTICS_MODE;
+	} else if (alsa_stream->cstream)
+		source_mode = OFFLOAD_MODE;
+	else
+		source_mode = PLAYBACK_MODE;
+
+	if (source_mode == HAPTICS_MODE) {
+		err = haptics_set_pcm_mode(alsa_stream);
+		if (err < 0) {
+			pr_err("ERR:%d in setting haptics to pcm mode\n", err);
+			goto out;
+		}
+	}
+
 	err = aoc_audio_set_params(alsa_stream, channels,
 				   alsa_stream->params_rate,
 				   alsa_stream->pcm_format_width,
-				   alsa_stream->pcm_float_fmt);
-	if (err < 0)
+				   alsa_stream->pcm_float_fmt, source_mode);
+	if (err < 0) {
 		pr_err("ERR:%d in setting pcm hw params\n", err);
+		goto out;
+	}
 
 	pr_debug("channels = %d, rate = %d, bits = %d, float-fmt = %d\n",
 		 channels, alsa_stream->params_rate,
 		 alsa_stream->pcm_format_width, alsa_stream->pcm_float_fmt);
+
+	if ((err = aoc_audio_path_open(alsa_stream)) < 0) {
+		pr_err("ERR:%d in audio path open\n", err);
+		goto out;
+	}
 
 	aoc_audio_setup(alsa_stream);
 
@@ -433,8 +459,8 @@ static int snd_aoc_pcm_prepare(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *sub
 		 alsa_stream->buffer_size, alsa_stream->period_size,
 		 alsa_stream->pos, runtime->frame_bits);
 
+out:
 	mutex_unlock(&chip->audio_mutex);
-
 	return err;
 }
 
