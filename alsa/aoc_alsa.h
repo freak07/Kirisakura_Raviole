@@ -67,6 +67,7 @@ enum {
 };
 enum { ULL = 0, LL0, LL1, LL2, LL3, DEEP_BUFFER, OFF_LOAD, HAPTICS };
 enum { BUILTIN_MIC0 = 0, BUILTIN_MIC1, BUILTIN_MIC2, BUILTIN_MIC3 };
+enum { MIC_LOW_POWER_GAIN = 0, MIC_HIGH_POWER_GAIN, MIC_CURRENT_GAIN };
 
 struct aoc_chip {
 	struct snd_card *card;
@@ -142,6 +143,11 @@ int aoc_audio_set_ctls(struct aoc_chip *chip);
 
 int aoc_set_builtin_mic_power_state(struct aoc_chip *chip, int iMic, int state);
 int aoc_get_builtin_mic_power_state(struct aoc_chip *chip, int iMic);
+int aoc_mic_clock_rate_get(struct aoc_chip *chip);
+int aoc_mic_hw_gain_get(struct aoc_chip *chip, int state);
+int aoc_mic_dc_blocker_get(struct aoc_chip *chip);
+int aoc_mic_dc_blocker_set(struct aoc_chip *chip, int enable);
+
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute);
 int aoc_get_dsp_state(struct aoc_chip *chip);
 int aoc_get_sink_state(struct aoc_chip *chip, int iSink);

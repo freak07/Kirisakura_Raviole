@@ -232,6 +232,64 @@ static int mic_power_ctl_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int mic_clock_rate_get(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = aoc_mic_clock_rate_get(chip);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int mic_hw_gain_get(struct snd_kcontrol *kcontrol,
+			   struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc = (struct soc_mixer_control *)kcontrol->private_value;
+	u32 state = (u32)mc->shift;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = aoc_mic_hw_gain_get(chip, state);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int mic_dc_blocker_get(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = aoc_mic_dc_blocker_get(chip);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int mic_dc_blocker_set(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	aoc_mic_dc_blocker_set(chip, ucontrol->value.integer.value[0]);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static int voice_call_mic_mute_get(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
@@ -428,6 +486,25 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		       mic_power_ctl_get, mic_power_ctl_set),
 	SOC_SINGLE_EXT("MIC3", SND_SOC_NOPM, BUILTIN_MIC3, 1, 0,
 		       mic_power_ctl_get, mic_power_ctl_set),
+
+	SOC_SINGLE_EXT("MIC Clock Rate", SND_SOC_NOPM, 0, 20000000, 0,
+		       mic_clock_rate_get, NULL),
+	SOC_SINGLE_EXT("MIC DC Blocker", SND_SOC_NOPM, 0, 1, 0,
+		       mic_dc_blocker_get, mic_dc_blocker_set),
+
+	SOC_SINGLE_EXT("MIC HW Gain in cB (Low Power Mode)", SND_SOC_NOPM,
+		       MIC_LOW_POWER_GAIN, 4096, 0, mic_hw_gain_get, NULL),
+	SOC_SINGLE_EXT("MIC HW Gain in cB (High Power Mode)", SND_SOC_NOPM,
+		       MIC_HIGH_POWER_GAIN, 4096, 0, mic_hw_gain_get, NULL),
+	SOC_SINGLE_EXT("MIC HW Gain in cB (Current)", SND_SOC_NOPM,
+		       MIC_CURRENT_GAIN, 4096, 0, mic_hw_gain_get, NULL),
+	SOC_SINGLE_EXT("MIC Recording Gain (dB)", SND_SOC_NOPM, 0, 100, 0, NULL,
+		       NULL),
+	SOC_SINGLE_EXT("Compress Offload Volume", SND_SOC_NOPM, 0, 100, 0, NULL,
+		       NULL),
+	SOC_SINGLE_EXT("Voice Call Rx Volume", SND_SOC_NOPM, 0, 100, 0, NULL,
+		       NULL),
+	SOC_SINGLE_EXT("VOIP Rx Volume", SND_SOC_NOPM, 0, 100, 0, NULL, NULL),
 };
 
 int snd_aoc_new_ctl(struct aoc_chip *chip)
