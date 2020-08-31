@@ -206,6 +206,90 @@ int aoc_get_builtin_mic_power_state(struct aoc_chip *chip, int iMic)
 	return err < 0 ? err : cmd.power_state;
 }
 
+int aoc_mic_clock_rate_get(struct aoc_chip *chip)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_GET_MIC_CLOCK_FREQUENCY cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_GET_MIC_CLOCK_FREQUENCY_ID,
+		     sizeof(cmd));
+
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+				(uint8_t *)&cmd, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in get mic clock frequency\n", err);
+		return err;
+	}
+
+	return cmd.mic_clock_frequency_hz;
+}
+
+int aoc_mic_hw_gain_get(struct aoc_chip *chip, int state)
+{
+	int err;
+	/* TODO: the cmd structures for 3 states differ only in names */
+	struct CMD_AUDIO_INPUT_GET_MIC_CURRENT_HW_GAIN cmd;
+	int cmd_id;
+
+	switch (state) {
+	case MIC_LOW_POWER_GAIN:
+		cmd_id = CMD_AUDIO_INPUT_GET_MIC_LOW_POWER_HW_GAIN_ID;
+		break;
+	case MIC_HIGH_POWER_GAIN:
+		cmd_id = CMD_AUDIO_INPUT_GET_MIC_HIGH_POWER_HW_GAIN_ID;
+		break;
+	default:
+		cmd_id = CMD_AUDIO_INPUT_GET_MIC_CURRENT_HW_GAIN_ID;
+	}
+
+	AocCmdHdrSet(&(cmd.parent), cmd_id, sizeof(cmd));
+
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+				(uint8_t *)&cmd, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in get current mic hw gain\n", err);
+		return err;
+	}
+
+	return cmd.mic_hw_gain_cb;
+}
+
+int aoc_mic_dc_blocker_get(struct aoc_chip *chip)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_GET_MIC_DC_BLOCKER cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_GET_MIC_DC_BLOCKER_ID,
+		     sizeof(cmd));
+
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+				(uint8_t *)&cmd, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in get mic dc blocker state\n", err);
+		return err;
+	}
+
+	return cmd.dc_blocker_enabled;
+}
+
+int aoc_mic_dc_blocker_set(struct aoc_chip *chip, int enable)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_SET_MIC_DC_BLOCKER cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_SET_MIC_DC_BLOCKER_ID,
+		     sizeof(cmd));
+	cmd.dc_blocker_enabled = enable;
+
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+				NULL, chip);
+	if (err < 0)
+		pr_err("ERR:%d in set mic dc blocker state as %d\n", err,
+		       enable);
+
+	return err;
+}
+
 /* TODO: temporary solution for mic muting, has to be revised using DSP modules instead of mixer */
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute)
 {
