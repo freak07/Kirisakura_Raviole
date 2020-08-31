@@ -9,6 +9,7 @@
 
 #include <linux/fs.h>
 #include <linux/module.h>
+#include <linux/poll.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
@@ -51,6 +52,7 @@ static ssize_t acd_read(struct file *file, char __user *buf, size_t count,
 			loff_t *off);
 static ssize_t acd_write(struct file *file, const char __user *buf,
 			 size_t count, loff_t *off);
+static unsigned int acd_poll(struct file *file, poll_table *wait);
 
 static const struct file_operations fops = {
 	.open = acd_open,
@@ -58,6 +60,7 @@ static const struct file_operations fops = {
 	.unlocked_ioctl = acd_unlocked_ioctl,
 	.read = acd_read,
 	.write = acd_write,
+	.poll = acd_poll,
 
 	.owner = THIS_MODULE,
 };
@@ -223,6 +226,23 @@ static ssize_t acd_write(struct file *file, const char __user *buf,
 
 	kfree(buffer);
 	return retval;
+}
+
+static unsigned int acd_poll(struct file *file, poll_table *wait)
+{
+	unsigned int mask = 0;
+	struct file_prvdata *private = file->private_data;
+
+	poll_wait(file, aoc_service_get_read_queue(private->service), wait);
+	poll_wait(file, aoc_service_get_write_queue(private->service), wait);
+	aoc_service_set_read_blocked(private->service);
+	aoc_service_set_write_blocked(private->service);
+	if (aoc_service_can_read(private->service))
+		mask |= POLLIN | POLLRDNORM;
+	if (aoc_service_can_write(private->service))
+		mask |= POLLOUT | POLLWRNORM;
+
+	return mask;
 }
 
 static int acd_probe(struct aoc_service_dev *dev)

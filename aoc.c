@@ -551,6 +551,76 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 }
 EXPORT_SYMBOL(aoc_service_write);
 
+int aoc_service_can_read(struct aoc_service_dev *dev)
+{
+	const struct device *parent;
+	struct aoc_prvdata *prvdata;
+	aoc_service *service;
+
+	parent = dev->dev.parent;
+	prvdata = dev_get_drvdata(parent);
+	service = service_at_index(prvdata, dev->service_index);
+
+	if (aoc_service_message_slots(service, AOC_UP) == 0)
+		return 0;
+
+	return aoc_service_can_read_message(service, AOC_UP);
+}
+EXPORT_SYMBOL_GPL(aoc_service_can_read);
+
+int aoc_service_can_write(struct aoc_service_dev *dev)
+{
+	const struct device *parent;
+	struct aoc_prvdata *prvdata;
+	aoc_service *service;
+
+	parent = dev->dev.parent;
+	prvdata = dev_get_drvdata(parent);
+	service = service_at_index(prvdata, dev->service_index);
+
+	if (aoc_service_message_slots(service, AOC_DOWN) == 0)
+		return 0;
+
+	return aoc_service_can_write_message(service, AOC_DOWN);
+}
+EXPORT_SYMBOL_GPL(aoc_service_can_write);
+
+void aoc_service_set_read_blocked(struct aoc_service_dev *dev)
+{
+	int service_number;
+
+	service_number = dev->service_index;
+	set_bit(service_number, &read_blocked_mask);
+}
+EXPORT_SYMBOL_GPL(aoc_service_set_read_blocked);
+
+void aoc_service_set_write_blocked(struct aoc_service_dev *dev)
+{
+	int service_number;
+
+	service_number = dev->service_index;
+	set_bit(service_number, &write_blocked_mask);
+}
+EXPORT_SYMBOL_GPL(aoc_service_set_write_blocked);
+
+wait_queue_head_t *aoc_service_get_read_queue(struct aoc_service_dev *dev)
+{
+	int service_number;
+
+	service_number = dev->service_index;
+	return &metadata[service_number].read_queue;
+}
+EXPORT_SYMBOL_GPL(aoc_service_get_read_queue);
+
+wait_queue_head_t *aoc_service_get_write_queue(struct aoc_service_dev *dev)
+{
+	int service_number;
+
+	service_number = dev->service_index;
+	return &metadata[service_number].write_queue;
+}
+EXPORT_SYMBOL_GPL(aoc_service_get_write_queue);
+
 static bool write_reset_trampoline(u32 addr)
 {
 	u32 *reset;

@@ -26,6 +26,12 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 			 size_t count, bool block);
 ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 			  size_t count, bool block);
+int aoc_service_can_read(struct aoc_service_dev *dev);
+int aoc_service_can_write(struct aoc_service_dev *dev);
+void aoc_service_set_read_blocked(struct aoc_service_dev *dev);
+void aoc_service_set_write_blocked(struct aoc_service_dev *dev);
+wait_queue_head_t *aoc_service_get_read_queue(struct aoc_service_dev *dev);
+wait_queue_head_t *aoc_service_get_write_queue(struct aoc_service_dev *dev);
 
 struct aoc_driver {
 	struct device_driver drv;
