@@ -1119,3 +1119,36 @@ int aoc_audio_close(struct aoc_alsa_stream *alsa_stream)
 {
 	return 0;
 }
+
+static void print_enc_param(struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG *enc_cfg)
+{
+	int i;
+
+	pr_info("codecType = %x\n", enc_cfg->codecType);
+	pr_info("bitrate = %x\n", enc_cfg->bitrate);
+	pr_info("peerMTU = %x\n", enc_cfg->peerMTU);
+	for (i = 0;i < 6;i ++)
+		pr_info("  params[%d] = %x\n", i, enc_cfg->params[i]);
+}
+
+int aoc_a2dp_set_enc_param(struct aoc_chip *chip, struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG *cfg)
+{
+	int err = 0;
+	struct CMD_AUDIO_OUTPUT_BT_A2DP_ENC_CFG cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_BT_A2DP_ENC_CFG_ID,
+		     sizeof(cmd));
+	memcpy(&cmd.bt_a2dp_enc_cfg, cfg, sizeof(*cfg));
+
+	print_enc_param(&cmd.bt_a2dp_enc_cfg);
+
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+
+	if (err < 0)
+		pr_err("ERR:%d set enc parameter failed\n", err);
+
+	return err;
+}
+

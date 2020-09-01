@@ -75,6 +75,9 @@ static int snd_aoc_ctl_info(struct snd_kcontrol *kcontrol,
 		uinfo->count = NUM_OF_BUILTIN_MIC;
 		uinfo->value.integer.min = -1;
 		uinfo->value.integer.max = NUM_OF_BUILTIN_MIC - 1;
+	} else if (kcontrol->private_value == A2DP_ENCODER_PARAMETERS) {
+		uinfo->type = SNDRV_CTL_ELEM_TYPE_BYTES;
+		uinfo->count = sizeof(struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG);
 	}
 	return 0;
 }
@@ -450,6 +453,38 @@ static int aoc_sink_state_ctl_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int a2dp_encoder_parameters_put(struct snd_kcontrol *kcontrol,
+				       struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int para_size = sizeof(chip->a2dp_encoder_cfg);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	memcpy(&chip->a2dp_encoder_cfg, ucontrol->value.bytes.data, para_size);
+
+	aoc_a2dp_set_enc_param(chip, &chip->a2dp_encoder_cfg);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int a2dp_encoder_parameters_get(struct snd_kcontrol *kcontrol,
+				       struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	memcpy(ucontrol->value.bytes.data, &chip->a2dp_encoder_cfg,
+		sizeof(chip->a2dp_encoder_cfg));
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 /* TODO: seek better way to create a series of controls  */
 static const char *sink_processing_state_texts[] = { "Idle", "Active",
 						     "Bypass" };
@@ -571,6 +606,17 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 	SOC_SINGLE_EXT("Voice Call Rx Volume", SND_SOC_NOPM, 0, 100, 0, NULL,
 		       NULL),
 	SOC_SINGLE_EXT("VOIP Rx Volume", SND_SOC_NOPM, 0, 100, 0, NULL, NULL),
+	{
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+		.name = "A2DP Encoder Parameters",
+		.index = 0,
+		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
+		.private_value = A2DP_ENCODER_PARAMETERS,
+		.info = snd_aoc_ctl_info,
+		.get = a2dp_encoder_parameters_get,
+		.put = a2dp_encoder_parameters_put,
+		.count = 1,
+	},
 };
 
 int snd_aoc_new_ctl(struct aoc_chip *chip)
