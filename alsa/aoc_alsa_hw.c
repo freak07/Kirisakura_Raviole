@@ -20,45 +20,12 @@ enum { START, STOP, VOICE_TX_MODE, VOICE_RX_MODE, OFFLOAD_MODE };
 static int cmd_count;
 #endif
 
-static int aoc_service_audio_control(const char *cmd_channel,
-				     const uint8_t *cmd, size_t cmd_size,
-				     uint8_t *response, struct aoc_chip *chip);
-
-int aoc_audio_volume_set(struct aoc_chip *chip, uint32_t volume,
-			 int src, int dst)
-{
-	int err;
-	struct CMD_AUDIO_OUTPUT_SET_PARAMETER cmd;
-
-	/* No volume control for capturing */
-	/* Haptics in AoC does not have adjustable volume */
-	if (src == HAPTICS)
-		return 0;
-
-	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SET_PARAMETER_ID,
-		     sizeof(cmd));
-
-	/* Sink 0-4 with block ID from 16-20 */
-	cmd.block = dst + AOC_AUDIO_SINK_BLOCK_ID_BASE;
-	cmd.component = 0;
-	cmd.key = src;
-	cmd.val = volume;
-	pr_debug("volume changed to: %d\n", volume);
-
-	/* Send cmd to AOC */
-	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-					NULL, chip);
-	if (err < 0)
-		pr_err("ERR:%d in volume set\n", err);
-
-	return err;
-}
 /*
  * Sending commands to AoC for setting parameters and start/stop the streams
  */
-static int aoc_service_audio_control(const char *cmd_channel,
-				     const uint8_t *cmd, size_t cmd_size,
-				     uint8_t *response, struct aoc_chip *chip)
+static int aoc_audio_control(const char *cmd_channel, const uint8_t *cmd,
+			     size_t cmd_size, uint8_t *response,
+			     struct aoc_chip *chip)
 {
 	struct aoc_service_dev *dev;
 	uint8_t *buffer;
@@ -74,7 +41,7 @@ static int aoc_service_audio_control(const char *cmd_channel,
 
 	/* Get the aoc audio control channel at runtime */
 	err = alloc_aoc_audio_service(cmd_channel, &dev);
-	if (err < 0){
+	if (err < 0) {
 		spin_unlock(&chip->audio_lock);
 		return err;
 	}
@@ -165,6 +132,36 @@ exit:
 	return err < 1 ? -EAGAIN : 0;
 }
 
+int aoc_audio_volume_set(struct aoc_chip *chip, uint32_t volume, int src,
+			 int dst)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_SET_PARAMETER cmd;
+
+	/* No volume control for capturing */
+	/* Haptics in AoC does not have adjustable volume */
+	if (src == HAPTICS)
+		return 0;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SET_PARAMETER_ID,
+		     sizeof(cmd));
+
+	/* Sink 0-4 with block ID from 16-20 */
+	cmd.block = dst + AOC_AUDIO_SINK_BLOCK_ID_BASE;
+	cmd.component = 0;
+	cmd.key = src;
+	cmd.val = volume;
+	pr_debug("volume changed to: %d\n", volume);
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), NULL, chip);
+	if (err < 0)
+		pr_err("ERR:%d in volume set\n", err);
+
+	return err;
+}
+
 int aoc_set_builtin_mic_power_state(struct aoc_chip *chip, int iMic, int state)
 {
 	int err;
@@ -175,14 +172,14 @@ int aoc_set_builtin_mic_power_state(struct aoc_chip *chip, int iMic, int state)
 		AocCmdHdrSet(&(cmd_on.parent), CMD_AUDIO_INPUT_MIC_POWER_ON_ID,
 			     sizeof(cmd_on));
 		cmd_on.mic_index = iMic;
-		err = aoc_service_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd_on,
-						sizeof(cmd_on), NULL, chip);
+		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd_on,
+					sizeof(cmd_on), NULL, chip);
 	} else {
 		AocCmdHdrSet(&(cmd_off.parent),
 			     CMD_AUDIO_INPUT_MIC_POWER_OFF_ID, sizeof(cmd_off));
 		cmd_off.mic_index = iMic;
-		err = aoc_service_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd_off,
-						sizeof(cmd_off), NULL, chip);
+		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd_off,
+					sizeof(cmd_off), NULL, chip);
 	}
 
 	if (err < 0)
@@ -201,8 +198,8 @@ int aoc_get_builtin_mic_power_state(struct aoc_chip *chip, int iMic)
 
 	cmd.mic_index = iMic;
 
-	err = aoc_service_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-					(uint8_t *)&cmd, chip);
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+				(uint8_t *)&cmd, chip);
 	if (err < 0)
 		pr_err("ERR:%d in get mic state\n", err);
 
@@ -230,8 +227,8 @@ int aoc_get_dsp_state(struct aoc_chip *chip)
 	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_DSP_STATE_ID,
 		     sizeof(cmd));
 
-	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-					(uint8_t *)&cmd, chip);
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), (uint8_t *)&cmd, chip);
 	if (err < 0)
 		pr_err("Error in get aoc dsp state !\n");
 
@@ -247,8 +244,8 @@ int aoc_get_sink_state(struct aoc_chip *chip, int iSink)
 		     sizeof(cmd));
 
 	cmd.sink = iSink;
-	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-					(uint8_t *)&cmd, chip);
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), (uint8_t *)&cmd, chip);
 	if (err < 0)
 		pr_err("Error in get aoc sink processing state !\n");
 
@@ -267,8 +264,8 @@ static int aoc_haptics_set_mode(struct aoc_alsa_stream *alsa_stream, int mode)
 
 	cmd.mode = mode;
 
-	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-					NULL, alsa_stream->chip);
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), NULL, alsa_stream->chip);
 	if (err < 0)
 		pr_err("ERR:%d in set haptics mode\n", err);
 
@@ -309,8 +306,8 @@ aoc_audio_playback_trigger_source(struct aoc_alsa_stream *alsa_stream, int cmd,
 		source.mode = ENTRYPOINT_MODE_OFF;
 	}
 
-	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&source, sizeof(source),
-					NULL, alsa_stream->chip);
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&source,
+				sizeof(source), NULL, alsa_stream->chip);
 
 	pr_debug("Source %d %s !\n", alsa_stream->idx,
 		 cmd == START ? "on" : "off");
@@ -334,8 +331,8 @@ static int aoc_audio_playback_trigger_bind(struct aoc_alsa_stream *alsa_stream,
 	bind.bind = (cmd == START) ? 1 : 0;
 	bind.src = src;
 	bind.dst = dst;
-	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&bind, sizeof(bind),
-					NULL, alsa_stream->chip);
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&bind,
+				sizeof(bind), NULL, alsa_stream->chip);
 
 	/* bind/unbind the source and dest */
 	pr_debug("%s: src: %d- sink: %d!\n", cmd == START ? "bind" : "unbind",
@@ -401,8 +398,8 @@ static int aoc_audio_playback_set_params(struct aoc_alsa_stream *alsa_stream,
 	pr_debug("chan =%d, sr=%d, bits=%d\n", cmd.d.metadata.chan,
 		 cmd.d.metadata.sr, cmd.d.metadata.bits);
 
-	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
-					sizeof(cmd), NULL, alsa_stream->chip);
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), NULL, alsa_stream->chip);
 	if (err < 0) {
 		pr_err("ERR:%d in set parameters\n", err);
 		goto exit;
@@ -481,7 +478,8 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 		cmd.requested_format.bits = WIDTH_32_BIT;
 		break;
 	case 24:
-		cmd.requested_format.bits = WIDTH_32_BIT; /* TODO: tinycap limitation */
+		/* TODO: tinycap limitation */
+		cmd.requested_format.bits = WIDTH_32_BIT;
 		break;
 	case 16:
 		cmd.requested_format.bits = WIDTH_16_BIT;
@@ -499,8 +497,8 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 
 	cmd.requested_format.chan = channels;
 
-	err = aoc_service_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-					NULL, alsa_stream->chip);
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+				NULL, alsa_stream->chip);
 	if (err < 0)
 		pr_err("ERR:%d in capture parameter setup\n", err);
 
@@ -517,12 +515,12 @@ static int aoc_audio_capture_trigger(struct aoc_alsa_stream *alsa_stream,
 
 	AocCmdHdrSet(&cmd,
 		     (record_cmd == START) ?
-			     CMD_AUDIO_INPUT_MIC_RECORD_AP_START_ID :
-			     CMD_AUDIO_INPUT_MIC_RECORD_AP_STOP_ID,
+				   CMD_AUDIO_INPUT_MIC_RECORD_AP_START_ID :
+				   CMD_AUDIO_INPUT_MIC_RECORD_AP_STOP_ID,
 		     sizeof(cmd));
 
-	err = aoc_service_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-					NULL, alsa_stream->chip);
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+				NULL, alsa_stream->chip);
 	if (err < 0)
 		pr_err("ERR:%d in capture trigger\n", err);
 
@@ -540,8 +538,8 @@ int aoc_mic_loopback(struct aoc_chip *chip, int enable)
 		     sizeof(cmd));
 	cmd.sample_rate = SR_48KHZ;
 
-	err = aoc_service_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-					NULL, chip);
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+				NULL, chip);
 	if (err < 0)
 		pr_err("ERR:%d in mic loopback\n", err);
 
@@ -616,7 +614,7 @@ int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream)
 	} else {
 		err = aoc_audio_capture_trigger(alsa_stream, STOP);
 		if (err < 0)
-			pr_err("ERR:%d in capture stop\n",err);
+			pr_err("ERR:%d in capture stop\n", err);
 	}
 
 	return err;
@@ -674,8 +672,8 @@ int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 
 	avail = aoc_ring_bytes_available_to_write(dev->service, AOC_DOWN);
 	if (unlikely(avail < count)) {
-		pr_err("ERR: inconsistent write/read pointers, avail = %d, towrite = %u\n", avail,
-		       count);
+		pr_err("ERR: inconsistent write/read pointers, avail = %d, towrite = %u\n",
+		       avail, count);
 		err = -EFAULT;
 		goto out;
 	}
@@ -686,8 +684,7 @@ int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 
 	err = copy_from_user(tmp, src, count);
 	if (err != 0) {
-		pr_err("ERR: %d bytes not read from user space\n",
-		       err);
+		pr_err("ERR: %d bytes not read from user space\n", err);
 		err = -EFAULT;
 		goto out;
 	}
@@ -766,8 +763,8 @@ int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 {
 	int err = 0;
 
-	pr_debug("setting ALSA channels(%d), samplerate(%d), bits-per-sample(%d)\n",
-		channels, samplerate, bps);
+	pr_debug("setting channels(%u), samplerate(%u), bits-per-sample(%u)\n",
+		 channels, samplerate, bps);
 
 	if (alsa_stream->cstream ||
 	    alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
@@ -808,8 +805,8 @@ static int aoc_audio_modem_input(struct aoc_alsa_stream *alsa_stream,
 				   CMD_AUDIO_INPUT_MODEM_INPUT_STOP_ID,
 		     sizeof(cmd));
 
-	err = aoc_service_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd,
-					sizeof(cmd), NULL, alsa_stream->chip);
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+				NULL, alsa_stream->chip);
 	if (err < 0)
 		pr_err("ERR:%d modem input setup fail!\n", err);
 
@@ -934,8 +931,8 @@ int aoc_compr_offload_setup(struct aoc_alsa_stream *alsa_stream, int type)
 
 	/* TODO: refactor may be needed for passing codec info from HAL to AoC */
 
-	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-					NULL, alsa_stream->chip);
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), NULL, alsa_stream->chip);
 	if (err < 0) {
 		pr_err("ERR:%d in set compress offload codec\n", err);
 		goto out;
@@ -959,10 +956,12 @@ int aoc_compr_offload_get_io_samples(struct aoc_alsa_stream *alsa_stream)
 		     sizeof(cmd));
 	cmd.source = alsa_stream->entry_point_idx;
 
-	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-					(uint8_t *)&cmd, alsa_stream->chip);
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), (uint8_t *)&cmd,
+				alsa_stream->chip);
 	if (err < 0)
-		pr_err("ERR:%d in getting compress offload io-sample number\n", err);
+		pr_err("ERR:%d in getting compress offload io-sample number\n",
+		       err);
 
 	return err < 0 ? err : cmd.samples;
 }
@@ -974,8 +973,8 @@ int aoc_compr_offload_flush_buffer(struct aoc_alsa_stream *alsa_stream)
 
 	AocCmdHdrSet(&cmd, CMD_AUDIO_OUTPUT_DECODE_FLUSH_RB_ID, sizeof(cmd));
 
-	err = aoc_service_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-					NULL, alsa_stream->chip);
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), NULL, alsa_stream->chip);
 	if (err < 0)
 		pr_err("ERR:%d flush compress offload buffer fail!\n", err);
 
@@ -986,7 +985,7 @@ int aoc_compr_pause(struct aoc_alsa_stream *alsa_stream)
 {
 	int err;
 
-	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 6,  0);
+	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 6, 0);
 	if (err < 0)
 		pr_err("ERR:%d aoc_compr_pause fail\n", err);
 	return 0;
