@@ -58,7 +58,6 @@ struct aoc_prvdata {
 	struct mbox_client mbox_client;
 	struct work_struct online_work;
 	struct resource dram_resource;
-	struct ion_platform_heap ion_heap;
 	struct ion_heap *sensor_heap;
 	aoc_map_handler map_handler;
 	void *map_handler_ctx;
@@ -95,15 +94,13 @@ static void sscd_release(struct device *dev);
 
 static struct sscd_info sscd_info;
 static struct sscd_platform_data sscd_pdata;
-static struct platform_device sscd_dev = {
-	.name = "aoc",
-	.driver_override = SSCD_NAME,
-	.id = -1,
-	.dev = {
-		.platform_data = &sscd_pdata,
-		.release = sscd_release,
-	}
-};
+static struct platform_device sscd_dev = { .name = "aoc",
+					   .driver_override = SSCD_NAME,
+					   .id = -1,
+					   .dev = {
+						   .platform_data = &sscd_pdata,
+						   .release = sscd_release,
+					   } };
 
 static void *aoc_sram_virt_mapping;
 static void *aoc_dram_virt_mapping;
@@ -378,7 +375,8 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	u32 board_rev = dt_property(rootnode, "board_rev");
 	struct aoc_fw_data fw_data[] = {
 		{ .key = kAOCBoardID, .value = board_id },
-		{ .key = kAOCBoardRevision, .value = board_rev } };
+		{ .key = kAOCBoardRevision, .value = board_rev }
+	};
 	const char *version;
 
 	u32 ipc_offset, bootloader_offset;
@@ -1295,8 +1293,9 @@ static void aoc_watchdog(struct work_struct *work)
 	struct aoc_prvdata *prvdata =
 		container_of(work, struct aoc_prvdata, watchdog_work);
 
-	struct aoc_ramdump_header *ramdump_header = (struct aoc_ramdump_header *)
-		((unsigned long)prvdata->dram_virt + RAMDUMP_HEADER_OFFSET);
+	struct aoc_ramdump_header *ramdump_header =
+		(struct aoc_ramdump_header *)((unsigned long)prvdata->dram_virt +
+					      RAMDUMP_HEADER_OFFSET);
 	unsigned long ramdump_timeout;
 	unsigned long carveout_paddr_from_aoc;
 	unsigned long carveout_vaddr_from_aoc;
@@ -1327,21 +1326,25 @@ static void aoc_watchdog(struct work_struct *work)
 	}
 
 	if (memcmp(ramdump_header, RAMDUMP_MAGIC, sizeof(RAMDUMP_MAGIC))) {
-		dev_err(prvdata->dev, "aoc coredump failed: invalid magic (corruption or incompatible firmware?)\n");
+		dev_err(prvdata->dev,
+			"aoc coredump failed: invalid magic (corruption or incompatible firmware?)\n");
 		goto err_coredump;
 	}
 
 	num_pages = DIV_ROUND_UP(prvdata->dram_size, PAGE_SIZE);
 	dram_pages = kmalloc_array(num_pages, sizeof(*dram_pages), GFP_KERNEL);
 	if (!dram_pages) {
-		dev_err(prvdata->dev, "aoc coredump failed: alloc dram_pages failed\n");
+		dev_err(prvdata->dev,
+			"aoc coredump failed: alloc dram_pages failed\n");
 		goto err_kmalloc;
 	}
 	for (i = 0; i < num_pages; i++)
-		dram_pages[i] = phys_to_page(prvdata->dram_resource.start + (i * PAGE_SIZE));
+		dram_pages[i] = phys_to_page(prvdata->dram_resource.start +
+					     (i * PAGE_SIZE));
 	dram_cached = vmap(dram_pages, num_pages, VM_MAP, PAGE_KERNEL_RO);
 	if (!dram_cached) {
-		dev_err(prvdata->dev, "aoc coredump failed: vmap dram_pages failed\n");
+		dev_err(prvdata->dev,
+			"aoc coredump failed: vmap dram_pages failed\n");
 		goto err_vmap;
 	}
 
@@ -1362,8 +1365,10 @@ static void aoc_watchdog(struct work_struct *work)
 	 * where AoC crashes before the userspace daemon starts running.
 	 */
 	for (i = 0; i <= sscd_retries; i++) {
-		sscd_rc = sscd_pdata.sscd_report(&sscd_dev, sscd_info.segs, sscd_info.seg_count,
-			SSCD_FLAGS_ELFARM64HDR, "aoc_coredump");
+		sscd_rc = sscd_pdata.sscd_report(&sscd_dev, sscd_info.segs,
+						 sscd_info.seg_count,
+						 SSCD_FLAGS_ELFARM64HDR,
+						 "aoc_coredump");
 		if (sscd_rc != -EAGAIN)
 			break;
 
@@ -1372,7 +1377,8 @@ static void aoc_watchdog(struct work_struct *work)
 	if (sscd_rc == 0)
 		dev_info(prvdata->dev, "aoc coredump done\n");
 	else
-		dev_err(prvdata->dev, "aoc coredump failed: sscd_rc = %d\n", sscd_rc);
+		dev_err(prvdata->dev, "aoc coredump failed: sscd_rc = %d\n",
+			sscd_rc);
 
 	vunmap(dram_cached);
 err_vmap:
@@ -1385,16 +1391,16 @@ err_coredump:
 
 static bool aoc_create_ion_heap(struct aoc_prvdata *prvdata)
 {
-	prvdata->ion_heap.type = ION_HEAP_TYPE_CARVEOUT;
-	prvdata->ion_heap.name = "sensor_direct_heap";
-	prvdata->ion_heap.base = prvdata->dram_resource.start + (30 * SZ_1M);
-	prvdata->ion_heap.size = SZ_2M;
-	prvdata->ion_heap.align = SZ_16K;
+	phys_addr_t base = prvdata->dram_resource.start + (30 * SZ_1M);
+	size_t size = SZ_2M;
+	size_t align = SZ_16K;
+	const char *name = "sensor_direct_heap";
 
 	prvdata->sensor_heap =
-		ion_physical_heap_create(&prvdata->ion_heap, prvdata->dev);
+		ion_physical_heap_create(base, size, align, name, prvdata->dev);
 	if (IS_ERR(prvdata->sensor_heap))
-		pr_err("ION heap failure: %ld\n", PTR_ERR(prvdata->sensor_heap));
+		pr_err("ION heap failure: %ld\n",
+		       PTR_ERR(prvdata->sensor_heap));
 	else
 		ion_device_add_heap(prvdata->sensor_heap);
 

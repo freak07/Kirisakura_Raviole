@@ -14,9 +14,9 @@
 
 #include <asm/cacheflush.h>
 
+#include <uapi/linux/ion.h>
+
 #include "ion_physical_heap.h"
-#include "ion_exynos.h"
-#include "ion_debug.h"
 
 #define ION_PHYSICAL_ALLOCATE_FAIL -1
 
@@ -117,14 +117,15 @@ static int ion_physical_heap_allocate(struct ion_heap *heap,
 		return -ENOMEM;
 	ret = sg_alloc_table(table, 1, GFP_KERNEL);
 	if (ret) {
-		perrfn("failed to allocate scatterlist (err %d)", ret);
+		pr_err("%s: failed to allocate scatterlist (err %d)", __func__,
+		       ret);
 		goto err_free;
 	}
 
 	paddr = ion_physical_allocate(carveout_heap, aligned_size);
 	if (paddr == ION_PHYSICAL_ALLOCATE_FAIL) {
-		perrfn("failed to allocate from %s(id %d), size %lu",
-		       heap->name, heap->id, size);
+		pr_err("%s: failed to allocate from %s(id %d), size %lu",
+		       __func__, heap->name, heap->id, size);
 		ret = -ENOMEM;
 		goto err_free_table;
 	}
@@ -153,8 +154,8 @@ static void ion_physical_heap_free(struct ion_buffer *buffer)
 
 	if (dev && dev->dma_ops && dev->dma_ops->unmap_sg)
 		dev->dma_ops->unmap_sg(dev, buffer->sg_table->sgl,
-				       buffer->sg_table->orig_nents, DMA_FROM_DEVICE,
-				       0);
+				       buffer->sg_table->orig_nents,
+				       DMA_FROM_DEVICE, 0);
 	_buffer_zero(buffer);
 	ion_physical_free(carveout_heap, paddr, size);
 
@@ -172,28 +173,24 @@ static int carveout_heap_map_user(struct ion_heap *heap,
 
 	if (dev && dev->dma_ops && dev->dma_ops->map_sg)
 		dev->dma_ops->map_sg(dev, buffer->sg_table->sgl,
-				     buffer->sg_table->orig_nents, DMA_FROM_DEVICE,
-				     0);
+				     buffer->sg_table->orig_nents,
+				     DMA_FROM_DEVICE, 0);
 
 	return ion_heap_map_user(heap, buffer, vma);
 }
 
-static void carveout_heap_query(struct ion_heap *heap,
-				struct ion_heap_data *data)
+static long ion_physical_get_pool_size(struct ion_heap *heap)
 {
-	struct ion_physical_heap *carveout_heap =
+	struct ion_physical_heap *physical_heap =
 		container_of(heap, struct ion_physical_heap, heap);
 
-	data->size = (__u32)carveout_heap->size;
+	return physical_heap->size / PAGE_SIZE;
 }
 
 static struct ion_heap_ops carveout_heap_ops = {
 	.allocate = ion_physical_heap_allocate,
 	.free = ion_physical_heap_free,
-	.map_user = carveout_heap_map_user,
-	.map_kernel = ion_heap_map_kernel,
-	.unmap_kernel = ion_heap_unmap_kernel,
-	.query_heap = carveout_heap_query,
+	.get_pool_size = ion_physical_get_pool_size,
 };
 
 static int ion_physical_heap_debug_show(struct ion_heap *heap,
@@ -202,17 +199,16 @@ static int ion_physical_heap_debug_show(struct ion_heap *heap,
 	return 0;
 }
 
-struct ion_heap *ion_physical_heap_create(struct ion_platform_heap *heap_data,
+struct ion_heap *ion_physical_heap_create(phys_addr_t base, size_t size,
+					  size_t align, const char *name,
 					  struct device *dev)
 {
 	struct ion_physical_heap *carveout_heap;
 	int ret;
 
 	struct page *page;
-	size_t size;
 
-	page = pfn_to_page(PFN_DOWN(heap_data->base));
-	size = heap_data->size;
+	page = pfn_to_page(PFN_DOWN(base));
 
 	ret = _pages_zero(page, size, PAGE_KERNEL);
 	if (ret)
@@ -223,26 +219,26 @@ struct ion_heap *ion_physical_heap_create(struct ion_platform_heap *heap_data,
 		return ERR_PTR(-ENOMEM);
 
 	carveout_heap->pool =
-		gen_pool_create(get_order(heap_data->align) + PAGE_SHIFT, -1);
+		gen_pool_create(get_order(align) + PAGE_SHIFT, -1);
 	if (!carveout_heap->pool) {
 		kfree(carveout_heap);
 		return ERR_PTR(-ENOMEM);
 	}
-	carveout_heap->base = heap_data->base;
-	gen_pool_add(carveout_heap->pool, carveout_heap->base, heap_data->size,
-		     -1);
+	carveout_heap->base = base;
+	gen_pool_add(carveout_heap->pool, carveout_heap->base, size, -1);
 	carveout_heap->heap.ops = &carveout_heap_ops;
-	carveout_heap->heap.type = ION_HEAP_TYPE_CARVEOUT;
 	carveout_heap->heap.name =
-		kstrndup(heap_data->name, MAX_HEAP_NAME - 1, GFP_KERNEL);
+		kstrndup(name, MAX_HEAP_NAME - 1, GFP_KERNEL);
 	if (!carveout_heap->heap.name) {
 		gen_pool_destroy(carveout_heap->pool);
 		kfree(carveout_heap);
 		return ERR_PTR(-ENOMEM);
 	}
-	carveout_heap->size = heap_data->size;
-	carveout_heap->alloc_align = heap_data->align;
-	carveout_heap->heap.debug_show = ion_physical_heap_debug_show;
+	carveout_heap->heap.type = ION_HEAP_TYPE_CUSTOM;
+	carveout_heap->heap.owner = THIS_MODULE;
+
+	carveout_heap->size = size;
+	carveout_heap->alloc_align = align;
 	carveout_heap->parent = dev;
 
 	return &carveout_heap->heap;

@@ -3,7 +3,8 @@
  * Copyright (c) 2020 Google LLC
  */
 
-#include "ion.h"
+#include <linux/ion.h>
 
-struct ion_heap *ion_physical_heap_create(struct ion_platform_heap *heap_data,
-                                          struct device *dev);
+struct ion_heap *ion_physical_heap_create(phys_addr_t base, size_t size,
+					  size_t align, const char *name,
+					  struct device *dev);

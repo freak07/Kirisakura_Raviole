@@ -14,8 +14,7 @@ KBUILD_OPTIONS += CONFIG_AOC_DRIVER=m CONFIG_WC_MBOX=m \
 		  CONFIG_AOC_CHAR_DRIVER=m CONFIG_AOC_CHAN_DRIVER=m \
 		  CONFIG_AOC_CONTROL_DRIVER=m
 
-ccflags-y := -I$(KERNEL_SRC)/../google-modules/aoc_ipc \
-	-I$(KERNEL_SRC)/drivers/staging/android/ion
+ccflags-y := -I$(KERNEL_SRC)/../google-modules/aoc_ipc
 
 modules modules_install clean:
 	$(MAKE) -C $(KERNEL_SRC) M=$(M) $(KBUILD_OPTIONS) W=1 $(@)
