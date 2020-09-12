@@ -263,6 +263,36 @@ static int voice_call_mic_mute_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int voice_call_audio_enable_get(struct snd_kcontrol *kcontrol,
+				   struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = chip->voice_call_audio_enable;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int voice_call_audio_enable_set(struct snd_kcontrol *kcontrol,
+				   struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	if (chip->voice_call_audio_enable != ucontrol->value.integer.value[0]) {
+		chip->voice_call_audio_enable = ucontrol->value.integer.value[0];
+	}
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static const char *dsp_state_texts[] = { "Idle", "Playback", "Telephony" };
 
 static int aoc_dsp_state_ctl_info(struct snd_kcontrol *kcontrol,
@@ -387,6 +417,8 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 
 	SOC_SINGLE_EXT("Voice Call Mic Mute", SND_SOC_NOPM, 0, 1, 0,
 		       voice_call_mic_mute_get, voice_call_mic_mute_set),
+	SOC_SINGLE_EXT("Voice Call Audio Enable", SND_SOC_NOPM, 0, 1, 0,
+		       voice_call_audio_enable_get, voice_call_audio_enable_set),
 
 	SOC_SINGLE_EXT("MIC0", SND_SOC_NOPM, BUILTIN_MIC0, 1, 0,
 		       mic_power_ctl_get, mic_power_ctl_set),

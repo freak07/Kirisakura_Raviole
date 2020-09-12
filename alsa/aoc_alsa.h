@@ -94,6 +94,7 @@ struct aoc_chip {
 	int old_volume; /* Store the volume value while muted */
 	int mute;
 	int voice_call_mic_mute;
+	int voice_call_audio_enable;
 
 	int mic_loopback_enabled;
 	unsigned int opened;

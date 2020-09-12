@@ -1492,6 +1492,7 @@ static int snd_aoc_create(struct aoc_chip **rchip)
 	}
 
 	chip->voice_call_mic_mute = 0;
+	chip->voice_call_audio_enable = 1;
 
 	mutex_init(&chip->audio_mutex);
 	spin_lock_init(&chip->audio_lock);
