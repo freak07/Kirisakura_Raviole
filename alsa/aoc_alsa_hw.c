@@ -819,6 +819,12 @@ int prepare_phonecall(struct aoc_alsa_stream *alsa_stream)
 	int err;
 	int src = alsa_stream->entry_point_idx;
 
+	/* TODO: check ptrs */
+	if (!alsa_stream->chip->voice_call_audio_enable) {
+		pr_info("phone call audio NOT enabled\n");
+		return 0;
+	}
+
 	pr_debug("prepare phone call - dev %d\n", alsa_stream->entry_point_idx);
 	if (src != 4)
 		return 0;
@@ -878,6 +884,9 @@ int teardown_phonecall(struct aoc_alsa_stream *alsa_stream)
 {
 	int err = 0;
 	int src = alsa_stream->entry_point_idx;
+
+	if (!alsa_stream->chip->voice_call_audio_enable)
+		return 0;
 
 	pr_debug("stop phone call - dev %d\n", alsa_stream->entry_point_idx);
 	if (src != 4)
