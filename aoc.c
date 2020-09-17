@@ -33,6 +33,7 @@
 #include <linux/of_address.h>
 #include <linux/platform_data/sscoredump.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/timer.h>
 #include <linux/uaccess.h>
@@ -1085,29 +1086,35 @@ static void aoc_configure_sysmmu(struct aoc_prvdata *p)
 {
 #ifndef AOC_JUNO
 	struct iommu_domain *domain = p->domain;
+	struct device *dev = p->dev;
 
 	iommu_set_fault_handler(domain, aoc_iommu_fault_handler, NULL);
 
 	/* Map in the AoC carveout */
-	iommu_map(domain, 0x98000000, p->dram_resource.start, p->dram_size,
-		  IOMMU_READ | IOMMU_WRITE);
+	if (iommu_map(domain, 0x98000000, p->dram_resource.start, p->dram_size,
+		      IOMMU_READ | IOMMU_WRITE))
+		dev_err(dev, "mapping carveout failed\n");
 
 	/* Use a 1MB mapping instead of individual mailboxes for now */
 	/* TODO: Turn the mailbox address ranges into dtb entries */
-	iommu_map(domain, 0x9A000000, 0x17600000, SZ_1M,
-		  IOMMU_READ | IOMMU_WRITE);
+	if (iommu_map(domain, 0x9A000000, 0x17600000, SZ_1M,
+		      IOMMU_READ | IOMMU_WRITE))
+		dev_err(dev, "mapping mailboxes failed\n");
 
 	/* Map in GSA mailbox */
-	iommu_map(domain, 0x9A100000, 0x17C00000, SZ_1M,
-		  IOMMU_READ | IOMMU_WRITE);
+	if (iommu_map(domain, 0x9A100000, 0x17C00000, SZ_1M,
+		      IOMMU_READ | IOMMU_WRITE))
+		dev_err(dev, "mapping gsa mailbox failed\n");
 
 	/* Map in USB for low power audio */
-	iommu_map(domain, 0x9A200000, 0x11100000, SZ_1M,
-		  IOMMU_READ | IOMMU_WRITE);
+	if (iommu_map(domain, 0x9A200000, 0x11100000, SZ_1M,
+		      IOMMU_READ | IOMMU_WRITE))
+		dev_err(dev, "mapping usb failed\n");
 
 	/* Map in modem registers */
-	iommu_map(domain, 0x9A300000, 0x40000000, SZ_1M,
-		  IOMMU_READ | IOMMU_WRITE);
+	if (iommu_map(domain, 0x9A300000, 0x40000000, SZ_1M,
+		      IOMMU_READ | IOMMU_WRITE))
+		dev_err(dev, "mapping modem failed\n");
 #endif
 }
 
@@ -1566,6 +1573,9 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	}
 
 #ifndef AOC_JUNO
+	pm_runtime_set_active(dev);
+	pm_runtime_enable(dev);
+
 	prvdata->domain = iommu_get_domain_for_dev(dev);
 	if (!prvdata->domain) {
 		pr_err("failed to find iommu domain\n");
