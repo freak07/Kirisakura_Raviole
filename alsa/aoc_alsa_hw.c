@@ -836,45 +836,17 @@ int prepare_phonecall(struct aoc_alsa_stream *alsa_stream)
 	}
 	pr_notice("modem input STARTED\n");
 
+	/* Rx */
+	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 8, 0);
+	if (err < 0) {
+		pr_err("ERR:%d Telephony Downlink bind fail\n", err);
+		goto exit;
+	}
+
 	/* Tx */
 	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 3, 3);
-	if (err < 0) {
-		pr_err("ERR:%d playback bind start fail\n", err);
-		goto exit;
-	}
-
-	/* refactor needed */
-	alsa_stream->entry_point_idx = 3;
-	err = aoc_audio_playback_set_params(alsa_stream, 2, 48000, 32, false);
-	alsa_stream->entry_point_idx = 4;
-	if (err < 0) {
-		pr_err("ERR:%d playback set params fail\n", err);
-		goto exit;
-	}
-
-	err = aoc_audio_playback_trigger_source(alsa_stream, VOICE_TX_MODE, 3);
-	if (err < 0) {
-		pr_err("ERR:%d playback source start fail\n", err);
-		goto exit;
-	}
-
-	/* Rx */
-	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 4, 0);
-	if (err < 0) {
-		pr_err("ERR:%d playback bind start fail\n", err);
-		goto exit;
-	}
-
-	err = aoc_audio_playback_set_params(alsa_stream, 2, 48000, 32, false);
-	if (err < 0) {
-		pr_err("ERR:%d playback set params fail\n", err);
-		goto exit;
-	}
-
-	err = aoc_audio_playback_trigger_source(alsa_stream, VOICE_RX_MODE, 4);
 	if (err < 0)
-		pr_err("ERR:%d playback source voice RX mode setup fail\n",
-		       err);
+		pr_err("ERR:%d Telephony Uplink bind fail\n", err);
 
 exit:
 	return err;
@@ -893,28 +865,15 @@ int teardown_phonecall(struct aoc_alsa_stream *alsa_stream)
 		return 0;
 
 	/* unbind */
-	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 4, 0);
-	if (err < 0) {
-		pr_err("ERR:%d playback bind stop fail\n", err);
-		goto exit;
-	}
-
 	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 3, 3);
 	if (err < 0) {
-		pr_err("ERR:%d playback bind stop fail\n", err);
+		pr_err("ERR:%d Telephony Uplink unbind fail\n", err);
 		goto exit;
 	}
 
-	/* source off */
-	err = aoc_audio_playback_trigger_source(alsa_stream, STOP, 4);
+	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 8, 0);
 	if (err < 0) {
-		pr_err("ERR:%d playback source stop fail\n", err);
-		goto exit;
-	}
-
-	err = aoc_audio_playback_trigger_source(alsa_stream, STOP, 3);
-	if (err < 0) {
-		pr_err("ERR:%d playback source stop fail\n", err);
+		pr_err("ERR:%d Telephony Donwlink unbind fail\n", err);
 		goto exit;
 	}
 
