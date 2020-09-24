@@ -1,12 +1,12 @@
 #
 # ASoC-based ALSA driver gluing all the audio amplifier drivers
 #
-obj-$(CONFIG_AOC_DRIVER) += snd_soc_google_aoc.o
-obj-$(CONFIG_AOC_DRIVER) += snd_soc_google_aoc_util.o
-snd_soc_google_aoc_util-objs := aoc_alsa_path.o aoc_alsa_drv.o \
+obj-$(CONFIG_AOC_DRIVER) += aoc_alsa_dev.o
+obj-$(CONFIG_AOC_DRIVER) += aoc_alsa_dev_util.o
+aoc_alsa_dev_util-objs := aoc_alsa_path.o aoc_alsa_drv.o \
                                 aoc_alsa_pcm.o aoc_alsa_voice.o \
                                 aoc_alsa_compr.o aoc_alsa_ctl.o aoc_alsa_hw.o
-snd_soc_google_aoc-objs := aoc_alsa_card.o
+aoc_alsa_dev-objs := aoc_alsa_card.o
 
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 M ?= $(shell pwd)
