@@ -114,9 +114,9 @@ static int aocc_demux_kthread(void *data)
 
 		INIT_LIST_HEAD(&node->msg_list);
 
-		/* Attempt to read from the service */
+		/* Attempt to read from the service, and block if we can't. */
 		retval = aoc_service_read(service, node->msg_buffer,
-					  AOCC_MAX_MSG_SIZE, false);
+					  AOCC_MAX_MSG_SIZE, true);
 
 		if (retval < 0 || retval < sizeof(int)) {
 			pr_err("Read failed with %ld", retval);
@@ -197,7 +197,7 @@ static void aocc_send_cmd_msg(aoc_service *service_id, enum aoc_cmd_code code,
 	msg.command_code = code;
 	msg.channel_to_modify = channel_to_modify;
 
-	aoc_service_write(service_id, (char *)&msg, sizeof(msg), false);
+	aoc_service_write(service_id, (char *)&msg, sizeof(msg), true);
 }
 
 /* File methods */
@@ -433,6 +433,7 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 			  size_t count, loff_t *off)
 {
 	struct file_prvdata *private = file->private_data;
+	bool should_block = ((file->f_flags & O_NONBLOCK) == 0);
 	char *buffer;
 	size_t leftover;
 	ssize_t retval = 0;
@@ -450,7 +451,7 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 	leftover = copy_from_user(buffer + sizeof(int), buf, count);
 	if (leftover == 0) {
 		retval = aoc_service_write(private->service, buffer,
-					   count + sizeof(int), false);
+					   count + sizeof(int), should_block);
 	} else {
 		retval = -ENOMEM;
 	}
