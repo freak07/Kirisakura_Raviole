@@ -308,7 +308,11 @@ static int hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 		hw_param_interval(params, SNDRV_PCM_HW_PARAM_RATE);
 	struct snd_interval *channels =
 		hw_param_interval(params, SNDRV_PCM_HW_PARAM_CHANNELS);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+#else
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+#endif
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id);
 	u32 sr, ch;
 	snd_pcm_format_t fmt;
@@ -341,29 +345,47 @@ static int hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 static int i2s_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai **codec_dais = rtd->codec_dais;
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	struct snd_soc_dai_link *dai_link = rtd->dai_link;
-	int i, ret;
+	int ret;
+	unsigned int i;
+	struct snd_soc_dai *cpu_dai;
+	struct snd_soc_dai *codec_dai;
 
 	pr_debug("i2s startup\n");
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+	for_each_rtd_cpu_dais(rtd, i, cpu_dai) {
+		ret = snd_soc_dai_set_fmt(cpu_dai, dai_link->dai_fmt);
+		if (ret && ret != -ENOTSUPP) {
+			pr_warn("%s: set fmt 0x%x for %s fail %d", __func__,
+				dai_link->dai_fmt, cpu_dai->name, ret);
+		}
+	}
+#else
+	cpu_dai = rtd->cpu_dai;
 	ret = snd_soc_dai_set_fmt(cpu_dai, dai_link->dai_fmt);
 	if (ret && ret != -ENOTSUPP) {
 		pr_warn("%s: set fmt 0x%x for %s fail %d", __func__,
 			dai_link->dai_fmt, cpu_dai->name, ret);
 	}
+#endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+	for_each_rtd_codec_dais(rtd, i, codec_dai) {
+#else
 	for (i = 0; i < rtd->num_codecs; i++) {
-		ret = snd_soc_dai_set_fmt(codec_dais[i], dai_link->dai_fmt);
+		codec_dai = rtd->codec_dais[i];
+#endif
+		ret = snd_soc_dai_set_fmt(codec_dai, dai_link->dai_fmt);
 
 		pr_debug("dai_link->dai_fmt = %u\n", dai_link->dai_fmt);
 
 		if (ret && ret != -ENOTSUPP) {
 			pr_warn("%s: set fmt 0x%x for %s fail %d", __func__,
-				dai_link->dai_fmt, codec_dais[i]->name, ret);
+				dai_link->dai_fmt, codec_dai->name, ret);
 		}
 	}
+
 	return 0;
 }
 
@@ -376,11 +398,16 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 			 struct snd_pcm_hw_params *param)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *codec_dai;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+#else
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	struct snd_soc_dai **codec_dais = rtd->codec_dais;
+#endif
 	struct snd_soc_jack *jack;
 	u32 rate, clk, channel;
-	int i, bit_width, ret, clk_id;
+	int bit_width, ret, clk_id;
+	unsigned int i;
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id);
 
 	struct aoc_chip *chip =
@@ -405,57 +432,72 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 	rate = params_rate(param);
 	clk = rate * ((u32)bit_width) * channel;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+	for_each_rtd_cpu_dais(rtd, i, cpu_dai) {
+		ret = snd_soc_dai_set_sysclk(cpu_dai, 0,
+			clk, SND_SOC_CLOCK_OUT);
+		if (ret && ret != -ENOTSUPP)
+			pr_warn("%s: set cpu_dai %s fail %d", __func__,
+				cpu_dai->name,	ret);
+	}
+#else
 	ret = snd_soc_dai_set_sysclk(cpu_dai, 0, clk, SND_SOC_CLOCK_OUT);
 	if (ret && ret != -ENOTSUPP)
 		pr_warn("%s: set cpu_dai %s fail %d", __func__, cpu_dai->name,
 			ret);
+#endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+	for_each_rtd_cpu_dais(rtd, i, codec_dai) {
+#else
 	for (i = 0; i < rtd->num_codecs; i++) {
-		ret = snd_soc_dai_set_sysclk(codec_dais[i], clk_id, clk,
+		codec_dai = rtd->codec_dais[i];
+#endif
+		ret = snd_soc_dai_set_sysclk(codec_dai, clk_id, clk,
 					     SND_SOC_CLOCK_IN);
 		if (ret && ret != -ENOTSUPP)
 			pr_warn("%s: set codec_dai clk %s fail %d", __func__,
-				codec_dais[i]->name, ret);
+				codec_dai->name, ret);
 
 		//TODO  to set it up for RT5682
-		//ret = soc_dai_hw_params(substream, param, codec_dais[i]); //
-		ret = snd_soc_dai_set_fmt(codec_dais[i],
+		//ret = soc_dai_hw_params(substream, param, codec_dai[i]); //
+		ret = snd_soc_dai_set_fmt(codec_dai,
 					  SND_SOC_DAIFMT_CBS_CFS |
 						  SND_SOC_DAIFMT_I2S);
 		if (ret && ret != -ENOTSUPP)
 			pr_warn("%s: set codec_dai set fmt %s fail %d",
-				__func__, codec_dais[i]->name, ret);
+				__func__, codec_dai->name, ret);
 
 		ret = -1;
-		if (codec_dais[i]->driver->ops &&
-		    codec_dais[i]->driver->ops->hw_params) {
-			ret = codec_dais[i]->driver->ops->hw_params(
-				substream, param, codec_dais[i]);
+		if (codec_dai->driver->ops &&
+			codec_dai->driver->ops->hw_params) {
+			ret = codec_dai->driver->ops->hw_params(
+				substream, param, codec_dai);
 		}
 		if (ret && ret != -ENOTSUPP)
 			pr_warn("%s: set codec_dai hw_params %s fail %d",
-				__func__, codec_dais[i]->name, ret);
+				__func__, codec_dai->name, ret);
 
-		ret = snd_soc_dai_set_tdm_slot(codec_dais[i], 0x0, 0x0, 2, 32);
+		ret = snd_soc_dai_set_tdm_slot(codec_dai, 0x0, 0x0, 2, 32);
 		if (ret && ret != -ENOTSUPP)
 			pr_warn("%s: set codec set_tdm_slot %s fail %d",
-				__func__, codec_dais[i]->name, ret);
+				__func__, codec_dai->name, ret);
 
 		ret = snd_soc_component_set_pll(
-			codec_dais[i]->component, 0,
+			codec_dai->component, 0,
 			RT5682_PLL1_S_BCLK1, (48000 * 64), (48000 * 512));
 		if (ret && ret != -ENOTSUPP) {
 			pr_warn("%s: set codec pll clk %s fail %d", __func__,
-				codec_dais[i]->name, ret);
+				codec_dai->name, ret);
 		}
 
-		ret = snd_soc_component_set_sysclk(codec_dais[i]->component,
+		ret = snd_soc_component_set_sysclk(codec_dai->component,
 						   RT5682_SCLK_S_PLL1, 0,
 						   (48000 * 512),
 						   SND_SOC_CLOCK_IN);
 		if (ret && ret != -ENOTSUPP) {
 			pr_warn("%s: set codec clk %s fail %d", __func__,
-				codec_dais[i]->name, ret);
+				codec_dai->name, ret);
 		}
 
 		/*
@@ -480,7 +522,7 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 		snd_jack_set_key(jack->jack, SND_JACK_BTN_2, KEY_VOLUMEUP);
 		snd_jack_set_key(jack->jack, SND_JACK_BTN_3, KEY_VOLUMEDOWN);
 		pr_notice("rt5682 set jack\n");
-		ret = snd_soc_component_set_jack(codec_dais[i]->component, jack,
+		ret = snd_soc_component_set_jack(codec_dai->component, jack,
 						 NULL);
 		if (ret) {
 			dev_err(rtd->dev, "Headset Jack call-back failed: %d\n",
@@ -495,10 +537,15 @@ static int tdm_hw_params(struct snd_pcm_substream *substream,
 			 struct snd_pcm_hw_params *param)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+#else
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	struct snd_soc_dai **codec_dais = rtd->codec_dais;
+#endif
+	struct snd_soc_dai *codec_dai;
 	u32 rate, clk, channel, tdmslot;
-	int i, bit_width, ret, slot_width, clk_id;
+	int bit_width, ret, slot_width, clk_id;
+	unsigned int i;
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id);
 
 	pr_debug("%s: startup\n", __func__);
@@ -531,24 +578,39 @@ static int tdm_hw_params(struct snd_pcm_substream *substream,
 	pr_debug("ch %u tdm slot %u bit %d, slot_bit %d", channel, tdmslot,
 		bit_width, slot_width);
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+	for_each_rtd_cpu_dais(rtd, i, cpu_dai) {
+		ret = snd_soc_dai_set_sysclk(cpu_dai, 0, clk,
+			SND_SOC_CLOCK_OUT);
+		if (ret && ret != -ENOTSUPP)
+			pr_warn("%s: set cpu_dai %s fail %d", __func__,
+				cpu_dai->name,	ret);
+	}
+#else
 	ret = snd_soc_dai_set_sysclk(cpu_dai, 0, clk, SND_SOC_CLOCK_OUT);
 	if (ret && ret != -ENOTSUPP)
 		pr_warn("%s: set cpu_dai %s fail %d", __func__, cpu_dai->name,
 			ret);
+#endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+	for_each_rtd_cpu_dais(rtd, i, codec_dai) {
+#else
 	for (i = 0; i < rtd->num_codecs; i++) {
-		ret = snd_soc_dai_set_sysclk(codec_dais[i], clk_id, clk,
+		codec_dai = rtd->codec_dais[i];
+#endif
+		ret = snd_soc_dai_set_sysclk(codec_dai, clk_id, clk,
 					     SND_SOC_CLOCK_IN);
 		if (ret && ret != -ENOTSUPP)
 			pr_warn("%s: set codec_dai clk %s fail %d", __func__,
-				codec_dais[i]->name, ret);
+				codec_dai->name, ret);
 		//Do we need to consider the redundant case?
-		ret = snd_soc_component_set_sysclk(codec_dais[i]->component,
+		ret = snd_soc_component_set_sysclk(codec_dai->component,
 						   clk_id, 0, clk,
 						   SND_SOC_CLOCK_IN);
 		if (ret && ret != -ENOTSUPP)
 			pr_warn("%s: set codec clk %s fail %d", __func__,
-				codec_dais[i]->name, ret);
+				codec_dai->name, ret);
 	}
 	return 0;
 }
@@ -1216,17 +1278,23 @@ static int of_parse_one_codec_cfg(struct device_node *node,
 				  struct snd_soc_codec_conf *codec_cfg)
 {
 	int ret = 0;
+	struct device_node *of_node;
 
 	if (!node || !codec_cfg)
 		return -EINVAL;
 
-	codec_cfg->of_node = of_parse_phandle(node, "of_node", 0);
-	if (!codec_cfg->of_node) {
+	of_node = of_parse_phandle(node, "of_node", 0);
+	if (!of_node) {
 		pr_err("%s: fail to get of_node for %s", __func__, node->name);
 		ret = -EINVAL;
 		goto err;
 	}
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+	codec_cfg->dlc.of_node = of_node;
+#else
+	codec_cfg->of_node = of_node;
+#endif
 	ret = of_property_read_string(node, "prefix", &codec_cfg->name_prefix);
 	if (ret) {
 		pr_err("%s: fail to get prefix for %s %d", __func__, node->name,
@@ -1354,6 +1422,7 @@ static int aoc_card_late_probe(struct snd_soc_card *card)
 		(struct aoc_chip *)snd_soc_card_get_drvdata(card);
 	int err, i;
 	struct snd_soc_pcm_runtime *rtd;
+	struct snd_soc_dai *cpu_dai;
 	u32 id;
 
 	chip->card = card->snd_card;
@@ -1382,7 +1451,12 @@ static int aoc_card_late_probe(struct snd_soc_card *card)
 			    !be_res_map[id].controls)
 				continue;
 
-			snd_soc_add_dai_controls(rtd->cpu_dai,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+			cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+#else
+			cpu_dai = rtd->cpu_dai;
+#endif
+			snd_soc_add_dai_controls(cpu_dai,
 						 be_res_map[id].controls,
 						 be_res_map[id].num_controls);
 		}

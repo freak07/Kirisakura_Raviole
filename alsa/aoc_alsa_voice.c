@@ -63,7 +63,7 @@ static void snd_aoc_pcm_free(struct snd_pcm_runtime *runtime)
 }
 
 /* PCM open callback */
-static int snd_aoc_pcm_open(struct snd_pcm_substream *substream)
+static int snd_aoc_pcm_open(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd =
 		(struct snd_soc_pcm_runtime *)substream->private_data;
@@ -142,7 +142,7 @@ out:
 
 
 /* Close callback */
-static int snd_aoc_pcm_close(struct snd_pcm_substream *substream)
+static int snd_aoc_pcm_close(EXTRA_ARG_LINUX_5_9  struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -202,7 +202,7 @@ static int snd_aoc_pcm_close(struct snd_pcm_substream *substream)
 }
 
 /* PCM hw_params callback */
-static int snd_aoc_pcm_hw_params(struct snd_pcm_substream *substream,
+static int snd_aoc_pcm_hw_params(EXTRA_ARG_LINUX_5_9  struct snd_pcm_substream *substream,
 				 struct snd_pcm_hw_params *params)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -229,13 +229,13 @@ static int snd_aoc_pcm_hw_params(struct snd_pcm_substream *substream,
 }
 
 /* PCM hw_free callback */
-static int snd_aoc_pcm_hw_free(struct snd_pcm_substream *substream)
+static int snd_aoc_pcm_hw_free(EXTRA_ARG_LINUX_5_9  struct snd_pcm_substream *substream)
 {
 	return snd_pcm_lib_free_pages(substream);
 }
 
 /* PCM prepare callback */
-static int snd_aoc_pcm_prepare(struct snd_pcm_substream *substream)
+static int snd_aoc_pcm_prepare(EXTRA_ARG_LINUX_5_9  struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
@@ -279,6 +279,7 @@ static int snd_aoc_pcm_prepare(struct snd_pcm_substream *substream)
 	return err;
 }
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0))
 static const struct snd_pcm_ops snd_aoc_pcm_ops = {
 	.open = snd_aoc_pcm_open,
 	.close = snd_aoc_pcm_close,
@@ -286,8 +287,9 @@ static const struct snd_pcm_ops snd_aoc_pcm_ops = {
 	.hw_free = snd_aoc_pcm_hw_free,
 	.prepare = snd_aoc_pcm_prepare,
 };
+#endif
 
-static int aoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
+static int aoc_pcm_new(EXTRA_ARG_LINUX_5_9 struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_pcm_substream *substream = NULL;
 	/* Allocate DMA memory */
@@ -314,7 +316,17 @@ static int aoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
-#if (KERNEL_VERSION(4, 18, 0) <= LINUX_VERSION_CODE)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+static const struct snd_soc_component_driver aoc_pcm_component = {
+	.name = "AoC VOICE",
+	.open = snd_aoc_pcm_open,
+	.close = snd_aoc_pcm_close,
+	.hw_params = snd_aoc_pcm_hw_params,
+	.hw_free = snd_aoc_pcm_hw_free,
+	.prepare = snd_aoc_pcm_prepare,
+	.pcm_construct = aoc_pcm_new,
+};
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
 static const struct snd_soc_component_driver aoc_pcm_component = {
 	.name = "AoC VOICE",
 	.ops = &snd_aoc_pcm_ops,

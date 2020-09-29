@@ -238,7 +238,7 @@ static int aoc_compr_playback_free(struct snd_compr_stream *cstream)
 	return 0;
 }
 
-static int aoc_compr_open(struct snd_compr_stream *cstream)
+static int aoc_compr_open(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream)
 {
 	int ret = 0;
 	if (cstream->direction == SND_COMPRESS_PLAYBACK)
@@ -247,7 +247,7 @@ static int aoc_compr_open(struct snd_compr_stream *cstream)
 	return ret;
 }
 
-static int aoc_compr_free(struct snd_compr_stream *cstream)
+static int aoc_compr_free(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream)
 {
 	int ret = 0;
 	if (cstream->direction == SND_COMPRESS_PLAYBACK)
@@ -280,7 +280,7 @@ static int aoc_compr_prepare(struct snd_compr_stream *cstream)
 	return 0;
 }
 
-static int aoc_compr_trigger(struct snd_compr_stream *cstream, int cmd)
+static int aoc_compr_trigger(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream, int cmd)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
 	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
@@ -363,7 +363,7 @@ out:
 	return err;
 }
 
-static int aoc_compr_pointer(struct snd_compr_stream *cstream,
+static int aoc_compr_pointer(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream,
 			     struct snd_compr_tstamp *arg)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
@@ -387,7 +387,7 @@ static int aoc_compr_pointer(struct snd_compr_stream *cstream,
 	return 0;
 }
 
-static int aoc_compr_ack(struct snd_compr_stream *cstream, size_t count)
+static int aoc_compr_ack(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream, size_t count)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
 
@@ -412,7 +412,7 @@ static int aoc_compr_playback_copy(struct snd_compr_stream *cstream,
 	return count;
 }
 
-static int aoc_compr_copy(struct snd_compr_stream *cstream, char __user *buf,
+static int aoc_compr_copy(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream, char __user *buf,
 			  size_t count)
 {
 	int ret = 0;
@@ -423,7 +423,7 @@ static int aoc_compr_copy(struct snd_compr_stream *cstream, char __user *buf,
 	return ret;
 }
 
-static int aoc_compr_get_caps(struct snd_compr_stream *cstream,
+static int aoc_compr_get_caps(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream,
 			      struct snd_compr_caps *arg)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
@@ -434,7 +434,7 @@ static int aoc_compr_get_caps(struct snd_compr_stream *cstream,
 	return ret;
 }
 
-static int aoc_compr_get_codec_caps(struct snd_compr_stream *cstream,
+static int aoc_compr_get_codec_caps(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream,
 				    struct snd_compr_codec_caps *codec)
 {
 	pr_debug("%s, %d\n", __func__, codec->codec);
@@ -453,7 +453,7 @@ static int aoc_compr_get_codec_caps(struct snd_compr_stream *cstream,
 	return 0;
 }
 
-static int aoc_compr_set_metadata(struct snd_compr_stream *cstream,
+static int aoc_compr_set_metadata(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream,
 				  struct snd_compr_metadata *metadata)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
@@ -464,7 +464,7 @@ static int aoc_compr_set_metadata(struct snd_compr_stream *cstream,
 	return ret;
 }
 
-static int aoc_compr_get_metadata(struct snd_compr_stream *cstream,
+static int aoc_compr_get_metadata(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream,
 				  struct snd_compr_metadata *metadata)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
@@ -475,7 +475,7 @@ static int aoc_compr_get_metadata(struct snd_compr_stream *cstream,
 	return ret;
 }
 
-static int aoc_compr_set_params(struct snd_compr_stream *cstream,
+static int aoc_compr_set_params(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream,
 				struct snd_compr_params *params)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
@@ -508,7 +508,11 @@ static int aoc_compr_set_params(struct snd_compr_stream *cstream,
 	return 0;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+static const struct snd_compress_ops snd_aoc_compr_ops = {
+#else
 static const struct snd_compr_ops snd_aoc_compr_ops = {
+#endif
 	.open = aoc_compr_open,
 	.free = aoc_compr_free,
 	.set_params = aoc_compr_set_params,
@@ -522,14 +526,20 @@ static const struct snd_compr_ops snd_aoc_compr_ops = {
 	.get_codec_caps = aoc_compr_get_codec_caps,
 };
 
-static int aoc_compr_new(struct snd_soc_pcm_runtime *rtd)
+static int aoc_compr_new(EXTRA_ARG_LINUX_5_9 struct snd_soc_pcm_runtime *rtd)
 {
 	pr_debug("%s, %pK", __func__, rtd);
 
 	return 0;
 }
 
-#if (KERNEL_VERSION(4, 18, 0) <= LINUX_VERSION_CODE)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+static const struct snd_soc_component_driver aoc_compr_component = {
+	.name = "AoC COMPR",
+	.compress_ops = &snd_aoc_compr_ops,
+	.pcm_construct = aoc_compr_new,
+};
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
 static const struct snd_soc_component_driver aoc_compr_component = {
 	.name = "AoC COMPR",
 	.compr_ops = &snd_aoc_compr_ops,
@@ -553,7 +563,7 @@ static int aoc_compr_probe(struct platform_device *pdev)
 	if (!np)
 		return -EINVAL;
 
-#if (KERNEL_VERSION(4, 18, 0) <= LINUX_VERSION_CODE)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
 	err = devm_snd_soc_register_component(dev, &aoc_compr_component, NULL,
 					      0);
 	if (err)

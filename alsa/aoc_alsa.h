@@ -22,10 +22,17 @@
 #include <sound/control.h>
 #include <sound/jack.h>
 #include <sound/soc.h>
+#include <linux/version.h>
 
 #include <sound/compress_params.h>
 #include <sound/compress_offload.h>
 #include <sound/compress_driver.h>
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+#define EXTRA_ARG_LINUX_5_9 struct snd_soc_component *component,
+#else
+#define EXTRA_ARG_LINUX_5_9
+#endif
 
 #define ALSA_AOC_CMD "alsa-aoc"
 #define CMD_INPUT_CHANNEL "audio_input_control"
