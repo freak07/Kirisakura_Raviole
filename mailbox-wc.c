@@ -229,7 +229,7 @@ static int wc_mbox_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	region_size = ((base->end - base->start) + 1);
-	prvdata->base = devm_ioremap_nocache(dev, base->start, region_size);
+	prvdata->base = devm_ioremap(dev, base->start, region_size);
 	prvdata->interrupt = interrupt;
 	prvdata->shared_registers = 8;
 	prvdata->mbox = mbox;
