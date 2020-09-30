@@ -254,6 +254,38 @@ int aoc_mic_hw_gain_get(struct aoc_chip *chip, int state)
 	return cmd.mic_hw_gain_cb;
 }
 
+int aoc_mic_hw_gain_set(struct aoc_chip *chip, int state, int gain)
+{
+	int err;
+	/* TODO: the cmd structures for 3 states differ only in names */
+	struct CMD_AUDIO_INPUT_SET_MIC_LOW_POWER_HW_GAIN cmd;
+	int cmd_id;
+
+	switch (state) {
+	case MIC_LOW_POWER_GAIN:
+		cmd_id = CMD_AUDIO_INPUT_SET_MIC_LOW_POWER_HW_GAIN_ID;
+		break;
+	case MIC_HIGH_POWER_GAIN:
+		cmd_id = CMD_AUDIO_INPUT_SET_MIC_HIGH_POWER_HW_GAIN_ID;
+		break;
+	default:
+		cmd_id = CMD_AUDIO_INPUT_SET_MIC_LOW_POWER_HW_GAIN_ID;
+	}
+
+	AocCmdHdrSet(&(cmd.parent), cmd_id, sizeof(cmd));
+	cmd.mic_hw_gain_cb = gain;
+	pr_debug("power state =%d, gain = %d\n", state, cmd.mic_hw_gain_cb);
+
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+				(uint8_t *)&cmd, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in set mic hw gain\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
 int aoc_mic_dc_blocker_get(struct aoc_chip *chip)
 {
 	int err;
