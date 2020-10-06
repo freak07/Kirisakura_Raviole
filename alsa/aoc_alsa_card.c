@@ -448,7 +448,7 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 #endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
-	for_each_rtd_cpu_dais(rtd, i, codec_dai) {
+	for_each_rtd_codec_dais(rtd, i, codec_dai) {
 #else
 	for (i = 0; i < rtd->num_codecs; i++) {
 		codec_dai = rtd->codec_dais[i];
@@ -594,7 +594,7 @@ static int tdm_hw_params(struct snd_pcm_substream *substream,
 #endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
-	for_each_rtd_cpu_dais(rtd, i, codec_dai) {
+	for_each_rtd_codec_dais(rtd, i, codec_dai) {
 #else
 	for (i = 0; i < rtd->num_codecs; i++) {
 		codec_dai = rtd->codec_dais[i];
