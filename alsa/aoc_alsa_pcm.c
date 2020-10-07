@@ -284,8 +284,7 @@ static int snd_aoc_pcm_open(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *substr
 		     HRTIMER_MODE_REL);
 	alsa_stream->hr_timer.function = &aoc_pcm_hrtimer_irq_handler;
 
-	/* TODO: refactor needed on mapping between device number and entrypoint */
-	alsa_stream->entry_point_idx = (idx == 7) ? HAPTICS : idx;
+	alsa_stream->entry_point_idx = substream->pcm->device;
 	mutex_unlock(&chip->audio_mutex);
 
 	return 0;
