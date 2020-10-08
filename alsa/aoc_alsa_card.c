@@ -37,73 +37,86 @@
 extern int snd_soc_component_set_jack(struct snd_soc_component *component,
 				      struct snd_soc_jack *jack, void *data);
 
-static struct aoc_chip *g_chip = NULL;
+#define MK_BE_PARAMS(id, fmt, chan, sr)				\
+	[AOC_ID_TO_INDEX(id)] =					\
+		{ .format = fmt, .channel = chan, .rate = sr },
 
-#define MK_BE_PARAMS(id, fmt, chan, sr)                                        \
-	[id] = { .format = fmt, .channel = chan, .rate = sr, .clk_id = 0 },
+#define MK_TDM_BE_PARAMS(id, fmt, chan, sr, nslot, slotfmt)		\
+	[AOC_ID_TO_INDEX(id)] = { .format = fmt,			\
+		 .channel = chan,					\
+		 .rate = sr,						\
+		 .slot_num = nslot,					\
+		 .slot_fmt = slotfmt },
 
-#define MK_TDM_BE_PARAMS(id, fmt, chan, sr, nslot, slotfmt)                    \
-	[id] = { .format = fmt,                                                \
-		 .channel = chan,                                              \
-		 .rate = sr,                                                   \
-		 .slot_num = nslot,                                            \
-		 .slot_fmt = slotfmt,                                          \
-		 .clk_id = 0 },
-
-#define MK_HW_SR_CTRL(port, xenum, xget, xput)                                 \
+#define MK_HW_SR_CTRL(port, xenum, xget, xput)			\
 	SOC_ENUM_EXT(port " Sample Rate", xenum, xget, xput),
 
-#define MK_HW_FMT_CTRL(port, xenum, xget, xput)                                \
+#define MK_HW_FMT_CTRL(port, xenum, xget, xput)			\
 	SOC_ENUM_EXT(port " Format", xenum, xget, xput),
 
-#define MK_HW_CH_CTRL(port, xenum, xget, xput)                                 \
+#define MK_HW_CH_CTRL(port, xenum, xget, xput)			\
 	SOC_ENUM_EXT(port " Chan", xenum, xget, xput),
 
-#define MK_HW_SLOT_NUM_CTRL(port, xenum, xget, xput)                           \
+#define MK_HW_SLOT_NUM_CTRL(port, xenum, xget, xput)			\
 	SOC_ENUM_EXT(port " nSlot", xenum, xget, xput),
 
-#define MK_HW_SLOT_FMT_CTRL(port, xenum, xget, xput)                           \
+#define MK_HW_SLOT_FMT_CTRL(port, xenum, xget, xput)			\
 	SOC_ENUM_EXT(port " SlotFmt", xenum, xget, xput),
 
-#define MK_HW_PARAM_CTRLS(port, name)                                          \
-	static const struct snd_kcontrol_new port##_ctrls[] = {                \
-		MK_HW_SR_CTRL(name, enum_sr, aoc_be_sr_get, aoc_be_sr_put)     \
-			MK_HW_FMT_CTRL(name, enum_fmt, aoc_be_fmt_get,         \
-				       aoc_be_fmt_put)                         \
-				MK_HW_CH_CTRL(name, enum_ch, aoc_be_ch_get,    \
-					      aoc_be_ch_put)                   \
-	};
+#define MK_HW_PARAM_CTRLS(port, name)					\
+	static const struct snd_kcontrol_new _##port##_ctrls[] = {	\
+		MK_HW_SR_CTRL(name, enum_sr, aoc_be_sr_get,		\
+			aoc_be_sr_put)					\
+		MK_HW_FMT_CTRL(name, enum_fmt, aoc_be_fmt_get,	\
+				aoc_be_fmt_put)			\
+		MK_HW_CH_CTRL(name, enum_ch, aoc_be_ch_get,		\
+				aoc_be_ch_put)				\
+	}
 
-#define MK_TDM_HW_PARAM_CTRLS(port, name)                                      \
-	static const struct snd_kcontrol_new port##_ctrls[] = {                \
-		MK_HW_SR_CTRL(name, enum_sr, aoc_be_sr_get,                    \
-			      aoc_be_sr_put) MK_HW_FMT_CTRL(name, enum_fmt,    \
-							    aoc_be_fmt_get,    \
-							    aoc_be_fmt_put)    \
-			MK_HW_CH_CTRL(name, enum_ch, aoc_be_ch_get,            \
-				      aoc_be_ch_put)                           \
-				MK_HW_SLOT_NUM_CTRL(name, enum_ch,             \
-						    aoc_slot_num_get,          \
-						    aoc_slot_num_put)          \
-					MK_HW_SLOT_FMT_CTRL(name, enum_fmt,    \
-							    aoc_slot_fmt_get,  \
-							    aoc_slot_fmt_put)  \
-	};
+#define MK_TDM_HW_PARAM_CTRLS(port, name)				\
+	static const struct snd_kcontrol_new _##port##_ctrls[] = {	\
+		MK_HW_SR_CTRL(name, enum_sr, aoc_be_sr_get,		\
+				aoc_be_sr_put)				\
+		MK_HW_FMT_CTRL(name, enum_fmt, aoc_be_fmt_get,	\
+				aoc_be_fmt_put)   \
+		MK_HW_CH_CTRL(name, enum_ch, aoc_be_ch_get,		\
+				aoc_be_ch_put)				\
+		MK_HW_SLOT_NUM_CTRL(name, enum_ch, aoc_slot_num_get,	\
+				aoc_slot_num_put)			\
+		MK_HW_SLOT_FMT_CTRL(name, enum_fmt,			\
+			aoc_slot_fmt_get, aoc_slot_fmt_put)		\
+	}
 
-#define HW_PARAM_CTRLS_SIZE(port) ARRAY_SIZE(port##_ctrls)
 
-#define MK_BE_RES_ITEM(port, xops, xfixup)                                     \
-	[port] = {                                                             \
-		.ops = xops,                                                   \
-		.fixup = xfixup,                                               \
-		.num_controls = HW_PARAM_CTRLS_SIZE(port),                     \
-		.controls = port##_ctrls,                                      \
+#define MK_BE_RES_ITEM(port, xops, xfixup)				\
+	[AOC_ID_TO_INDEX(port)] = {					\
+		.ops = xops,						\
+		.fixup = xfixup,					\
+		.num_controls = ARRAY_SIZE(_##port##_ctrls),		\
+		.controls = _##port##_ctrls,				\
 	},
 
 #define MK_STR_MAP(xstr, xval) { .str = xstr, .value = xval },
 
 typedef int (*fixup_fn)(struct snd_soc_pcm_runtime *,
 			struct snd_pcm_hw_params *);
+
+enum {
+	SRC_MCLK = 0,
+	SRC_BCLK,
+	SRC_PLL,
+};
+
+struct clk_ctrl {
+	u32 src;
+	u32 fix_clk;
+	int id;
+	int srcid;
+	int in_mul;
+	int out_mul;
+	int dai_id;
+	struct device_node *np;
+};
 
 struct dai_link_res_map {
 	const struct snd_soc_ops *ops;
@@ -118,7 +131,21 @@ struct be_param_cache {
 	u32 rate;
 	u32 slot_num;
 	u32 slot_fmt;
-	u32 clk_id;
+};
+
+struct snd_card_pdata {
+	struct aoc_chip g_chip;
+	bool has_jack;
+	bool jack_init;
+	u32 jack_be_id;
+	u32 sys_clk_num;
+	u32 pll_clk_num;
+	struct mutex mutex;
+	struct be_param_cache be_params[PORT_MAX];
+	struct snd_soc_jack jack;
+	struct device_node *jack_np;
+	struct clk_ctrl *sys_clks;
+	struct clk_ctrl *pll_clks;
 };
 
 struct str_to_val {
@@ -137,7 +164,6 @@ static int hw_params_fixup(struct snd_soc_pcm_runtime *,
 static int tdm_hw_params(struct snd_pcm_substream *substream,
 			 struct snd_pcm_hw_params *param);
 
-static struct mutex card_mutex;
 
 static const struct snd_soc_ops aoc_i2s_ops = {
 	.startup = i2s_startup,
@@ -151,29 +177,43 @@ static const struct snd_soc_ops aoc_tdm_ops = {
 	.hw_params = tdm_hw_params,
 };
 
+static const struct str_to_val clksrc_map[] = {
+	MK_STR_MAP("MCLK", SRC_MCLK)
+	MK_STR_MAP("BCLK", SRC_BCLK)
+	MK_STR_MAP("PLL", SRC_PLL)
+};
+
 static const struct str_to_val sr_map[] = {
-	MK_STR_MAP("SR_8K", 8000) MK_STR_MAP("SR_11P025K", 11025) MK_STR_MAP(
-		"SR_16K", 16000) MK_STR_MAP("SR_22P05K", 22050)
-		MK_STR_MAP("SR_32K", 32000) MK_STR_MAP("SR_44P1K", 44100)
-			MK_STR_MAP("SR_48K", 48000) MK_STR_MAP(
-				"SR_88P2K", 88200) MK_STR_MAP("SR_96K", 96000)
-				MK_STR_MAP("SR_176P4K", 176400)
-					MK_STR_MAP("SR_192K", 192000)
+	MK_STR_MAP("SR_8K", 8000)
+	MK_STR_MAP("SR_11P025K", 11025)
+	MK_STR_MAP("SR_16K", 16000)
+	MK_STR_MAP("SR_22P05K", 22050)
+	MK_STR_MAP("SR_32K", 32000)
+	MK_STR_MAP("SR_44P1K", 44100)
+	MK_STR_MAP("SR_48K", 48000)
+	MK_STR_MAP("SR_88P2K", 88200)
+	MK_STR_MAP("SR_96K", 96000)
+	MK_STR_MAP("SR_176P4K", 176400)
+	MK_STR_MAP("SR_192K", 192000)
 };
 
 static const struct str_to_val fmt_map[] = {
 	MK_STR_MAP("S16_LE", SNDRV_PCM_FORMAT_S16_LE)
-		MK_STR_MAP("S24_LE", SNDRV_PCM_FORMAT_S24_LE)
-			MK_STR_MAP("S24_3LE", SNDRV_PCM_FORMAT_S24_3LE)
-				MK_STR_MAP("S32_LE", SNDRV_PCM_FORMAT_S32_LE)
-					MK_STR_MAP("FLOAT_LE",
-						   SNDRV_PCM_FORMAT_FLOAT_LE)
+	MK_STR_MAP("S24_LE", SNDRV_PCM_FORMAT_S24_LE)
+	MK_STR_MAP("S24_3LE", SNDRV_PCM_FORMAT_S24_3LE)
+	MK_STR_MAP("S32_LE", SNDRV_PCM_FORMAT_S32_LE)
+	MK_STR_MAP("FLOAT_LE", SNDRV_PCM_FORMAT_FLOAT_LE)
 };
 
 static const struct str_to_val ch_map[] = {
-	MK_STR_MAP("One", 1) MK_STR_MAP("Two", 2) MK_STR_MAP("Three", 3)
-		MK_STR_MAP("Four", 4) MK_STR_MAP("Five", 5) MK_STR_MAP("Six", 6)
-			MK_STR_MAP("Seven", 7) MK_STR_MAP("Eight", 8)
+	MK_STR_MAP("One", 1)
+	MK_STR_MAP("Two", 2)
+	MK_STR_MAP("Three", 3)
+	MK_STR_MAP("Four", 4)
+	MK_STR_MAP("Five", 5)
+	MK_STR_MAP("Six", 6)
+	MK_STR_MAP("Seven", 7)
+	MK_STR_MAP("Eight", 8)
 };
 
 static const char *sr_text[ARRAY_SIZE(sr_map)] = {};
@@ -191,40 +231,26 @@ static struct soc_enum enum_fmt =
 static struct soc_enum enum_ch =
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(ch_text), ch_text);
 
-static struct be_param_cache be_params[PORT_MAX] = {
-	MK_BE_PARAMS(PORT_I2S_0_RX, SNDRV_PCM_FORMAT_S16_LE, 2,
-		     48000) MK_BE_PARAMS(PORT_I2S_0_TX, SNDRV_PCM_FORMAT_S16_LE,
-					 2, 48000)
+static const struct be_param_cache default_be_params[PORT_MAX] = {
+	MK_BE_PARAMS(I2S_0_RX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
+	MK_BE_PARAMS(I2S_0_TX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
+	MK_BE_PARAMS(I2S_1_RX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
+	MK_BE_PARAMS(I2S_1_TX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
+	MK_BE_PARAMS(I2S_2_RX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
+	MK_BE_PARAMS(I2S_2_TX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
+	MK_TDM_BE_PARAMS(TDM_0_RX, SNDRV_PCM_FORMAT_S16_LE,
+			2, 48000, 4, SNDRV_PCM_FORMAT_S32_LE)
+	MK_TDM_BE_PARAMS(TDM_0_TX, SNDRV_PCM_FORMAT_S16_LE,
+			2, 48000, 4, SNDRV_PCM_FORMAT_S32_LE)
+	MK_TDM_BE_PARAMS(TDM_1_RX, SNDRV_PCM_FORMAT_S16_LE,
+			2, 48000, 4, SNDRV_PCM_FORMAT_S32_LE)
+	MK_TDM_BE_PARAMS(TDM_1_TX, SNDRV_PCM_FORMAT_S16_LE,
+			2, 48000, 4, SNDRV_PCM_FORMAT_S32_LE)
+};
 
-		MK_BE_PARAMS(PORT_I2S_1_RX, SNDRV_PCM_FORMAT_S16_LE, 2,
-			     48000) MK_BE_PARAMS(PORT_I2S_1_TX,
-						 SNDRV_PCM_FORMAT_S16_LE, 2,
-						 48000)
-
-			MK_BE_PARAMS(PORT_I2S_2_RX, SNDRV_PCM_FORMAT_S16_LE, 2,
-				     48000) MK_BE_PARAMS(PORT_I2S_2_TX,
-							 SNDRV_PCM_FORMAT_S16_LE,
-							 2, 48000)
-
-				MK_TDM_BE_PARAMS(
-					PORT_TDM_0_RX, SNDRV_PCM_FORMAT_S16_LE,
-					2, 48000, 4, SNDRV_PCM_FORMAT_S32_LE)
-					MK_TDM_BE_PARAMS(
-						PORT_TDM_0_TX,
-						SNDRV_PCM_FORMAT_S16_LE, 2,
-						48000, 4,
-						SNDRV_PCM_FORMAT_S32_LE)
-
-						MK_TDM_BE_PARAMS(
-							PORT_TDM_1_RX,
-							SNDRV_PCM_FORMAT_S16_LE,
-							2, 48000, 4,
-							SNDRV_PCM_FORMAT_S32_LE)
-							MK_TDM_BE_PARAMS(
-								PORT_TDM_1_TX,
-								SNDRV_PCM_FORMAT_S16_LE,
-								2, 48000, 4,
-								SNDRV_PCM_FORMAT_S32_LE)
+static struct snd_soc_dai_link_component null_component = {
+	.name = "snd-soc-dummy",
+	.dai_name = "snd-soc-dummy-dai",
 };
 
 static __poll_t audio_state_poll(struct snd_info_entry *entry,
@@ -308,37 +334,37 @@ static int hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 		hw_param_interval(params, SNDRV_PCM_HW_PARAM_RATE);
 	struct snd_interval *channels =
 		hw_param_interval(params, SNDRV_PCM_HW_PARAM_CHANNELS);
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
-#else
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-#endif
+	struct aoc_chip *chip =
+		(struct aoc_chip *)snd_soc_card_get_drvdata(rtd->card);
+	struct snd_card_pdata *pdata =
+			container_of(chip, struct snd_card_pdata, g_chip);
+
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id);
 	u32 sr, ch;
 	snd_pcm_format_t fmt;
 
-	if (id >= ARRAY_SIZE(be_params)) {
+	if (id >= ARRAY_SIZE(pdata->be_params)) {
 		pr_err("%s: invalid id %u found for %s", __func__, id,
 		       rtd->dai_link->name);
 		return -EINVAL;
 	}
 
-	mutex_lock(&card_mutex);
-	sr = be_params[id].rate;
-	ch = be_params[id].channel;
-	fmt = be_params[id].format;
-	mutex_unlock(&card_mutex);
+	mutex_lock(&pdata->mutex);
+	sr = pdata->be_params[id].rate;
+	ch = pdata->be_params[id].channel;
+	fmt = pdata->be_params[id].format;
+	mutex_unlock(&pdata->mutex);
 
-	pr_debug("%s: fixup ch %u rate %u fmt %u for %s", __func__, ch, sr, fmt,
-		 rtd->dai_link->name);
+	pr_debug("%s: fixup ch %u rate %u fmt %u for %s", __func__, ch, sr,
+		fmt, rtd->dai_link->name);
 
 	rate->min = rate->max = sr;
 	channels->min = channels->max = ch;
 
-	memset(fmt_mask, 0, sizeof(struct snd_mask));
+	snd_mask_none(fmt_mask);
+	snd_mask_set_format(fmt_mask, fmt);
 
-	//4bytes based bit-array
-	fmt_mask->bits[fmt >> 5] = (1 << (fmt & 31));
 	return 0;
 }
 
@@ -346,80 +372,131 @@ static int i2s_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai_link *dai_link = rtd->dai_link;
-	int ret;
-	unsigned int i;
-	struct snd_soc_dai *cpu_dai;
-	struct snd_soc_dai *codec_dai;
 
-	pr_debug("i2s startup\n");
+	pr_debug("%s: %s dai_fmt = 0x%x\n", __func__,
+			dai_link->name, dai_link->dai_fmt);
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
-	for_each_rtd_cpu_dais(rtd, i, cpu_dai) {
-		ret = snd_soc_dai_set_fmt(cpu_dai, dai_link->dai_fmt);
-		if (ret && ret != -ENOTSUPP) {
-			pr_warn("%s: set fmt 0x%x for %s fail %d", __func__,
-				dai_link->dai_fmt, cpu_dai->name, ret);
-		}
-	}
-#else
-	cpu_dai = rtd->cpu_dai;
-	ret = snd_soc_dai_set_fmt(cpu_dai, dai_link->dai_fmt);
-	if (ret && ret != -ENOTSUPP) {
-		pr_warn("%s: set fmt 0x%x for %s fail %d", __func__,
-			dai_link->dai_fmt, cpu_dai->name, ret);
-	}
-#endif
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
-	for_each_rtd_codec_dais(rtd, i, codec_dai) {
-#else
-	for (i = 0; i < rtd->num_codecs; i++) {
-		codec_dai = rtd->codec_dais[i];
-#endif
-		ret = snd_soc_dai_set_fmt(codec_dai, dai_link->dai_fmt);
-
-		pr_debug("dai_link->dai_fmt = %u\n", dai_link->dai_fmt);
-
-		if (ret && ret != -ENOTSUPP) {
-			pr_warn("%s: set fmt 0x%x for %s fail %d", __func__,
-				dai_link->dai_fmt, codec_dai->name, ret);
-		}
-	}
-
-	return 0;
+	return snd_soc_runtime_set_dai_fmt(rtd, dai_link->dai_fmt);
 }
 
 static void i2s_shutdown(struct snd_pcm_substream *substream)
 {
-	return;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai_link *dai_link = rtd->dai_link;
+
+	pr_debug("%s close\n", dai_link->name);
+}
+
+static struct clk_ctrl *find_clk(struct snd_soc_dai *dai, int clk_num,
+	struct clk_ctrl *clks)
+{
+	struct clk_ctrl *clk = NULL;
+	struct device_node *np;
+	int i;
+
+	if (!clks || !dai)
+		return clk;
+
+	np = dai->component->dev->of_node;
+	for (i = 0; i < clk_num; i++, clks++) {
+		if ((np && clks->np == np) || clks->dai_id == dai->id) {
+			clk = clks;
+			break;
+		}
+	}
+	return clk;
+}
+
+static void set_pll_clk(struct snd_soc_dai *dai, u32 bclk, u32 rate,
+	struct snd_card_pdata *pdata)
+{
+	struct clk_ctrl *pll;
+	int ret;
+	u32 clk;
+
+	pll = find_clk(dai, pdata->pll_clk_num, pdata->pll_clks);
+	if (!pll)
+		return;
+
+	if (pll->fix_clk)
+		clk = pll->fix_clk;
+	else {
+		if (pll->src == SRC_MCLK)
+			clk = rate;
+		else
+			clk = bclk;
+	}
+
+	pr_debug("%s: %s pll %u src %u freq_in %u freq_out %u", __func__,
+		dai->name, pll->id, pll->srcid, clk * pll->in_mul,
+		clk * pll->out_mul);
+
+	ret = snd_soc_dai_set_pll(dai, pll->id, pll->srcid,
+		clk * pll->in_mul, clk * pll->out_mul);
+	if (ret && ret != -ENOTSUPP)
+		pr_warn("%s: set codec_dai pll %s fail %d",
+			  __func__, dai->name, ret);
+
+	ret = snd_soc_component_set_pll(dai->component, pll->id, pll->srcid,
+		clk * pll->in_mul, clk * pll->out_mul);
+	if (ret && ret != -ENOTSUPP)
+		pr_warn("%s: set codec pll %s fail %d",
+			 __func__, dai->name, ret);
+}
+
+static void set_sys_clk(struct snd_soc_dai *dai, u32 bclk, u32 rate,
+	u32 dir, struct snd_card_pdata *pdata)
+{
+	struct clk_ctrl *sys;
+	int ret;
+	u32 clk;
+
+	sys = find_clk(dai, pdata->sys_clk_num, pdata->sys_clks);
+	if (!sys)
+		return;
+
+	if (sys->fix_clk)
+		clk = sys->fix_clk;
+	else {
+		if (sys->src == SRC_MCLK)
+			clk = rate;
+		else
+			clk = bclk;
+	}
+
+	if (dir == SND_SOC_CLOCK_IN)
+		clk *= sys->in_mul;
+	else
+		clk *= sys->out_mul;
+
+	pr_debug("%s: %s clkid %u clk %u", __func__,
+		dai->name, sys->id, clk);
+
+	ret = snd_soc_dai_set_sysclk(dai, sys->id, clk, dir);
+	if (ret && ret != -ENOTSUPP)
+		pr_warn("%s: set codec_dai clk %s fail %d",
+			__func__, dai->name, ret);
+
+	ret = snd_soc_component_set_sysclk(dai->component,
+		sys->id, sys->srcid, clk, dir);
+	if (ret && ret != -ENOTSUPP)
+		pr_warn("%s: set codec sys clk %s fail %d",
+			  __func__, dai->name, ret);
 }
 
 static int i2s_hw_params(struct snd_pcm_substream *substream,
-			 struct snd_pcm_hw_params *param)
+	struct snd_pcm_hw_params *param)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
-#else
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-#endif
-	struct snd_soc_jack *jack;
-	u32 rate, clk, channel;
-	int bit_width, ret, clk_id;
-	unsigned int i;
-	u32 id = AOC_ID_TO_INDEX(cpu_dai->id);
 
+	u32 rate, bclk, channel;
+	int i, bit_width, ret;
 	struct aoc_chip *chip =
-		(struct aoc_chip *)snd_soc_card_get_drvdata(rtd->card); //XH
-
-	pr_debug("rt5682 start\n");
-	pr_debug("i2s hw_params\n");
-	if (id >= ARRAY_SIZE(be_params)) {
-		pr_err("%s: invalid id %u found for %s", __func__, id,
-		       rtd->dai_link->name);
-		return -EINVAL;
-	}
+		(struct aoc_chip *)snd_soc_card_get_drvdata(rtd->card);
+	struct snd_card_pdata *pdata =
+			container_of(chip, struct snd_card_pdata, g_chip);
 
 	bit_width = params_physical_width(param);
 	if (bit_width < 0) {
@@ -427,137 +504,57 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	clk_id = (int)be_params[id].clk_id;
 	channel = params_channels(param);
 	rate = params_rate(param);
-	clk = rate * ((u32)bit_width) * channel;
+	bclk = rate * ((u32)bit_width) * channel;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+	pr_debug("%sv2: ch %u rate %d bit %d", __func__,
+			channel, rate, bit_width);
+
 	for_each_rtd_cpu_dais(rtd, i, cpu_dai) {
-		ret = snd_soc_dai_set_sysclk(cpu_dai, 0,
-			clk, SND_SOC_CLOCK_OUT);
+		ret = snd_soc_dai_set_tdm_slot(cpu_dai, 0, 0,
+			channel, bit_width);
 		if (ret && ret != -ENOTSUPP)
-			pr_warn("%s: set cpu_dai %s fail %d", __func__,
-				cpu_dai->name,	ret);
+			pr_warn("%s: set tdm slot %s fail %d", __func__,
+				 cpu_dai->name, ret);
+
+		set_sys_clk(cpu_dai, bclk, rate, SND_SOC_CLOCK_OUT, pdata);
 	}
-#else
-	ret = snd_soc_dai_set_sysclk(cpu_dai, 0, clk, SND_SOC_CLOCK_OUT);
-	if (ret && ret != -ENOTSUPP)
-		pr_warn("%s: set cpu_dai %s fail %d", __func__, cpu_dai->name,
-			ret);
-#endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
 	for_each_rtd_codec_dais(rtd, i, codec_dai) {
-#else
-	for (i = 0; i < rtd->num_codecs; i++) {
-		codec_dai = rtd->codec_dais[i];
-#endif
-		ret = snd_soc_dai_set_sysclk(codec_dai, clk_id, clk,
-					     SND_SOC_CLOCK_IN);
+		ret = snd_soc_dai_set_tdm_slot(codec_dai, 0, 0,
+			channel, bit_width);
 		if (ret && ret != -ENOTSUPP)
-			pr_warn("%s: set codec_dai clk %s fail %d", __func__,
-				codec_dai->name, ret);
+			pr_warn("%s: set tdm slot %s fail %d", __func__,
+				 cpu_dai->name, ret);
 
-		//TODO  to set it up for RT5682
-		//ret = soc_dai_hw_params(substream, param, codec_dai[i]); //
-		ret = snd_soc_dai_set_fmt(codec_dai,
-					  SND_SOC_DAIFMT_CBS_CFS |
-						  SND_SOC_DAIFMT_I2S);
-		if (ret && ret != -ENOTSUPP)
-			pr_warn("%s: set codec_dai set fmt %s fail %d",
-				__func__, codec_dai->name, ret);
-
-		ret = -1;
-		if (codec_dai->driver->ops &&
-			codec_dai->driver->ops->hw_params) {
-			ret = codec_dai->driver->ops->hw_params(
-				substream, param, codec_dai);
-		}
-		if (ret && ret != -ENOTSUPP)
-			pr_warn("%s: set codec_dai hw_params %s fail %d",
-				__func__, codec_dai->name, ret);
-
-		ret = snd_soc_dai_set_tdm_slot(codec_dai, 0x0, 0x0, 2, 32);
-		if (ret && ret != -ENOTSUPP)
-			pr_warn("%s: set codec set_tdm_slot %s fail %d",
-				__func__, codec_dai->name, ret);
-
-		ret = snd_soc_component_set_pll(
-			codec_dai->component, 0,
-			RT5682_PLL1_S_BCLK1, (48000 * 64), (48000 * 512));
-		if (ret && ret != -ENOTSUPP) {
-			pr_warn("%s: set codec pll clk %s fail %d", __func__,
-				codec_dai->name, ret);
-		}
-
-		ret = snd_soc_component_set_sysclk(codec_dai->component,
-						   RT5682_SCLK_S_PLL1, 0,
-						   (48000 * 512),
-						   SND_SOC_CLOCK_IN);
-		if (ret && ret != -ENOTSUPP) {
-			pr_warn("%s: set codec clk %s fail %d", __func__,
-				codec_dai->name, ret);
-		}
-
-		/*
-	 	 * Headset buttons map to the google Reference headset.
-	 	 * These can be configured by userspace.
-	 	 */
-		pr_debug("rt5682 set jack start\n");
-		ret = snd_soc_card_jack_new(
-			rtd->card, "Headset Jack",
-			SND_JACK_HEADSET | SND_JACK_BTN_0 | SND_JACK_BTN_1 |
-				SND_JACK_BTN_2 | SND_JACK_BTN_3 |
-				SND_JACK_LINEOUT,
-			&chip->jack, NULL, 0);
-		if (ret) {
-			dev_err(rtd->dev, "Headset Jack creation failed: %d\n",
-				ret);
-			return ret;
-		}
-		jack = &chip->jack;
-		snd_jack_set_key(jack->jack, SND_JACK_BTN_0, KEY_PLAYPAUSE);
-		snd_jack_set_key(jack->jack, SND_JACK_BTN_1, KEY_VOICECOMMAND);
-		snd_jack_set_key(jack->jack, SND_JACK_BTN_2, KEY_VOLUMEUP);
-		snd_jack_set_key(jack->jack, SND_JACK_BTN_3, KEY_VOLUMEDOWN);
-		pr_notice("rt5682 set jack\n");
-		ret = snd_soc_component_set_jack(codec_dai->component, jack,
-						 NULL);
-		if (ret) {
-			dev_err(rtd->dev, "Headset Jack call-back failed: %d\n",
-				ret);
-			return ret;
-		}
+		set_pll_clk(codec_dai, bclk, rate, pdata);
+		set_sys_clk(codec_dai, bclk, rate, SND_SOC_CLOCK_IN, pdata);
 	}
 	return 0;
 }
 
 static int tdm_hw_params(struct snd_pcm_substream *substream,
-			 struct snd_pcm_hw_params *param)
+	struct snd_pcm_hw_params *param)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
-#else
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-#endif
 	struct snd_soc_dai *codec_dai;
-	u32 rate, clk, channel, tdmslot;
-	int bit_width, ret, slot_width, clk_id;
-	unsigned int i;
-	u32 id = AOC_ID_TO_INDEX(cpu_dai->id);
+	struct snd_soc_dai_link *dai_link = rtd->dai_link;
+	u32 rate, bclk, channel, tdmslot;
+	int i, bit_width, ret, slot_width;
+	snd_pcm_format_t format;
+	u32 idx = AOC_ID_TO_INDEX(cpu_dai->id);
+	struct aoc_chip *chip =
+		(struct aoc_chip *)snd_soc_card_get_drvdata(rtd->card);
+	struct snd_card_pdata *pdata =
+			container_of(chip, struct snd_card_pdata, g_chip);
 
-	pr_debug("%s: startup\n", __func__);
-
-	if (id >= ARRAY_SIZE(be_params)) {
-		pr_err("%s: invalid id %u found for %s", __func__, id,
-		       rtd->dai_link->name);
+	if (idx >= ARRAY_SIZE(pdata->be_params)) {
+		pr_err("%s: invalid id %u found for %s", __func__, idx,
+		       dai_link->name);
 		return -EINVAL;
 	}
-
-	tdmslot = be_params[id].slot_num;
-	slot_width = snd_pcm_format_physical_width(be_params[id].slot_fmt);
 
 	bit_width = params_physical_width(param);
 	if (bit_width < 0) {
@@ -566,74 +563,85 @@ static int tdm_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	channel = params_channels(param);
-	if (tdmslot < channel || slot_width < bit_width) {
-		pr_err("%s: invalid ch %u slot %u, bit %d, slot_bit %d",
-		       __func__, channel, tdmslot, bit_width, slot_width);
+	switch (dai_link->dai_fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
+	case SND_SOC_DAIFMT_I2S:
+		/* I2S mode */
+		tdmslot = channel;
+		slot_width = bit_width;
+		break;
+	case SND_SOC_DAIFMT_DSP_A:
+	case SND_SOC_DAIFMT_DSP_B:
+		/* TDM mode */
+		tdmslot = pdata->be_params[idx].slot_num;
+		format = pdata->be_params[idx].slot_fmt;
+		slot_width = snd_pcm_format_physical_width(format);
+
+		if (tdmslot < channel || slot_width < bit_width) {
+			pr_err("%s: inval ch %u slot %u, bit %d, slot_bit %d",
+				__func__, channel, tdmslot,
+				bit_width, slot_width);
+			return -EINVAL;
+		}
+		break;
+	default:
+		pr_err("%s: unsupport fmt %u on %s", __func__,
+			dai_link->dai_fmt & SND_SOC_DAIFMT_FORMAT_MASK,
+			dai_link->name);
 		return -EINVAL;
 	}
 
-	clk_id = (int)be_params[id].clk_id;
 	rate = params_rate(param);
-	clk = rate * ((u32)slot_width) * tdmslot;
-	pr_debug("ch %u tdm slot %u bit %d, slot_bit %d", channel, tdmslot,
-		bit_width, slot_width);
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+	bclk = rate * ((u32)slot_width) * tdmslot;
+	pr_debug("%s:ch %u tdm slot %u bit %d, slot_bit %d", __func__,
+				channel, tdmslot, bit_width, slot_width);
+
 	for_each_rtd_cpu_dais(rtd, i, cpu_dai) {
-		ret = snd_soc_dai_set_sysclk(cpu_dai, 0, clk,
-			SND_SOC_CLOCK_OUT);
+		ret = snd_soc_dai_set_tdm_slot(cpu_dai, 0, 0,
+			tdmslot, slot_width);
 		if (ret && ret != -ENOTSUPP)
-			pr_warn("%s: set cpu_dai %s fail %d", __func__,
-				cpu_dai->name,	ret);
-	}
-#else
-	ret = snd_soc_dai_set_sysclk(cpu_dai, 0, clk, SND_SOC_CLOCK_OUT);
-	if (ret && ret != -ENOTSUPP)
-		pr_warn("%s: set cpu_dai %s fail %d", __func__, cpu_dai->name,
-			ret);
-#endif
+			pr_warn("%s: set tdm slot %s fail %d", __func__,
+				 cpu_dai->name, ret);
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
+		set_sys_clk(cpu_dai, bclk, rate, SND_SOC_CLOCK_OUT, pdata);
+	}
+
 	for_each_rtd_codec_dais(rtd, i, codec_dai) {
-#else
-	for (i = 0; i < rtd->num_codecs; i++) {
-		codec_dai = rtd->codec_dais[i];
-#endif
-		ret = snd_soc_dai_set_sysclk(codec_dai, clk_id, clk,
-					     SND_SOC_CLOCK_IN);
+		ret = snd_soc_dai_set_tdm_slot(codec_dai, 0, 0,
+				 tdmslot, slot_width);
 		if (ret && ret != -ENOTSUPP)
-			pr_warn("%s: set codec_dai clk %s fail %d", __func__,
-				codec_dai->name, ret);
-		//Do we need to consider the redundant case?
-		ret = snd_soc_component_set_sysclk(codec_dai->component,
-						   clk_id, 0, clk,
-						   SND_SOC_CLOCK_IN);
-		if (ret && ret != -ENOTSUPP)
-			pr_warn("%s: set codec clk %s fail %d", __func__,
-				codec_dai->name, ret);
+			pr_warn("%s: set tdm slot %s fail %d", __func__,
+					 codec_dai->name, ret);
+
+		set_pll_clk(codec_dai, bclk, rate, pdata);
+		set_sys_clk(codec_dai, bclk, rate, SND_SOC_CLOCK_IN, pdata);
 	}
 	return 0;
 }
 
 static int aoc_slot_num_get(struct snd_kcontrol *kcontrol,
-			    struct snd_ctl_elem_value *ucontrol)
+	struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_dai *cpu_dai =
-		(struct snd_soc_dai *)snd_kcontrol_chip(kcontrol);
+	struct snd_soc_dai *cpu_dai = (struct snd_soc_dai *)
+			snd_kcontrol_chip(kcontrol);
+	struct aoc_chip *chip = (struct aoc_chip *)
+		snd_soc_card_get_drvdata(cpu_dai->component->card);
+	struct snd_card_pdata *pdata =
+		container_of(chip, struct snd_card_pdata, g_chip);
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id), i;
 
-	if (id >= ARRAY_SIZE(be_params)) {
+	if (id >= ARRAY_SIZE(pdata->be_params)) {
 		pr_err("%s: invalid idx %u", __func__, id);
 		return -EINVAL;
 	}
 
-	mutex_lock(&card_mutex);
+	mutex_lock(&pdata->mutex);
 	for (i = 0; i < ARRAY_SIZE(ch_map); i++) {
-		if (be_params[id].slot_num == ch_map[i].value) {
+		if (pdata->be_params[id].slot_num == ch_map[i].value) {
 			break;
 		}
 	}
-	mutex_unlock(&card_mutex);
+	mutex_unlock(&pdata->mutex);
 
 	if (i == ARRAY_SIZE(ch_map))
 		return -EINVAL;
@@ -643,14 +651,18 @@ static int aoc_slot_num_get(struct snd_kcontrol *kcontrol,
 }
 
 static int aoc_slot_num_put(struct snd_kcontrol *kcontrol,
-			    struct snd_ctl_elem_value *ucontrol)
+	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_dai *cpu_dai =
 		(struct snd_soc_dai *)snd_kcontrol_chip(kcontrol);
+	struct aoc_chip *chip = (struct aoc_chip *)
+		snd_soc_card_get_drvdata(cpu_dai->component->card);
+	struct snd_card_pdata *pdata =
+		container_of(chip, struct snd_card_pdata, g_chip);
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id);
 	int idx = ucontrol->value.integer.value[0];
 
-	if (id >= ARRAY_SIZE(be_params)) {
+	if (id >= ARRAY_SIZE(pdata->be_params)) {
 		pr_err("%s: invalid idx %u", __func__, id);
 		return -EINVAL;
 	}
@@ -660,31 +672,35 @@ static int aoc_slot_num_put(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	}
 
-	mutex_lock(&card_mutex);
-	be_params[id].slot_num = ch_map[idx].value;
-	mutex_unlock(&card_mutex);
+	mutex_lock(&pdata->mutex);
+	pdata->be_params[id].slot_num = ch_map[idx].value;
+	mutex_unlock(&pdata->mutex);
 	return 0;
 }
 
 static int aoc_slot_fmt_get(struct snd_kcontrol *kcontrol,
-			    struct snd_ctl_elem_value *ucontrol)
+	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_dai *cpu_dai =
 		(struct snd_soc_dai *)snd_kcontrol_chip(kcontrol);
+	struct aoc_chip *chip = (struct aoc_chip *)
+		snd_soc_card_get_drvdata(cpu_dai->component->card);
+	struct snd_card_pdata *pdata =
+		container_of(chip, struct snd_card_pdata, g_chip);
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id), i;
 
-	if (id >= ARRAY_SIZE(be_params)) {
+	if (id >= ARRAY_SIZE(pdata->be_params)) {
 		pr_err("%s: invalid idx %u", __func__, id);
 		return -EINVAL;
 	}
 
-	mutex_lock(&card_mutex);
+	mutex_lock(&pdata->mutex);
 	for (i = 0; i < ARRAY_SIZE(fmt_map); i++) {
-		if (be_params[id].slot_fmt == fmt_map[i].value) {
+		if (pdata->be_params[id].slot_fmt == fmt_map[i].value) {
 			break;
 		}
 	}
-	mutex_unlock(&card_mutex);
+	mutex_unlock(&pdata->mutex);
 
 	if (i == ARRAY_SIZE(fmt_map))
 		return -EINVAL;
@@ -694,14 +710,18 @@ static int aoc_slot_fmt_get(struct snd_kcontrol *kcontrol,
 }
 
 static int aoc_slot_fmt_put(struct snd_kcontrol *kcontrol,
-			    struct snd_ctl_elem_value *ucontrol)
+	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_dai *cpu_dai =
 		(struct snd_soc_dai *)snd_kcontrol_chip(kcontrol);
+	struct aoc_chip *chip = (struct aoc_chip *)
+		snd_soc_card_get_drvdata(cpu_dai->component->card);
+	struct snd_card_pdata *pdata =
+		container_of(chip, struct snd_card_pdata, g_chip);
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id);
 	int idx = ucontrol->value.integer.value[0];
 
-	if (id >= ARRAY_SIZE(be_params)) {
+	if (id >= ARRAY_SIZE(pdata->be_params)) {
 		pr_err("%s: invalid idx %u", __func__, id);
 		return -EINVAL;
 	}
@@ -709,31 +729,35 @@ static int aoc_slot_fmt_put(struct snd_kcontrol *kcontrol,
 	if (idx < 0 || idx >= ARRAY_SIZE(fmt_map))
 		return -EINVAL;
 
-	mutex_lock(&card_mutex);
-	be_params[id].slot_fmt = fmt_map[idx].value;
-	mutex_unlock(&card_mutex);
+	mutex_lock(&pdata->mutex);
+	pdata->be_params[id].slot_fmt = fmt_map[idx].value;
+	mutex_unlock(&pdata->mutex);
 	return 0;
 }
 
 static int aoc_be_sr_get(struct snd_kcontrol *kcontrol,
-			 struct snd_ctl_elem_value *ucontrol)
+	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_dai *cpu_dai =
 		(struct snd_soc_dai *)snd_kcontrol_chip(kcontrol);
+	struct aoc_chip *chip = (struct aoc_chip *)
+		snd_soc_card_get_drvdata(cpu_dai->component->card);
+	struct snd_card_pdata *pdata =
+		container_of(chip, struct snd_card_pdata, g_chip);
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id), i;
 
-	if (id >= ARRAY_SIZE(be_params)) {
+	if (id >= ARRAY_SIZE(pdata->be_params)) {
 		pr_err("%s: invalid idx %u", __func__, id);
 		return -EINVAL;
 	}
 
-	mutex_lock(&card_mutex);
+	mutex_lock(&pdata->mutex);
 	for (i = 0; i < ARRAY_SIZE(sr_map); i++) {
-		if (be_params[id].rate == sr_map[i].value) {
+		if (pdata->be_params[id].rate == sr_map[i].value) {
 			break;
 		}
 	}
-	mutex_unlock(&card_mutex);
+	mutex_unlock(&pdata->mutex);
 
 	if (i == ARRAY_SIZE(sr_map))
 		return -EINVAL;
@@ -743,14 +767,18 @@ static int aoc_be_sr_get(struct snd_kcontrol *kcontrol,
 }
 
 static int aoc_be_sr_put(struct snd_kcontrol *kcontrol,
-			 struct snd_ctl_elem_value *ucontrol)
+	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_dai *cpu_dai =
 		(struct snd_soc_dai *)snd_kcontrol_chip(kcontrol);
+	struct aoc_chip *chip = (struct aoc_chip *)
+		snd_soc_card_get_drvdata(cpu_dai->component->card);
+	struct snd_card_pdata *pdata =
+		container_of(chip, struct snd_card_pdata, g_chip);
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id);
 	int idx = ucontrol->value.integer.value[0];
 
-	if (id >= ARRAY_SIZE(be_params)) {
+	if (id >= ARRAY_SIZE(pdata->be_params)) {
 		pr_err("%s: invalid idx %u", __func__, id);
 		return -EINVAL;
 	}
@@ -760,31 +788,35 @@ static int aoc_be_sr_put(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	}
 
-	mutex_lock(&card_mutex);
-	be_params[id].rate = sr_map[idx].value;
-	mutex_unlock(&card_mutex);
+	mutex_lock(&pdata->mutex);
+	pdata->be_params[id].rate = sr_map[idx].value;
+	mutex_unlock(&pdata->mutex);
 	return 0;
 }
 
 static int aoc_be_fmt_get(struct snd_kcontrol *kcontrol,
-			  struct snd_ctl_elem_value *ucontrol)
+	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_dai *cpu_dai =
 		(struct snd_soc_dai *)snd_kcontrol_chip(kcontrol);
+	struct aoc_chip *chip = (struct aoc_chip *)
+		snd_soc_card_get_drvdata(cpu_dai->component->card);
+	struct snd_card_pdata *pdata =
+		container_of(chip, struct snd_card_pdata, g_chip);
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id), i;
 
-	if (id >= ARRAY_SIZE(be_params)) {
+	if (id >= ARRAY_SIZE(pdata->be_params)) {
 		pr_err("%s: invalid idx %u", __func__, id);
 		return -EINVAL;
 	}
 
-	mutex_lock(&card_mutex);
+	mutex_lock(&pdata->mutex);
 	for (i = 0; i < ARRAY_SIZE(fmt_map); i++) {
-		if (be_params[id].format == fmt_map[i].value) {
+		if (pdata->be_params[id].format == fmt_map[i].value) {
 			break;
 		}
 	}
-	mutex_unlock(&card_mutex);
+	mutex_unlock(&pdata->mutex);
 
 	if (i == ARRAY_SIZE(fmt_map))
 		return -EINVAL;
@@ -798,10 +830,14 @@ static int aoc_be_fmt_put(struct snd_kcontrol *kcontrol,
 {
 	struct snd_soc_dai *cpu_dai =
 		(struct snd_soc_dai *)snd_kcontrol_chip(kcontrol);
+	struct aoc_chip *chip = (struct aoc_chip *)
+		snd_soc_card_get_drvdata(cpu_dai->component->card);
+	struct snd_card_pdata *pdata =
+		container_of(chip, struct snd_card_pdata, g_chip);
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id);
 	int idx = ucontrol->value.integer.value[0];
 
-	if (id >= ARRAY_SIZE(be_params)) {
+	if (id >= ARRAY_SIZE(pdata->be_params)) {
 		pr_err("%s: invalid idx %u", __func__, id);
 		return -EINVAL;
 	}
@@ -809,9 +845,9 @@ static int aoc_be_fmt_put(struct snd_kcontrol *kcontrol,
 	if (idx < 0 || idx >= ARRAY_SIZE(fmt_map))
 		return -EINVAL;
 
-	mutex_lock(&card_mutex);
-	be_params[id].format = fmt_map[idx].value;
-	mutex_unlock(&card_mutex);
+	mutex_lock(&pdata->mutex);
+	pdata->be_params[id].format = fmt_map[idx].value;
+	mutex_unlock(&pdata->mutex);
 	return 0;
 }
 
@@ -820,20 +856,24 @@ static int aoc_be_ch_get(struct snd_kcontrol *kcontrol,
 {
 	struct snd_soc_dai *cpu_dai =
 		(struct snd_soc_dai *)snd_kcontrol_chip(kcontrol);
+	struct aoc_chip *chip = (struct aoc_chip *)
+		snd_soc_card_get_drvdata(cpu_dai->component->card);
+	struct snd_card_pdata *pdata =
+		container_of(chip, struct snd_card_pdata, g_chip);
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id), i;
 
-	if (id >= ARRAY_SIZE(be_params)) {
+	if (id >= ARRAY_SIZE(pdata->be_params)) {
 		pr_err("%s: invalid idx %u", __func__, id);
 		return -EINVAL;
 	}
 
-	mutex_lock(&card_mutex);
+	mutex_lock(&pdata->mutex);
 	for (i = 0; i < ARRAY_SIZE(ch_map); i++) {
-		if (be_params[id].channel == ch_map[i].value) {
+		if (pdata->be_params[id].channel == ch_map[i].value) {
 			break;
 		}
 	}
-	mutex_unlock(&card_mutex);
+	mutex_unlock(&pdata->mutex);
 
 	if (i == ARRAY_SIZE(ch_map))
 		return -EINVAL;
@@ -847,10 +887,14 @@ static int aoc_be_ch_put(struct snd_kcontrol *kcontrol,
 {
 	struct snd_soc_dai *cpu_dai =
 		(struct snd_soc_dai *)snd_kcontrol_chip(kcontrol);
+	struct aoc_chip *chip = (struct aoc_chip *)
+		snd_soc_card_get_drvdata(cpu_dai->component->card);
+	struct snd_card_pdata *pdata =
+		container_of(chip, struct snd_card_pdata, g_chip);
 	u32 id = AOC_ID_TO_INDEX(cpu_dai->id);
 	int idx = ucontrol->value.integer.value[0];
 
-	if (id >= ARRAY_SIZE(be_params)) {
+	if (id >= ARRAY_SIZE(pdata->be_params)) {
 		pr_err("%s: invalid idx %u", __func__, id);
 		return -EINVAL;
 	}
@@ -858,9 +902,9 @@ static int aoc_be_ch_put(struct snd_kcontrol *kcontrol,
 	if (idx < 0 || idx >= ARRAY_SIZE(ch_map))
 		return -EINVAL;
 
-	mutex_lock(&card_mutex);
-	be_params[id].channel = ch_map[idx].value;
-	mutex_unlock(&card_mutex);
+	mutex_lock(&pdata->mutex);
+	pdata->be_params[id].channel = ch_map[idx].value;
+	mutex_unlock(&pdata->mutex);
 	return 0;
 }
 
@@ -873,16 +917,16 @@ static int aoc_be_ch_put(struct snd_kcontrol *kcontrol,
  * "I2S_0_RX Format"
  * "I2S_0_RX Chan"
  */
-MK_HW_PARAM_CTRLS(PORT_I2S_0_RX, "I2S_0_RX")
-MK_HW_PARAM_CTRLS(PORT_I2S_0_TX, "I2S_0_TX")
-MK_HW_PARAM_CTRLS(PORT_I2S_1_RX, "I2S_1_RX")
-MK_HW_PARAM_CTRLS(PORT_I2S_1_TX, "I2S_1_TX")
-MK_HW_PARAM_CTRLS(PORT_I2S_2_RX, "I2S_2_RX")
-MK_HW_PARAM_CTRLS(PORT_I2S_2_TX, "I2S_2_TX")
-MK_TDM_HW_PARAM_CTRLS(PORT_TDM_0_RX, "TDM_0_RX")
-MK_TDM_HW_PARAM_CTRLS(PORT_TDM_0_TX, "TDM_0_TX")
-MK_TDM_HW_PARAM_CTRLS(PORT_TDM_1_RX, "TDM_1_RX")
-MK_TDM_HW_PARAM_CTRLS(PORT_TDM_1_TX, "TDM_1_TX")
+MK_HW_PARAM_CTRLS(I2S_0_RX, "I2S_0_RX");
+MK_HW_PARAM_CTRLS(I2S_0_TX, "I2S_0_TX");
+MK_HW_PARAM_CTRLS(I2S_1_RX, "I2S_1_RX");
+MK_HW_PARAM_CTRLS(I2S_1_TX, "I2S_1_TX");
+MK_HW_PARAM_CTRLS(I2S_2_RX, "I2S_2_RX");
+MK_HW_PARAM_CTRLS(I2S_2_TX, "I2S_2_TX");
+MK_TDM_HW_PARAM_CTRLS(TDM_0_RX, "TDM_0_RX");
+MK_TDM_HW_PARAM_CTRLS(TDM_0_TX, "TDM_0_TX");
+MK_TDM_HW_PARAM_CTRLS(TDM_1_RX, "TDM_1_RX");
+MK_TDM_HW_PARAM_CTRLS(TDM_1_TX, "TDM_1_TX");
 
 /*
  * The resource array that have ALSA controls, ops and fixup
@@ -890,50 +934,184 @@ MK_TDM_HW_PARAM_CTRLS(PORT_TDM_1_TX, "TDM_1_TX")
  *
  */
 static const struct dai_link_res_map be_res_map[PORT_MAX] = {
-	MK_BE_RES_ITEM(PORT_I2S_0_RX, &aoc_i2s_ops,
-		       hw_params_fixup) MK_BE_RES_ITEM(PORT_I2S_0_TX,
-						       &aoc_i2s_ops,
-						       hw_params_fixup)
-
-		MK_BE_RES_ITEM(PORT_I2S_1_RX, &aoc_i2s_ops,
-			       hw_params_fixup) MK_BE_RES_ITEM(PORT_I2S_1_TX,
-							       &aoc_i2s_ops,
-							       hw_params_fixup)
-
-			MK_BE_RES_ITEM(
-				PORT_I2S_2_RX, &aoc_i2s_ops,
-				hw_params_fixup) MK_BE_RES_ITEM(PORT_I2S_2_TX,
-								&aoc_i2s_ops,
-								hw_params_fixup)
-
-				MK_BE_RES_ITEM(PORT_TDM_0_RX, &aoc_tdm_ops,
-					       hw_params_fixup)
-					MK_BE_RES_ITEM(PORT_TDM_0_TX,
-						       &aoc_tdm_ops,
-						       hw_params_fixup)
-
-						MK_BE_RES_ITEM(PORT_TDM_1_RX,
-							       &aoc_tdm_ops,
-							       hw_params_fixup)
-							MK_BE_RES_ITEM(
-								PORT_TDM_1_TX,
-								&aoc_tdm_ops,
-								hw_params_fixup)
+	MK_BE_RES_ITEM(I2S_0_RX, &aoc_i2s_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(I2S_0_TX, &aoc_i2s_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(I2S_1_RX, &aoc_i2s_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(I2S_1_TX, &aoc_i2s_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(I2S_2_RX, &aoc_i2s_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(I2S_2_TX, &aoc_i2s_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(TDM_0_RX, &aoc_tdm_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(TDM_0_TX, &aoc_tdm_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(TDM_1_RX, &aoc_tdm_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(TDM_1_TX, &aoc_tdm_ops, hw_params_fixup)
 };
 
+static void put_component(struct snd_soc_dai_link_component *component,
+	unsigned int number)
+{
+	uint32_t i;
+
+	if (!component)
+		return;
+
+	for (i = 0; i < number; i++, component++) {
+		if (!component->of_node)
+			continue;
+
+		of_node_put(component->of_node);
+		component->of_node = NULL;
+	}
+}
+
+static void put_dai_links(struct snd_soc_card *card)
+{
+	struct snd_soc_dai_link *dai_link;
+	uint32_t i;
+
+	if (!card || !card->dai_link || !card->num_links)
+		return;
+
+	dai_link = card->dai_link;
+
+	for (i = 0; i < card->num_links; i++, dai_link++) {
+		put_component(dai_link->cpus, dai_link->num_cpus);
+		put_component(dai_link->codecs, dai_link->num_codecs);
+		put_component(dai_link->platforms, dai_link->num_platforms);
+	}
+}
+
+static int of_parse_dai_platform(struct device *dev,
+	struct device_node *node, struct snd_soc_dai_link *dai)
+{
+	struct device_node *of_platform_root = NULL;
+	struct device_node *of_node;
+	struct device_node *np;
+	int count, ret = 0;
+	struct snd_soc_dai_link_component *component;
+
+	/*
+	 * The platform is not must have
+	 */
+	of_platform_root = of_get_child_by_name(node, "platform");
+	if (!of_platform_root)
+		return 0;
+
+	count = of_get_available_child_count(of_platform_root);
+	if (count <= 0) {
+		pr_err("invalid child count %d for %s\n", count,
+			of_platform_root->name);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	component = devm_kzalloc(dev,
+		sizeof(struct snd_soc_dai_link_component) * count, GFP_KERNEL);
+	if (!component) {
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	dai->platforms = component;
+	dai->num_platforms = count;
+
+	count = 0;
+	for_each_available_child_of_node(of_platform_root, np) {
+		of_node = of_parse_phandle(np, "of_drv", 0);
+		if (!of_node) {
+			pr_err("%s: no of_drv for %s", __func__,
+				of_node->name);
+			ret = -EINVAL;
+			break;
+		}
+
+		component->of_node = of_node;
+		component++;
+		count++;
+	}
+
+exit:
+	if (of_platform_root)
+		of_node_put(of_platform_root);
+	return ret;
+}
+
+static int of_parse_dai_cpu(struct device *dev,
+	struct device_node *node, struct snd_soc_dai_link *dai)
+{
+	struct device_node *of_cpu_root = NULL, *of_node;
+	struct snd_soc_dai_link_component *component;
+	int ret;
+
+	/*
+	 * Each FE/BE must specify the cpu dai
+	 */
+	of_cpu_root = of_get_child_by_name(node, "cpu");
+	if (!of_cpu_root) {
+		pr_err("%s: can't find cpu node for %s", __func__, dai->name);
+		return -EINVAL;
+	}
+
+	of_node = of_parse_phandle(of_cpu_root, "sound-dai", 0);
+	if (!of_node) {
+		pr_err("%s: fail to get cpu dai for %s", __func__, dai->name);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	component = devm_kzalloc(dev,
+		sizeof(struct snd_soc_dai_link_component), GFP_KERNEL);
+	if (!component) {
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	/* Only support single cpu dai */
+	dai->cpus = component;
+	dai->num_cpus = 1;
+	component->of_node = of_node;
+
+	ret = snd_soc_of_get_dai_name(of_cpu_root, &component->dai_name);
+	if (ret) {
+		if (ret == -EPROBE_DEFER) {
+			pr_info("%s: wait cpu_dai for %s", __func__, dai->name);
+		} else {
+			pr_err("%s: get cpu_dai fail for %s", __func__,
+			       dai->name);
+		}
+	}
+
+exit:
+	if (of_cpu_root)
+		of_node_put(of_cpu_root);
+	return ret;
+}
+
+static int of_parse_dai_codec(struct device *dev,
+	struct device_node *node, struct snd_soc_dai_link *dai)
+{
+	struct device_node *of_codec_root;
+	int ret;
+
+	of_codec_root = of_get_child_by_name(node, "codec");
+	if (!of_codec_root) {
+		/* default codec */
+		dai->codecs = &null_component;
+		dai->num_codecs = 1;
+		return 0;
+	}
+
+	ret = snd_soc_of_get_dai_link_codecs(dev, of_codec_root, dai);
+	of_node_put(of_codec_root);
+	return ret;
+}
+
 static int of_parse_one_dai(struct device_node *node, struct device *dev,
-			    struct snd_soc_dai_link *dai)
+	struct snd_soc_dai_link *dai)
 {
 	int ret = 0;
 	bool ops, fixup;
 	u32 trigger, id;
 	struct device_node *daifmt = NULL;
-	struct device_node *np_cpu = NULL, *np_codec = NULL;
-	const char *str;
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-	struct snd_soc_dai_link_component *component;
-#endif
 
 	if (!node || !dai)
 		return -EINVAL;
@@ -941,155 +1119,31 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 	ret = of_property_read_string(node, "dai-name", &dai->name);
 	if (ret) {
 		pr_err("%s: fail to get dai name %d", __func__, ret);
-		goto err;
+		goto exit;
 	}
 
 	ret = of_property_read_string(node, "stream-name", &dai->stream_name);
 	if (ret) {
 		pr_err("%s: fail to get dai stream name %d", __func__, ret);
-		goto err;
+		goto exit;
 	}
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-	dai->num_platforms = 1;
-
-	component = devm_kzalloc(dev, sizeof(struct snd_soc_dai_link_component),
-				 GFP_KERNEL);
-	if (!component) {
-		ret = -ENOMEM;
-		goto err;
-	}
-	dai->platforms = component;
-
-	dai->platforms->of_node = of_parse_phandle(node, "platform", 0);
-	if (!dai->platforms->of_node) {
-		ret = of_property_read_string(node, "platform-name", &str);
-		if (ret) {
-			pr_err("%s: fail to get platform for %s", __func__,
-			       dai->name);
-			ret = -EINVAL;
-			goto err;
-		}
-		dai->platforms->name = str;
-	}
-#else
-	dai->platform_of_node = of_parse_phandle(node, "platform", 0);
-	if (!dai->platform_of_node) {
-		ret = of_property_read_string(node, "platform-name", &str);
-		if (ret) {
-			pr_err("%s: fail to get platform for %s", __func__,
-			       dai->name);
-			ret = -EINVAL;
-			goto err;
-		}
-		dai->platform_name = str;
-	}
-#endif
-
-	np_cpu = of_get_child_by_name(node, "cpu");
-	if (!np_cpu) {
-		pr_err("%s: can't find cpu node for %s", __func__, dai->name);
-		ret = -EINVAL;
-		goto err;
-	}
-
-	/* Only support single cpu dai */
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-	dai->num_cpus = 1;
-	dai->cpus = devm_kzalloc(dev, sizeof(struct snd_soc_dai_link_component),
-				 GFP_KERNEL);
-	if (!dai->cpus) {
-		ret = -ENOMEM;
-		goto err;
-	}
-
-	dai->cpus->of_node = of_parse_phandle(np_cpu, "sound-dai", 0);
-	if (!dai->cpus->of_node) {
-		pr_err("%s: fail to get cpu dai for %s", __func__, dai->name);
-		ret = -EINVAL;
-		goto err;
-	}
-
-	ret = snd_soc_of_get_dai_name(np_cpu, &dai->cpus->dai_name);
+	ret = of_parse_dai_cpu(dev, node, dai);
 	if (ret) {
-		if (ret == -EPROBE_DEFER) {
-			pr_info("%s: wait cpu_dai for %s", __func__, dai->name);
-		} else
-			pr_err("%s: get cpu_dai fail for %s", __func__,
-			       dai->name);
-		goto err;
-	}
-#else
-	dai->cpu_of_node = of_parse_phandle(np_cpu, "sound-dai", 0);
-	if (!dai->cpu_of_node) {
-		pr_err("%s: fail to get cpu dai for %s", __func__, dai->name);
-		ret = -EINVAL;
-		goto err;
+		pr_err("%s: fail to parse cpu %d", __func__, ret);
+		goto exit;
 	}
 
-	ret = snd_soc_of_get_dai_name(np_cpu, &dai->cpu_dai_name);
+	ret = of_parse_dai_platform(dev, node, dai);
 	if (ret) {
-		if (ret == -EPROBE_DEFER) {
-			pr_info("%s: wait cpu_dai for %s", __func__, dai->name);
-		} else
-			pr_err("%s: get cpu_dai fail for %s", __func__,
-			       dai->name);
-		goto err;
-	}
-#endif
-
-	np_codec = of_get_child_by_name(node, "codec");
-	if (!np_codec) {
-		pr_err("%s: can't find codec node for %s", __func__, dai->name);
-		ret = -EINVAL;
-		goto err;
+		pr_err("%s: fail to parse platform %d", __func__, ret);
+		goto exit;
 	}
 
-	ret = of_property_read_string(np_codec, "codec-name", &str);
+	ret = of_parse_dai_codec(dev, node, dai);
 	if (ret) {
-		ret = snd_soc_of_get_dai_link_codecs(dev, np_codec, dai);
-
-		pr_debug("dai->num_codecs = %d\n", dai->num_codecs);
-
-		if (ret) {
-			if (ret == -EPROBE_DEFER)
-				pr_info("%s: %d wait codec for %s", __func__,
-					ret, dai->name);
-			else
-				pr_err("%s: %d fail to get codec for %s",
-				       __func__, ret, dai->name);
-			goto err;
-		}
-	} else {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-		dai->num_codecs = 1;
-		dai->codecs =
-			devm_kzalloc(dev,
-				     sizeof(struct snd_soc_dai_link_component),
-				     GFP_KERNEL);
-		if (!dai->codecs) {
-			ret = -ENOMEM;
-			goto err;
-		}
-		dai->codecs->name = str;
-		ret = of_property_read_string(np_codec, "codec-dai-name", &str);
-		if (ret) {
-			pr_err("%s: %d fail to get codec dai for %s", __func__,
-			       ret, dai->name);
-			goto err;
-		} else
-			dai->codecs->dai_name = str;
-#else
-		dai->codec_name = str;
-		ret = of_property_read_string(np_codec, "codec-dai-name", &str);
-		if (ret) {
-			pr_err("%s: %d fail to get codec dai for %s", __func__,
-			       ret, dai->name);
-			goto err;
-		} else
-			dai->codec_dai_name = str;
-#endif
+		pr_err("%s: fail to parse codec %d", __func__, ret);
+		goto exit;
 	}
 
 	ret = of_property_read_u32_index(node, "trigger", 0, &trigger);
@@ -1108,6 +1162,10 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 			dai->trigger[1] = SND_SOC_DPCM_TRIGGER_PRE;
 			break;
 		}
+	} else {
+		/* default setting */
+		dai->trigger[0] = SND_SOC_DPCM_TRIGGER_POST;
+		dai->trigger[1] = SND_SOC_DPCM_TRIGGER_POST;
 	}
 
 	ret = of_property_read_u32_index(node, "id", 0, &id);
@@ -1127,14 +1185,6 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 					dai->be_hw_params_fixup =
 						be_res_map[id].fixup;
 			}
-
-			if (id < ARRAY_SIZE(be_params)) {
-				u32 clk_id;
-				ret = of_property_read_u32_index(node, "clk_id",
-								 0, &clk_id);
-				if (ret == 0)
-					be_params[id].clk_id = clk_id;
-			}
 		}
 	}
 
@@ -1152,48 +1202,9 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 	dai->no_pcm = of_property_read_bool(node, "no-pcm");
 	dai->dynamic = of_property_read_bool(node, "dynamic");
 	dai->ignore_pmdown_time =
-		of_property_read_bool(node, "ignore-pmdown-time");
-	dai->ignore_suspend = of_property_read_bool(node, "ignore-suspend");
-
-	of_node_put(np_cpu);
-	of_node_put(np_codec);
-	return 0;
-err:
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-	if (dai->platforms->of_node) {
-		of_node_put(dai->platforms->of_node);
-		dai->platforms->of_node = NULL;
-	}
-
-	if (dai->cpus->of_node) {
-		of_node_put(dai->cpus->of_node);
-		dai->cpus->of_node = NULL;
-	}
-#else
-	if (dai->platform_of_node) {
-		of_node_put(dai->platform_of_node);
-		dai->platform_of_node = NULL;
-	}
-
-	if (dai->cpu_of_node) {
-		of_node_put(dai->cpu_of_node);
-		dai->cpu_of_node = NULL;
-	}
-#endif
-	if (dai->num_codecs > 0) {
-		int i;
-		for (i = 0; i < dai->num_codecs; i++) {
-			of_node_put(dai->codecs[i].of_node);
-			dai->codecs[i].of_node = NULL;
-		}
-		dai->num_codecs = 0;
-	}
-
-	if (np_cpu)
-		of_node_put(np_cpu);
-
-	if (np_codec)
-		of_node_put(np_codec);
+		!of_property_read_bool(node, "require-pmdown-time");
+	dai->ignore_suspend = !of_property_read_bool(node, "require-suspend");
+exit:
 
 	return ret;
 }
@@ -1243,13 +1254,15 @@ static int aoc_of_parse_dai_link(struct device_node *node,
 			if (ret == -EPROBE_DEFER) {
 				pr_info("%s: register sound card later",
 					__func__);
-				break;
 			} else {
-				pr_warn("%s: fail to parse %s", __func__,
+				/*
+				 * If any dai link error, then
+				 * sound card should be fail
+				 */
+				pr_err("%s: fail to parse %s", __func__,
 					np->name);
-				memset(dai_link, 0, sizeof(*dai_link));
-				continue;
 			}
+			break;
 		}
 #ifdef DUMP_DAI_LINK_INFO
 		pr_info("dai: %s\n", dai_link->name);
@@ -1263,19 +1276,21 @@ static int aoc_of_parse_dai_link(struct device_node *node,
 		dai_link++;
 		count++;
 	}
-
-	if (ret != -EPROBE_DEFER)
-		ret = 0;
+	if (ret < 0)
+		goto err;
 
 	card->num_links = count;
+	of_node_put(np_dai);
+	return ret;
 
 err:
+	put_dai_links(card);
 	of_node_put(np_dai);
 	return ret;
 }
 
 static int of_parse_one_codec_cfg(struct device_node *node,
-				  struct snd_soc_codec_conf *codec_cfg)
+	struct snd_soc_codec_conf *codec_cfg)
 {
 	int ret = 0;
 	struct device_node *of_node;
@@ -1290,11 +1305,8 @@ static int of_parse_one_codec_cfg(struct device_node *node,
 		goto err;
 	}
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
 	codec_cfg->dlc.of_node = of_node;
-#else
-	codec_cfg->of_node = of_node;
-#endif
+
 	ret = of_property_read_string(node, "prefix", &codec_cfg->name_prefix);
 	if (ret) {
 		pr_err("%s: fail to get prefix for %s %d", __func__, node->name,
@@ -1308,7 +1320,7 @@ err:
 }
 
 static int aoc_of_parse_codec_conf(struct device_node *node,
-				   struct snd_soc_card *card)
+	struct snd_soc_card *card)
 {
 	int ret = 0, count;
 	struct device_node *np_cfg;
@@ -1364,8 +1376,210 @@ err:
 	return ret;
 }
 
+static int aoc_of_parse_hs_jack(struct device_node *node,
+	struct snd_card_pdata *pdata)
+{
+	struct device_node *np_cfg;
+	int ret;
+
+	np_cfg = of_get_child_by_name(node, "hs_jack");
+	if (!np_cfg) {
+		pr_info("%s: no hs jack", __func__);
+		return 0;
+	}
+
+	ret = of_property_read_u32_index(np_cfg, "be_id",
+						0, &pdata->jack_be_id);
+	if (ret != 0) {
+		pr_err("%s: fail to parse id %d\n", __func__, ret);
+		goto err_exit;
+	}
+
+	pdata->jack_np = of_parse_phandle(np_cfg, "codec", 0);
+	if (!pdata->jack_np) {
+		pr_err("%s: fail to codec np\n", __func__);
+		goto err_exit;
+	}
+
+	pdata->has_jack = true;
+	return 0;
+
+err_exit:
+	of_node_put(np_cfg);
+	return ret;
+}
+
+static int aoc_of_parse_clk(struct device_node *np_clk,
+	struct snd_soc_card *card, u32 *clk_num, struct clk_ctrl **clks)
+{
+	struct device *dev = card->dev;
+	struct device_node *np;
+	struct clk_ctrl *cur;
+	int count, ret = 0, i;
+	const char *clk_type = NULL;
+	u32 fixclk;
+
+	if (!clks || !clk_num || !np_clk)
+		return -EINVAL;
+
+	*clk_num = 0;
+	count = (int)of_get_available_child_count(np_clk);
+	if (count <= 0)
+		return ret;
+
+	*clks = devm_kzalloc(dev, sizeof(struct clk_ctrl) * count, GFP_KERNEL);
+	if (!(*clks)) {
+		pr_err("parse_clk: fail to alloc mem");
+		return -ENOMEM;
+	}
+
+	cur = *clks;
+
+	for_each_available_child_of_node(np_clk, np) {
+		if (*clk_num >= count) {
+			pr_err("%s: %s clk number overflow %d %d\n",
+				__func__, np->name, *clk_num, count);
+			ret = -EINVAL;
+			goto err_exit;
+		}
+
+		cur->np = of_parse_phandle(np, "comp", 0);
+		if (!cur->np) {
+			ret = of_property_read_u32(np, "dai_id", &cur->dai_id);
+			if (ret) {
+				pr_err("%s: %s fail to parse comp\n",
+					__func__, np->name);
+				goto err_exit;
+			}
+		} else {
+			/*
+			 * If the of_node exists, then set the dai_id to
+			 * be 0xFFFFFFFF
+			 */
+			cur->dai_id = 0xFFFFFFFF;
+		}
+
+		ret = of_property_read_string(np, "src", &clk_type);
+		if (ret) {
+			pr_err("%s: %s fail to clk type %d",
+				__func__, np->name, ret);
+			goto err_exit;
+		}
+
+		if (!clk_type) {
+			pr_err("%s: %s clk_type is NULL", __func__, np->name);
+			ret = -EINVAL;
+			goto err_exit;
+		}
+
+		ret = -EINVAL;
+		for (i = 0; i < ARRAY_SIZE(clksrc_map); i++) {
+			if (!strcmp(clk_type, clksrc_map[i].str)) {
+				ret = 0;
+				cur->src = clksrc_map[i].value;
+				break;
+			}
+		}
+		if (ret) {
+			pr_err("%s: %s fail to convert type %s",
+				__func__, np->name, clk_type);
+			goto err_exit;
+		}
+
+		ret = of_property_read_u32(np, "id", &cur->id);
+		if (ret != 0) {
+			pr_err("%s: %s fail to parse id %d\n",
+				__func__, np->name, ret);
+			goto err_exit;
+		}
+
+		ret = of_property_read_u32(np, "srcid", &cur->srcid);
+		if (ret != 0) {
+			pr_err("%s: %s fail to parse srcid %d\n",
+				__func__, np->name, ret);
+			goto err_exit;
+		}
+
+		ret = of_property_read_u32(np, "in_mul", &cur->in_mul);
+		if (ret != 0) {
+			pr_err("%s: %s fail to parse in_mul %d\n",
+				__func__, np->name, ret);
+			goto err_exit;
+		}
+
+		ret = of_property_read_u32(np, "out_mul", &cur->out_mul);
+		if (ret != 0) {
+			pr_err("%s: %s fail to parse out_mul %d\n",
+				__func__, np->name, ret);
+			goto err_exit;
+		}
+
+		ret = of_property_read_u32(np, "fixclk", &fixclk);
+		if (ret == 0)
+			cur->fix_clk = fixclk;
+
+		if (cur->src == SRC_PLL && !cur->fix_clk) {
+			pr_err("%s: %s PLL requires fixup clk\n",
+				__func__, np->name);
+			goto err_exit;
+		}
+
+		(*clk_num)++;
+		cur++;
+	}
+
+	return 0;
+
+err_exit:
+	*clk_num = 0;
+	devm_kfree(dev, *clks);
+	*clks = NULL;
+	return ret;
+}
+
+static int aoc_of_parse_clks(struct device_node *node,
+	struct snd_soc_card *card, struct snd_card_pdata *pdata)
+{
+	struct device_node *np_clks, *cur;
+	int ret = 0;
+
+	np_clks = of_get_child_by_name(node, "clks");
+	if (!np_clks) {
+		pr_info("%s: no clks", __func__);
+		return ret;
+	}
+
+	/* Parse the sys clock */
+	cur = of_get_child_by_name(np_clks, "sys");
+	if (cur) {
+		ret = aoc_of_parse_clk(cur, card, &pdata->sys_clk_num,
+				 &pdata->sys_clks);
+		of_node_put(cur);
+		if (ret < 0) {
+			pr_err("%s: fail to parse sysclk %d", __func__, ret);
+			goto err_exit;
+		}
+	}
+
+	/* Parse the pll clock */
+	cur = of_get_child_by_name(np_clks, "pll");
+	if (cur) {
+		ret = aoc_of_parse_clk(cur, card, &pdata->pll_clk_num,
+				 &pdata->pll_clks);
+		of_node_put(cur);
+		if (ret < 0) {
+			pr_err("%s: fail to parse sysclk %d", __func__, ret);
+			goto err_exit;
+		}
+	}
+
+err_exit:
+	of_node_put(np_clks);
+	return ret;
+}
+
 static int aoc_snd_card_parse_of(struct device_node *node,
-				 struct snd_soc_card *card)
+	struct snd_soc_card *card, struct snd_card_pdata *pdata)
 {
 	int ret;
 
@@ -1378,6 +1592,18 @@ static int aoc_snd_card_parse_of(struct device_node *node,
 	ret = aoc_of_parse_codec_conf(node, card);
 	if (ret) {
 		pr_err("%s: fail to parse codec conf %d", __func__, ret);
+		goto err;
+	}
+
+	ret = aoc_of_parse_hs_jack(node, pdata);
+	if (ret) {
+		pr_err("%s: fail to parse hs jack %d", __func__, ret);
+		goto err;
+	}
+
+	ret = aoc_of_parse_clks(node, card, pdata);
+	if (ret) {
+		pr_err("%s: fail to parse clks %d", __func__, ret);
 		goto err;
 	}
 
@@ -1416,18 +1642,100 @@ static void init_audio_state_query(struct snd_soc_card *card)
 	entry->size = sizeof(client->online);
 }
 
+static void init_headset_jack(struct snd_soc_card *card,
+	struct snd_soc_pcm_runtime *rtd, u32 id)
+{
+	struct snd_soc_dai *codec_dai, *target_dai = NULL;
+	struct aoc_chip *chip =
+		(struct aoc_chip *)snd_soc_card_get_drvdata(card);
+	struct snd_card_pdata *pdata =
+		container_of(chip, struct snd_card_pdata, g_chip);
+	int i, err;
+
+	if (!pdata || !pdata->has_jack || pdata->jack_init ||
+		pdata->jack_be_id != id)
+		return;
+
+	for_each_rtd_codec_dais(rtd, i, codec_dai) {
+		if (pdata->jack_np ==
+			codec_dai->component->dev->of_node) {
+			target_dai = codec_dai;
+			break;
+		}
+	}
+
+	if (!target_dai) {
+		pr_err("Fail to find target_dai for headset jack\n");
+		return;
+	}
+
+	/* setup hs jack */
+	err = snd_soc_card_jack_new(card, "Headset Jack",
+		SND_JACK_HEADSET | SND_JACK_BTN_0 |
+		SND_JACK_BTN_1 | SND_JACK_BTN_2 |
+		SND_JACK_BTN_3, &pdata->jack,	NULL, 0);
+	if (err) {
+		pr_err("Fail to create headset jack %d\n",
+			err);
+		return;
+	}
+
+	snd_jack_set_key(pdata->jack.jack,
+		SND_JACK_BTN_0, KEY_MEDIA);
+
+	snd_jack_set_key(pdata->jack.jack,
+		SND_JACK_BTN_1, KEY_VOICECOMMAND);
+
+	snd_jack_set_key(pdata->jack.jack,
+		SND_JACK_BTN_2, KEY_VOLUMEUP);
+
+	snd_jack_set_key(pdata->jack.jack,
+		SND_JACK_BTN_3, KEY_VOLUMEDOWN);
+
+	err = snd_soc_component_set_jack(target_dai->component,
+		&pdata->jack, NULL);
+	if (err == 0)
+		pdata->jack_init = true;
+
+	if (!pdata->jack_init)
+		pr_warn("%s: fail to init hs jack %s\n", __func__,
+			(pdata->jack_np)?pdata->jack_np->name:"");
+}
+
+static void init_backend_control(struct snd_soc_pcm_runtime *rtd, u32 id)
+{
+	u32 idx;
+	struct snd_soc_dai *cpu_dai;
+
+	idx = AOC_ID_TO_INDEX(id);
+	if (idx >= ARRAY_SIZE(be_res_map))
+		return;
+
+	if (be_res_map[idx].num_controls == 0 ||
+	    !be_res_map[idx].controls)
+		return;
+
+	cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	snd_soc_add_dai_controls(cpu_dai,
+		 be_res_map[idx].controls, be_res_map[idx].num_controls);
+}
+
 static int aoc_card_late_probe(struct snd_soc_card *card)
 {
 	struct aoc_chip *chip =
 		(struct aoc_chip *)snd_soc_card_get_drvdata(card);
 	int err, i;
 	struct snd_soc_pcm_runtime *rtd;
-	struct snd_soc_dai *cpu_dai;
+	struct snd_card_pdata *pdata =
+		container_of(chip, struct snd_card_pdata, g_chip);
 	u32 id;
 
 	chip->card = card->snd_card;
 
-	//TODO  make the service list NOT have to be in the same order as pcm device list
+	/*
+	 * TODO: make the service list
+	 * NOT have to be in the same order as pcm device list
+	 */
 	for (i = 0; i < aoc_audio_service_num() - 2; i++) {
 		chip->avail_substreams |= (1 << i);
 	}
@@ -1436,46 +1744,30 @@ static int aoc_card_late_probe(struct snd_soc_card *card)
 	if (err < 0)
 		pr_err("%s: fail to new ctrl %d", __func__, err);
 
-	/* Register HW PARAM control */
+
+	/* Default BE setting */
+	memcpy(pdata->be_params, default_be_params, sizeof(default_be_params));
+
+	/* Register HW control */
 	list_for_each_entry (rtd, &card->rtd_list, list) {
-		if (rtd->dai_link->no_pcm) {
-			id = rtd->dai_link->id;
-			if (!(id & AOC_BE))
-				continue;
+		if (!rtd->dai_link->no_pcm)
+			continue;
 
-			id = AOC_ID_TO_INDEX(id);
-			if (id >= ARRAY_SIZE(be_res_map))
-				continue;
+		id = rtd->dai_link->id;
+		if (!(id & AOC_BE))
+			continue;
 
-			if (be_res_map[id].num_controls == 0 ||
-			    !be_res_map[id].controls)
-				continue;
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
-			cpu_dai = asoc_rtd_to_cpu(rtd, 0);
-#else
-			cpu_dai = rtd->cpu_dai;
-#endif
-			snd_soc_add_dai_controls(cpu_dai,
-						 be_res_map[id].controls,
-						 be_res_map[id].num_controls);
-		}
+		init_headset_jack(card, rtd, id);
+		init_backend_control(rtd, id);
 	}
 
 	init_audio_state_query(card);
 	return 0;
 }
 
-static int snd_aoc_create(struct aoc_chip **rchip)
+static int snd_aoc_init(struct aoc_chip *chip)
 {
-	struct aoc_chip *chip;
 	int i;
-
-	*rchip = NULL;
-
-	chip = kzalloc(sizeof(*chip), GFP_KERNEL);
-	if (chip == NULL)
-		return -ENOMEM;
 
 	chip->mic_loopback_enabled = 0;
 
@@ -1487,7 +1779,7 @@ static int snd_aoc_create(struct aoc_chip **rchip)
 
 	chip->default_sink_id = DEFAULT_AUDIO_SINK_ID;
 	chip->sink_id_list[0] = DEFAULT_AUDIO_SINK_ID;
-	for (i = 1; i < MAX_NUM_OF_SINKS_PER_STREAM; i++) {
+	for (i = 1; i < ARRAY_SIZE(chip->sink_id_list); i++) {
 		chip->sink_id_list[i] = -1;
 	}
 
@@ -1496,7 +1788,7 @@ static int snd_aoc_create(struct aoc_chip **rchip)
 
 	mutex_init(&chip->audio_mutex);
 	spin_lock_init(&chip->audio_lock);
-	*rchip = chip;
+
 	return 0;
 }
 
@@ -1507,6 +1799,7 @@ static int aoc_snd_card_probe(struct platform_device *pdev)
 	struct snd_soc_card *card;
 	int ret;
 	struct aoc_service_dev *aoc_dev;
+	struct snd_card_pdata *pdata;
 
 	pr_info("%s", __func__);
 	if (!np)
@@ -1532,16 +1825,30 @@ static int aoc_snd_card_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	/* Allocate the private data */
+	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
+	if (!pdata) {
+		pr_err("%s: fail to allocate mem for pdata", __func__);
+		return -ENOMEM;
+	}
+
+	ret = snd_aoc_init(&pdata->g_chip);
+	if (ret < 0) {
+		pr_err("%s: Failed to init aoc chip\n", __func__);
+		goto err;
+	}
+
 	card->owner = THIS_MODULE;
 	card->dev = dev;
 	card->late_probe = aoc_card_late_probe;
+	mutex_init(&pdata->mutex);
 
-	ret = aoc_snd_card_parse_of(np, card);
+	ret = aoc_snd_card_parse_of(np, card, pdata);
 	if (ret) {
 		goto err;
 	}
 
-	snd_soc_card_set_drvdata(card, g_chip);
+	snd_soc_card_set_drvdata(card, &pdata->g_chip);
 	ret = snd_soc_register_card(card);
 	if (ret < 0) {
 		if (ret == -EPROBE_DEFER) {
@@ -1599,13 +1906,6 @@ static int aoc_card_init(void)
 	for (i = 0; i < ARRAY_SIZE(ch_map); i++)
 		ch_text[i] = ch_map[i].str;
 
-	ret = snd_aoc_create(&g_chip);
-	if (ret < 0) {
-		pr_err("%s: failed to create aoc chip\n", __func__);
-		goto exit;
-	}
-
-	mutex_init(&card_mutex);
 	ret = platform_driver_register(&aoc_snd_card_drv);
 	if (ret) {
 		pr_err("error registering aoc pcm drv %d .\n", ret);
@@ -1619,12 +1919,6 @@ exit:
 static void aoc_card_exit(void)
 {
 	platform_driver_unregister(&aoc_snd_card_drv);
-	mutex_destroy(&card_mutex);
-
-	if (g_chip) {
-		kfree(g_chip);
-		g_chip = NULL;
-	}
 }
 
 module_init(aoc_card_init);
