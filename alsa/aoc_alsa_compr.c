@@ -304,11 +304,6 @@ static int aoc_compr_trigger(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstrea
 			goto out;
 		}
 
-		if ((err = aoc_audio_path_open(alsa_stream)) < 0) {
-			pr_err("ERR:%d in audio path open\n", err);
-			goto out;
-		}
-
 		err = aoc_audio_start(alsa_stream);
 		if (err == 0) {
 			alsa_stream->running = 1;
@@ -326,9 +321,6 @@ static int aoc_compr_trigger(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstrea
 				       err);
 			alsa_stream->running = 0;
 		}
-
-		if ((err = aoc_audio_path_close(alsa_stream)) < 0)
-			pr_err("ERR:%d in audio path close\n", err);
 
 		aoc_compr_prepare(cstream);
 		break;

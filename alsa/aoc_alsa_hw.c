@@ -497,46 +497,38 @@ static int aoc_audio_playback_trigger_bind(struct aoc_alsa_stream *alsa_stream,
 	return err;
 }
 
-static int aoc_audio_path(struct aoc_alsa_stream *alsa_stream, int cmd)
+/* Bind/unbind the source and dest */
+static int aoc_audio_path_bind(int src, int dst, int cmd, struct aoc_chip *chip)
 {
-	int i, err = 0;
-	int src, dst;
+	int err;
+	struct CMD_AUDIO_OUTPUT_BIND bind;
 
-	src = alsa_stream->entry_point_idx;
-
-	if (!alsa_stream->cstream &&
-	    (alsa_stream->substream->stream == SNDRV_PCM_STREAM_CAPTURE))
+	if (dst < 0)
 		return 0;
 
-	/* Binding or unbinding source/sinks */
-	for (i = 0; i < MAX_NUM_OF_SINKS_PER_STREAM; i++) {
-		/* Bind and unbind have reverse order in the list of sinks */
-		if (cmd == START)
-			dst = alsa_stream->chip->sink_id_list[i];
-		else
-			dst = alsa_stream->chip->sink_id_list
-				      [MAX_NUM_OF_SINKS_PER_STREAM - 1 - i];
+	pr_info("%s: src:%d - sink:%d!\n", cmd == START ? "bind" : "unbind", src, dst);
 
-		if (dst == -1)
-			continue;
-		err = aoc_audio_playback_trigger_bind(alsa_stream, cmd, src,
-						      dst);
-		if (err < 0)
-			pr_err("ERR:%d in playback source/sink %s\n", err,
-			       (cmd == START) ? "BIND" : "UNBIND");
-	}
+	AocCmdHdrSet(&(bind.parent), CMD_AUDIO_OUTPUT_BIND_ID, sizeof(bind));
+	bind.bind = (cmd == START) ? 1 : 0;
+	bind.src = src;
+	bind.dst = dst;
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&bind, sizeof(bind), NULL, chip);
+
+	if (err < 0)
+		pr_err("ERR:%d %s: src:%d - sink:%d!\n", err, (cmd == START) ? "bind" : "unbind",
+		       src, dst);
 
 	return err;
 }
 
-int aoc_audio_path_open(struct aoc_alsa_stream *alsa_stream)
+int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest)
 {
-	return aoc_audio_path(alsa_stream, START);
+	return aoc_audio_path_bind(src, dest, START, chip);
 }
 
-int aoc_audio_path_close(struct aoc_alsa_stream *alsa_stream)
+int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest)
 {
-	return aoc_audio_path(alsa_stream, STOP);
+	return aoc_audio_path_bind(src, dest, STOP, chip);
 }
 
 static int aoc_audio_playback_set_params(struct aoc_alsa_stream *alsa_stream,

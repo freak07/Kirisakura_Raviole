@@ -83,7 +83,7 @@ enum { BUILTIN_MIC0 = 0, BUILTIN_MIC1, BUILTIN_MIC2, BUILTIN_MIC3 };
 enum { MIC_LOW_POWER_GAIN = 0, MIC_HIGH_POWER_GAIN, MIC_CURRENT_GAIN };
 
 enum { NONBLOCKING = 0, BLOCKING = 1 };
-enum { START, STOP };
+enum { STOP = 0, START };
 enum { PLAYBACK_MODE, VOICE_TX_MODE, VOICE_RX_MODE, HAPTICS_MODE, OFFLOAD_MODE };
 
 struct aoc_chip {
@@ -159,8 +159,8 @@ int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 			 uint32_t samplerate, uint32_t bps, bool pcm_float_fmt, int source_mode);
 int aoc_audio_start(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream);
-int aoc_audio_path_open(struct aoc_alsa_stream *alsa_stream);
-int aoc_audio_path_close(struct aoc_alsa_stream *alsa_stream);
+int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest);
+int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest);
 
 int aoc_audio_set_ctls(struct aoc_chip *chip);
 

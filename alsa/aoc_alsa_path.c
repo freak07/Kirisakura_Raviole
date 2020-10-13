@@ -22,10 +22,36 @@
 #include <sound/pcm_params.h>
 
 #include "aoc_alsa.h"
+#include "aoc_alsa_drv.h"
 #include "google-aoc-enum.h"
 
 #define BE_MAP_SZ(x) \
 		ARRAY_SIZE(((struct be_path_cache *)0)->x)
+
+/*
+ * TODO: TDM/I2S will be removed from port naming and will be replaced
+ * by sink-associated devices such as spker, headphone, bt, usb, mode
+ */
+static aoc_audio_sink[] = {
+	[PORT_I2S_0_RX] = ASNK_HEADPHONE, [PORT_I2S_0_TX] = -1,
+	[PORT_I2S_1_RX] = ASNK_BT,	  [PORT_I2S_1_TX] = -1,
+	[PORT_I2S_2_RX] = ASNK_USB,	  [PORT_I2S_2_TX] = -1,
+	[PORT_TDM_0_RX] = ASNK_SPEAKER,	  [PORT_TDM_0_TX] = -1,
+	[PORT_TDM_1_RX] = ASNK_MODEM,	  [PORT_TDM_1_TX] = -1,
+	[PORT_USB_RX] = ASNK_USB,	  [PORT_USB_TX] = -1,
+	[PORT_BT_RX] = ASNK_BT,		  [PORT_BT_TX] = -1,
+};
+
+static int ep_id_to_source(int ep_idx)
+{
+	/* TODO: refactor needed. Haptics pcm dev id: 7, its entrypoint is 10(HAPTICS) */
+	return (ep_idx == 7) ? HAPTICS : ep_idx;
+}
+
+static int hw_id_to_sink(int hw_idx)
+{
+	return aoc_audio_sink[hw_idx];
+}
 
 struct be_path_cache {
 	DECLARE_BITMAP(fe_put_mask, IDX_FE_MAX);
@@ -742,7 +768,7 @@ static int aoc_path_get(uint32_t ep_idx, uint32_t hw_idx,
 	return 0;
 }
 
-static int aoc_path_put(uint32_t ep_idx, uint32_t hw_idx,
+static int aoc_path_put(uint32_t ep_id, uint32_t hw_id,
 			struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
@@ -753,11 +779,13 @@ static int aoc_path_put(uint32_t ep_idx, uint32_t hw_idx,
 	struct aoc_chip *chip =
 		(struct aoc_chip *)snd_soc_card_get_drvdata(component->card);
 
+	uint32_t ep_idx, hw_idx;
+
 	int enable = ucontrol->value.integer.value[0];
 	int ret;
 
-	ep_idx = AOC_ID_TO_INDEX(ep_idx);
-	hw_idx = AOC_ID_TO_INDEX(hw_idx);
+	ep_idx = AOC_ID_TO_INDEX(ep_id);
+	hw_idx = AOC_ID_TO_INDEX(hw_id);
 
 	if (hw_idx >= PORT_MAX || ep_idx >= IDX_FE_MAX) {
 		pr_err("%s: invalid idx hw_idx 0x%x ep_idx %x", __func__,
@@ -765,14 +793,19 @@ static int aoc_path_put(uint32_t ep_idx, uint32_t hw_idx,
 		return -EINVAL;
 	}
 
-	pr_debug("%s: set ep %u hw_id 0x%x enable %d chip %p", __func__, ep_idx,
+	pr_info("%s: set ep %u hw_id 0x%x enable %d chip %p", __func__, ep_idx,
 		hw_idx, enable, chip);
 
 	mutex_lock(&path_mutex);
-	if (enable)
+
+	if (enable) {
 		set_bit(ep_idx, port_array[hw_idx].fe_put_mask);
-	else
+		aoc_audio_path_open(chip, ep_id_to_source(ep_idx), hw_id_to_sink(hw_idx));
+	} else {
 		clear_bit(ep_idx, port_array[hw_idx].fe_put_mask);
+		aoc_audio_path_close(chip, ep_id_to_source(ep_idx), hw_id_to_sink(hw_idx));
+	}
+
 	mutex_unlock(&path_mutex);
 
 	/* Notify AoC driver here if necessary */
