@@ -462,6 +462,40 @@ static int aoc_asp_mode_ctl_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int aoc_sink_mode_ctl_get(struct snd_kcontrol *kcontrol,
+				 struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_enum *mc = (struct soc_enum *)kcontrol->private_value;
+	u32 sink_idx = (u32)mc->shift_l;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.enumerated.item[0] = aoc_get_sink_mode(chip, sink_idx);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int aoc_sink_mode_ctl_set(struct snd_kcontrol *kcontrol,
+				  struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_enum *mc = (struct soc_enum *)kcontrol->private_value;
+	u32 sink_idx = (u32)mc->shift_l;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	aoc_set_sink_mode(chip, sink_idx, ucontrol->value.enumerated.item[0]);
+	pr_debug("sink mode set: %d - %d\n", sink_idx,
+		 ucontrol->value.enumerated.item[0]);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static int aoc_dsp_state_ctl_get(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
@@ -545,6 +579,11 @@ static int a2dp_encoder_parameters_get(struct snd_kcontrol *kcontrol,
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
 }
+/* TODO: this has to be consistent to BT/USB Mode enum in aoc_alsa.h */
+static const char *bt_mode_texts[] = { "Unconfigured", "SCO",
+				       "ESCO",	       "A2DP_RAW",
+				       "A2DP_ENC_SBC", "A2DP_ENC_AAC" };
+static SOC_ENUM_SINGLE_DECL(bt_mode_enum, 1, ASNK_BT, bt_mode_texts);
 
 /* TODO: seek better way to create a series of controls  */
 static const char *block_asp_mode_texts[] = { "ASP_OFF", "ASP_ON", "ASP_BYPASS",
@@ -635,6 +674,8 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
 	SOC_ENUM_EXT("AoC USB Mixer ASP Mode", block_20_state_enum,
 		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
+	SOC_ENUM_EXT("BT Mode", bt_mode_enum,
+		     aoc_sink_mode_ctl_get, aoc_sink_mode_ctl_set),
 
 	SOC_ENUM_EXT("Audio Sink 0 Processing State", sink_0_state_enum,
 		     aoc_sink_state_ctl_get, NULL),
@@ -721,8 +762,7 @@ int snd_aoc_new_ctl(struct aoc_chip *chip)
 
 	strcpy(chip->card->mixername, "Aoc Mixer");
 	for (idx = 0; idx < ARRAY_SIZE(snd_aoc_ctl); idx++) {
-		err = snd_ctl_add(chip->card,
-				  snd_ctl_new1(&snd_aoc_ctl[idx], chip));
+		err = snd_ctl_add(chip->card, snd_ctl_new1(&snd_aoc_ctl[idx], chip));
 		if (err < 0)
 			return err;
 	}

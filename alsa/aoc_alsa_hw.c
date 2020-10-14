@@ -9,7 +9,6 @@
  * published by the Free Software Foundation.
  */
 
-#include "../aoc-interface.h"
 #include "aoc_alsa.h"
 #include "aoc_alsa_drv.h"
 
@@ -425,7 +424,33 @@ int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int sink)
 	return cmd.bitmap[sink];
 }
 
-int aoc_get_sink_state(struct aoc_chip *chip, int iSink)
+int aoc_get_sink_mode(struct aoc_chip *chip, int sink)
+{
+	return chip->sink_mode[sink];
+}
+
+int aoc_set_sink_mode(struct aoc_chip *chip, int sink, int mode)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_SINK cmd;
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SINK_ID, sizeof(cmd));
+
+	cmd.sink = sink;
+	cmd.mode = mode;
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), (uint8_t *)&cmd, chip);
+	if (err < 0) {
+		pr_err("Error in get aoc sink processing state !\n");
+		return err;
+	}
+
+	chip->sink_mode[sink] = mode;
+	pr_info("sink state set :%d - %d\n", sink, cmd.mode);
+
+	return 0;
+}
+
+int aoc_get_sink_state(struct aoc_chip *chip, int sink)
 {
 	int err;
 	struct CMD_AUDIO_OUTPUT_GET_SINK_PROCESSING_STATE cmd;
@@ -433,13 +458,13 @@ int aoc_get_sink_state(struct aoc_chip *chip, int iSink)
 		     CMD_AUDIO_OUTPUT_GET_SINK_PROCESSING_STATE_ID,
 		     sizeof(cmd));
 
-	cmd.sink = iSink;
+	cmd.sink = sink;
 	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
 				sizeof(cmd), (uint8_t *)&cmd, chip);
 	if (err < 0)
 		pr_err("Error in get aoc sink processing state !\n");
 
-	pr_info("sink_state:%d - %d\n", iSink, cmd.mode);
+	pr_info("sink_state:%d - %d\n", sink, cmd.mode);
 
 	return err < 0 ? err : cmd.mode;
 }

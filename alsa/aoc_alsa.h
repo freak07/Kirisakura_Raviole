@@ -70,6 +70,16 @@
 #define alsa2chip(vol) (vol) /* Convert alsa to chip volume */
 #define chip2alsa(vol) (vol) /* Convert chip to alsa volume */
 
+/* TODO: Copied from AoC repo and will be removed */
+enum bluetooth_mode {
+	AHS_BT_MODE_UNCONFIGURED = 0,
+	AHS_BT_MODE_SCO,
+	AHS_BT_MODE_ESCO,
+	AHS_BT_MODE_A2DP_RAW,
+	AHS_BT_MODE_A2DP_ENC_SBC,
+	AHS_BT_MODE_A2DP_ENC_AAC,
+};
+
 enum { CTRL_VOL_MUTE, CTRL_VOL_UNMUTE };
 enum {
 	PCM_PLAYBACK_VOLUME,
@@ -100,6 +110,7 @@ struct aoc_chip {
 
 	int default_sink_id;
 	int sink_id_list[MAX_NUM_OF_SINKS_PER_STREAM];
+	int sink_mode[AUDIO_OUTPUT_SINKS];
 
 	int volume;
 	int old_volume; /* Store the volume value while muted */
@@ -181,8 +192,10 @@ int aoc_get_dsp_state(struct aoc_chip *chip);
 int aoc_get_asp_mode(struct aoc_chip *chip, int block, int component, int key);
 int aoc_set_asp_mode(struct aoc_chip *chip, int block, int component, int key, int val);
 
-int aoc_get_sink_state(struct aoc_chip *chip, int iSink);
-int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int iSink);
+int aoc_get_sink_state(struct aoc_chip *chip, int sink);
+int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int sink);
+int aoc_get_sink_mode(struct aoc_chip *chip, int sink);
+int aoc_set_sink_mode(struct aoc_chip *chip, int sink, int mode);
 
 int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 		    uint32_t count);
