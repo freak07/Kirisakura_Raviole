@@ -335,6 +335,30 @@ static void aoc_req_assert(struct aoc_prvdata *p, bool assert)
 	iowrite32(!!assert, p->aoc_req_virt);
 }
 
+extern int gs_chipid_get_ap_hw_tune_array(const u8 **array);
+
+static bool aoc_sram_was_repaired(struct aoc_prvdata *prvdata)
+{
+	const u8 *array;
+	struct device *dev = prvdata->dev;
+	int ret;
+
+	ret = gs_chipid_get_ap_hw_tune_array(&array);
+
+	if (ret == -EPROBE_DEFER) {
+		dev_err(dev, "Unable to determine SRAM repair state.  Leaving monitor mode disabled\n");
+		return false;
+	}
+
+	if (ret != 32) {
+		dev_err(dev, "Unexpected hw_tune_array size.  Leaving monitor mode disabled\n");
+		return false;
+	}
+
+	/* Bit 65 says that AoC SRAM was repaired */
+	return ((array[8] & 0x2) != 0);
+}
+
 struct aoc_fw_data {
 	u32 key;
 	u32 value;
@@ -374,10 +398,11 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	struct device_node *rootnode = of_root;
 	u32 board_id = dt_property(rootnode, "board_id");
 	u32 board_rev = dt_property(rootnode, "board_rev");
+	u32 sram_was_repaired = aoc_sram_was_repaired(prvdata);
 	struct aoc_fw_data fw_data[] = {
 		{ .key = kAOCBoardID, .value = board_id },
-		{ .key = kAOCBoardRevision, .value = board_rev }
-	};
+		{ .key = kAOCBoardRevision, .value = board_rev },
+		{ .key = kAOCSRAMRepaired, .value = sram_was_repaired } };
 	const char *version;
 
 	u32 ipc_offset, bootloader_offset;
@@ -401,6 +426,9 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	pr_notice("successfully loaded firmware version %s type %s",
 		  version ? version : "unknown",
 		  _aoc_fw_is_release(fw) ? "release" : "development");
+
+	if (sram_was_repaired)
+		dev_err(dev, "SRAM was repaired on this device.  Stability/power will be impacted\n");
 
 	if (!_aoc_fw_is_compatible(fw)) {
 		dev_err(dev, "firmware and drivers are incompatible\n");
