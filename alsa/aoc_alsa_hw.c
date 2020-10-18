@@ -325,12 +325,22 @@ int aoc_mic_dc_blocker_set(struct aoc_chip *chip, int enable)
 /* TODO: temporary solution for mic muting, has to be revised using DSP modules instead of mixer */
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute)
 {
-	int volume = (mute == 1) ? 0 : 4000;
-	int src = 3;
-	int dst = 3;
+	int err, iMic0, iMic1, power_on;
 
-	if (chip)
-		aoc_audio_volume_set(chip, volume, src, dst);
+	iMic0 = 0;
+	iMic1 = 1;
+	power_on = (mute == 1) ? 0 : 1;
+
+	pr_debug("voice call mic mute: %d\n", mute);
+	if ((err = aoc_set_builtin_mic_power_state(chip, iMic0, power_on))) {
+		pr_err("ERR: fail in muting mic id %d\n", iMic0);
+		return err;
+	}
+
+	if ((err = aoc_set_builtin_mic_power_state(chip, iMic1, power_on))) {
+		pr_err("ERR: fail in muting mic id %d\n", iMic1);
+		return err;
+	}
 
 	return 0;
 }
