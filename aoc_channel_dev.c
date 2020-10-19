@@ -8,8 +8,11 @@
 #define pr_fmt(fmt) "aoc_chan: " fmt
 
 #include <linux/fs.h>
+#include <linux/kref.h>
 #include <linux/kthread.h>
+#include <linux/list.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/poll.h>
 #include <linux/rwlock_types.h>
 #include <linux/slab.h>
@@ -22,13 +25,18 @@
 
 static int aocc_major = -1;
 static int aocc_major_dev;
+static unsigned int aocc_next_minor; /* protected by aocc_devices_lock */
 static struct class *aocc_class;
 
-#define AOCC_MAX_DEVICES 1
+struct aocc_device_entry {
+	struct device *aocc_device;
+	struct aoc_service_dev *service;
+	struct list_head list;
+	struct kref refcount;
+};
 
-/* TODO(b/141396548): Update AOC channel driver to support multiple services. */
-static struct device *aocc_devices[AOCC_MAX_DEVICES];
-static unsigned long opened_devices;
+static LIST_HEAD(aocc_devices_list);
+static DEFINE_MUTEX(aocc_devices_lock);
 
 #define AOCC_MAX_MSG_SIZE 1024
 #define AOCC_MAX_PENDING_MSGS 32
@@ -78,8 +86,7 @@ struct aocc_channel_control_msg {
 } __packed;
 
 struct file_prvdata {
-	struct aoc_service_dev *service;
-	int device_index;
+	struct aocc_device_entry *aocc_device_entry;
 	int channel_index;
 	wait_queue_head_t read_queue;
 	struct list_head open_files_list;
@@ -219,17 +226,25 @@ static const struct file_operations fops = {
 	.owner = THIS_MODULE,
 };
 
-static struct aoc_service_dev *service_for_inode(struct inode *inode)
+static void aocc_device_entry_release(struct kref *ref)
 {
-	int minor = MINOR(inode->i_rdev);
+	kfree(container_of(ref, struct aocc_device_entry, refcount));
+}
 
-	if (minor < 0 || minor >= AOCC_MAX_DEVICES)
-		return NULL;
+/*
+ * Caller must hold aocc_devices_lock.
+ */
+static struct aocc_device_entry *aocc_device_entry_for_inode(struct inode *inode)
+{
+	struct aocc_device_entry *entry;
 
-	if (aocc_devices[minor] == NULL)
-		return NULL;
+	list_for_each_entry(entry, &aocc_devices_list, list) {
+		/* entries with service->dead == true can't be in aocc_devices_list */
+		if (entry->aocc_device->devt == inode->i_rdev)
+			return entry;
+	}
 
-	return dev_get_drvdata(aocc_devices[minor]);
+	return NULL;
 }
 
 static char *aocc_devnode(struct device *dev, umode_t *mode)
@@ -245,58 +260,73 @@ static char *aocc_devnode(struct device *dev, umode_t *mode)
 
 static int create_character_device(struct aoc_service_dev *dev)
 {
-	int i;
+	int rc = 0;
+	struct aocc_device_entry *new_entry;
 
-	for (i = 0; i < AOCC_MAX_DEVICES; i++) {
-		if (aocc_devices[i] == NULL) {
-			aocc_devices[i] =
-				device_create(aocc_class, &dev->dev,
-					      MKDEV(aocc_major, i), NULL,
-					      "acd-%s", dev_name(&(dev->dev)));
-			if (IS_ERR(aocc_devices[i])) {
-				pr_err("device_create failed: %ld\n",
-				       PTR_ERR(aocc_devices[i]));
-				aocc_devices[i] = NULL;
-				return -EINVAL;
-			}
-
-			dev_set_drvdata(aocc_devices[i], dev);
-
-			return 0;
-		}
+	new_entry = kmalloc(sizeof(*new_entry), GFP_KERNEL);
+	if (!new_entry) {
+		rc = -ENOMEM;
+		goto err_kmalloc;
 	}
 
-	return -ENODEV;
+	mutex_lock(&aocc_devices_lock);
+	new_entry->aocc_device = device_create(aocc_class, &dev->dev,
+					       MKDEV(aocc_major, aocc_next_minor), NULL,
+					       "acd-%s", dev_name(&dev->dev));
+	if (IS_ERR(new_entry->aocc_device)) {
+		pr_err("device_create failed: %ld\n", PTR_ERR(new_entry->aocc_device));
+		rc = PTR_ERR(new_entry->aocc_device);
+		goto err_device_create;
+	}
+	get_device(&dev->dev);
+	new_entry->service = dev;
+	aocc_next_minor++;
+	kref_init(&new_entry->refcount);
+	list_add(&new_entry->list, &aocc_devices_list);
+	mutex_unlock(&aocc_devices_lock);
+	return 0;
+
+err_device_create:
+	mutex_unlock(&aocc_devices_lock);
+	kfree(new_entry);
+err_kmalloc:
+	return rc;
 }
 
 static int aocc_open(struct inode *inode, struct file *file)
 {
+	int rc = 0;
 	struct file_prvdata *prvdata;
-	aoc_service *s;
-	int minor = MINOR(inode->i_rdev);
+	struct aocc_device_entry *entry;
 
 	pr_debug("attempt to open major:%d minor:%d\n", MAJOR(inode->i_rdev),
 		 MINOR(inode->i_rdev));
 
-	s = service_for_inode(inode);
-	if (!s)
-		return -ENODEV;
-
 	prvdata = kmalloc(sizeof(struct file_prvdata), GFP_KERNEL);
 	if (!prvdata) {
-		clear_bit(minor, &opened_devices);
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto err_kmalloc;
 	}
 
-	prvdata->service = s;
-	prvdata->device_index = minor;
-	file->private_data = prvdata;
+	mutex_lock(&aocc_devices_lock);
+	entry = aocc_device_entry_for_inode(inode);
+	if (!entry) {
+		rc = -ENODEV;
+		goto err_aocc_device_entry;
+	}
 
 	/* Check if our simple allocation scheme has overflowed */
 	if (atomic_read(&channel_index_counter) == 0) {
 		pr_err("Too many channels have been opened.");
-		return -EMFILE;
+		rc = -EMFILE;
+		goto err_channel_index_counter;
 	}
+
+	kref_get(&entry->refcount);
+	get_device(&entry->service->dev);
+	prvdata->aocc_device_entry = entry;
+	file->private_data = prvdata;
+	mutex_unlock(&aocc_devices_lock);
 
 	/* Allocate a unique index to represent this open file. */
 	prvdata->channel_index = atomic_inc_return(&channel_index_counter);
@@ -316,9 +346,17 @@ static int aocc_open(struct inode *inode, struct file *file)
 	write_unlock(&s_open_files_lock);
 
 	/*Send a message to AOC to register a new channel. */
-	aocc_send_cmd_msg(s, AOCC_CMD_OPEN_CHANNEL, prvdata->channel_index);
+	aocc_send_cmd_msg(prvdata->aocc_device_entry->service,
+			  AOCC_CMD_OPEN_CHANNEL, prvdata->channel_index);
 
 	return 0;
+
+err_channel_index_counter:
+err_aocc_device_entry:
+	mutex_unlock(&aocc_devices_lock);
+	kfree(prvdata);
+err_kmalloc:
+	return rc;
 }
 
 static int aocc_release(struct inode *inode, struct file *file)
@@ -327,9 +365,14 @@ static int aocc_release(struct inode *inode, struct file *file)
 	struct aoc_message_node *entry;
 	struct aoc_message_node *temp;
 	int scrapped = 0;
+	bool aocc_device_dead;
 
 	if (!private)
 		return -ENODEV;
+
+	mutex_lock(&aocc_devices_lock);
+	aocc_device_dead = private->aocc_device_entry->service->dead;
+	mutex_unlock(&aocc_devices_lock);
 
 	/*Remove this file from from the list of active channels. */
 	write_lock(&s_open_files_lock);
@@ -346,9 +389,11 @@ static int aocc_release(struct inode *inode, struct file *file)
 	}
 	write_unlock(&private->pending_msg_lock);
 
-	/*Send a message to AOC to close the channel. */
-	aocc_send_cmd_msg(private->service, AOCC_CMD_CLOSE_CHANNEL,
-			  private->channel_index);
+	if (!aocc_device_dead) {
+		/*Send a message to AOC to close the channel. */
+		aocc_send_cmd_msg(private->aocc_device_entry->service, AOCC_CMD_CLOSE_CHANNEL,
+				  private->channel_index);
+	}
 
 	if (scrapped)
 		pr_warn("Destroyed channel %d with %d unread messages",
@@ -357,9 +402,9 @@ static int aocc_release(struct inode *inode, struct file *file)
 		pr_debug("Destroyed channel %d with no unread messages",
 			 private->channel_index);
 
-	clear_bit(private->device_index, &opened_devices);
+	put_device(&private->aocc_device_entry->service->dev);
+	kref_put(&private->aocc_device_entry->refcount, aocc_device_entry_release);
 	kfree(private);
-
 	file->private_data = NULL;
 
 	return 0;
@@ -377,6 +422,14 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 	struct file_prvdata *private = file->private_data;
 	struct aoc_message_node *node = NULL;
 	ssize_t retval = 0;
+	bool aocc_device_dead;
+
+	mutex_lock(&aocc_devices_lock);
+	aocc_device_dead = private->aocc_device_entry->service->dead;
+	mutex_unlock(&aocc_devices_lock);
+
+	if (aocc_device_dead)
+		return -ESHUTDOWN;
 
 	/*Block while there are no messages pending. */
 	while (!aocc_are_messages_pending(private)) {
@@ -437,6 +490,7 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 	char *buffer;
 	size_t leftover;
 	ssize_t retval = 0;
+	bool aocc_device_dead;
 
 	if (!private)
 		return -ENODEV;
@@ -445,17 +499,27 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 	if (!buffer)
 		return -ENOMEM;
 
+	mutex_lock(&aocc_devices_lock);
+	aocc_device_dead = private->aocc_device_entry->service->dead;
+	mutex_unlock(&aocc_devices_lock);
+
+	if (aocc_device_dead) {
+		retval = -ESHUTDOWN;
+		goto err_aocc_device_dead;
+	}
+
 	/*Prepend the appropriate channel index to the message. */
 	((int *)buffer)[0] = private->channel_index;
 
 	leftover = copy_from_user(buffer + sizeof(int), buf, count);
 	if (leftover == 0) {
-		retval = aoc_service_write(private->service, buffer,
+		retval = aoc_service_write(private->aocc_device_entry->service, buffer,
 					   count + sizeof(int), should_block);
 	} else {
 		retval = -ENOMEM;
 	}
 
+err_aocc_device_dead:
 	kfree(buffer);
 	return retval;
 }
@@ -464,6 +528,14 @@ static unsigned int aocc_poll(struct file *file, poll_table *wait)
 {
 	unsigned int mask = 0;
 	struct file_prvdata *private = file->private_data;
+	bool aocc_device_dead;
+
+	mutex_lock(&aocc_devices_lock);
+	aocc_device_dead = private->aocc_device_entry->service->dead;
+	mutex_unlock(&aocc_devices_lock);
+
+	if (aocc_device_dead)
+		return mask | POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM;
 
 	poll_wait(file, &private->read_queue, wait);
 
@@ -492,19 +564,26 @@ static int aocc_probe(struct aoc_service_dev *dev)
 
 static int aocc_remove(struct aoc_service_dev *dev)
 {
-	int i;
-
-	for (i = 0; i < AOCC_MAX_DEVICES; i++) {
-		if (aocc_devices[i] && aocc_devices[i]->parent == &dev->dev) {
-			pr_notice("remove service with name %s\n",
-				  dev_name(&dev->dev));
-
-			device_destroy(aocc_class, aocc_devices[i]->devt);
-			aocc_devices[i] = NULL;
-		}
-	}
+	struct aocc_device_entry *entry;
+	struct aocc_device_entry *tmp;
 
 	kthread_stop(s_demux_task);
+
+	mutex_lock(&aocc_devices_lock);
+	list_for_each_entry_safe(entry, tmp, &aocc_devices_list, list) {
+		if (entry->aocc_device->parent == &dev->dev) {
+			pr_debug("remove service with name %s\n",
+				 dev_name(&dev->dev));
+
+			list_del_init(&entry->list);
+			put_device(&entry->service->dev);
+			device_destroy(aocc_class, entry->aocc_device->devt);
+			kref_put(&entry->refcount, aocc_device_entry_release);
+			break;
+		}
+	}
+	aocc_next_minor = 0;
+	mutex_unlock(&aocc_devices_lock);
 
 	return 0;
 }
