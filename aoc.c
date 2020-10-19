@@ -35,6 +35,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
+#include <linux/string.h>
 #include <linux/timer.h>
 #include <linux/uaccess.h>
 #include <linux/uio.h>
@@ -1340,6 +1341,7 @@ static void aoc_watchdog(struct work_struct *work)
 	int sscd_retries = 20;
 	const int sscd_retry_ms = 1000;
 	int sscd_rc;
+	char crash_info[RAMDUMP_SECTION_CRASH_INFO_SIZE];
 
 	dev_err(prvdata->dev, "aoc watchdog triggered, generating coredump\n");
 	if (!sscd_pdata.sscd_report) {
@@ -1383,6 +1385,11 @@ static void aoc_watchdog(struct work_struct *work)
 	}
 
 	sscd_info.name = "aoc";
+	if (ramdump_header->sections[RAMDUMP_SECTION_CRASH_INFO_INDEX].flags & RAMDUMP_FLAG_VALID)
+		strscpy(crash_info, (const char *)ramdump_header +
+			RAMDUMP_SECTION_CRASH_INFO_OFFSET, RAMDUMP_SECTION_CRASH_INFO_SIZE);
+	else
+		strscpy(crash_info, "Unknown", RAMDUMP_SECTION_CRASH_INFO_SIZE);
 
 	/* TODO(siqilin): Get paddr and vaddr base from firmware instead */
 	carveout_paddr_from_aoc = 0x98000000;
@@ -1402,7 +1409,7 @@ static void aoc_watchdog(struct work_struct *work)
 		sscd_rc = sscd_pdata.sscd_report(&sscd_dev, sscd_info.segs,
 						 sscd_info.seg_count,
 						 SSCD_FLAGS_ELFARM64HDR,
-						 "aoc_coredump");
+						 crash_info);
 		if (sscd_rc != -EAGAIN)
 			break;
 
