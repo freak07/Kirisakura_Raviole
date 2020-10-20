@@ -92,6 +92,7 @@ void aoc_remove_map_handler(struct aoc_service_dev *dev);
 enum AOC_FIRMWARE_INFORMATION {
 	kAOCBoardID = 0x1001,
 	kAOCBoardRevision = 0x1002,
+	kAOCSRAMRepaired = 0x1003,
 };
 
 #define module_aoc_driver(__aoc_driver)                                        \

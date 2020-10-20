@@ -22,7 +22,7 @@ static int acd_major = -1;
 static int acd_major_dev;
 static struct class *acd_class;
 
-#define ACD_MAX_DEVICES 32
+#define ACD_MAX_DEVICES 64
 static struct device *acd_devices[ACD_MAX_DEVICES];
 static unsigned long opened_devices;
 
