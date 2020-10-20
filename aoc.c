@@ -395,9 +395,8 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 {
 	struct device *dev = ctx;
 	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
-	struct device_node *rootnode = of_root;
-	u32 board_id = dt_property(rootnode, "board_id");
-	u32 board_rev = dt_property(rootnode, "board_rev");
+	u32 board_id = dt_property(prvdata->dev->of_node, "board_id");
+	u32 board_rev = dt_property(prvdata->dev->of_node, "board_rev");
 	u32 sram_was_repaired = aoc_sram_was_repaired(prvdata);
 	struct aoc_fw_data fw_data[] = {
 		{ .key = kAOCBoardID, .value = board_id },
