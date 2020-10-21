@@ -194,4 +194,6 @@ int aoc_compr_init(void);
 void aoc_compr_exit(void);
 int aoc_path_init(void);
 void aoc_path_exit(void);
+int aoc_nohost_init(void);
+void aoc_nohost_exit(void);
 #endif
