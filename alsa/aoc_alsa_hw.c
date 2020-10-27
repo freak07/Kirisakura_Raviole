@@ -932,18 +932,30 @@ static int aoc_audio_modem_input(struct aoc_alsa_stream *alsa_stream,
 				 int input_cmd)
 {
 	int err;
-	struct CMD_HDR cmd;
+	struct CMD_HDR cmd0; /* for modem input STOP */
+	struct CMD_AUDIO_INPUT_MODEM_INPUT_START cmd1;
 
-	AocCmdHdrSet(&cmd,
-		     (input_cmd == START) ?
-				   CMD_AUDIO_INPUT_MODEM_INPUT_START_ID :
-				   CMD_AUDIO_INPUT_MODEM_INPUT_STOP_ID,
-		     sizeof(cmd));
+	if (input_cmd == START) {
+		AocCmdHdrSet(&(cmd1.parent),
+			     CMD_AUDIO_INPUT_MODEM_INPUT_START_ID,
+			     sizeof(cmd1));
 
-	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-				NULL, alsa_stream->chip);
-	if (err < 0)
-		pr_err("ERR:%d modem input setup fail!\n", err);
+		/* TODO: mic input source will change based on audio device type */
+		cmd1.mic_input_source = 0;
+		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd1,
+					sizeof(cmd1), NULL, alsa_stream->chip);
+		if (err < 0)
+			pr_err("ERR:%d modem input start fail!\n", err);
+
+	} else {
+		AocCmdHdrSet(&cmd0, CMD_AUDIO_INPUT_MODEM_INPUT_STOP_ID,
+			     sizeof(cmd0));
+
+		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd0,
+					sizeof(cmd0), NULL, alsa_stream->chip);
+		if (err < 0)
+			pr_err("ERR:%d modem input stop fail!\n", err);
+	}
 
 	return err;
 }
