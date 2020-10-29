@@ -123,8 +123,9 @@ static int snd_aoc_pcm_open(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *substr
 	hrtimer_init( &(alsa_stream->hr_timer), CLOCK_MONOTONIC, HRTIMER_MODE_REL );
 	alsa_stream->hr_timer.function = &aoc_pcm_hrtimer_irq_handler;
 
-	/* Just to change the mic volume at the start of a voice call */
-	aoc_voice_call_mic_mute(chip, 1 - chip->voice_call_mic_mute);
+	chip->default_mic_hw_gain =
+		aoc_mic_hw_gain_get(chip, MIC_HIGH_POWER_GAIN);
+
 	aoc_voice_call_mic_mute(chip, chip->voice_call_mic_mute);
 
 	alsa_stream->entry_point_idx = substream->pcm->device;
@@ -164,6 +165,9 @@ static int snd_aoc_pcm_close(EXTRA_ARG_LINUX_5_9  struct snd_pcm_substream *subs
 	err = teardown_phonecall(alsa_stream);
 	if (err < 0)
 		pr_err("ERR: fail in phone call tearing down\n");
+
+	aoc_mic_hw_gain_set(chip, MIC_HIGH_POWER_GAIN,
+			    chip->default_mic_hw_gain);
 
 	runtime = substream->runtime;
 	alsa_stream = runtime->private_data;
