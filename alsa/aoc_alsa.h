@@ -62,6 +62,9 @@
 /* TODO: may not needed*/
 #define PLAYBACK_WATERMARK_DEFAULT 48000
 
+#define  MIC_HW_GAIN_IN_CB_MIN -720
+#define  MIC_HW_GAIN_IN_CB_MAX  240
+
 #define alsa2chip(vol) (vol) /* Convert alsa to chip volume */
 #define chip2alsa(vol) (vol) /* Convert chip to alsa volume */
 
