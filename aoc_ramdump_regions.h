@@ -82,7 +82,7 @@ struct aoc_ramdump_header {
 
 #define RAMDUMP_MAGIC "AOCDUMP"
 
-#define RAMDUMP_HEADER_OFFSET 0x1800000 /* 24 MiB offset from start of DRAM carveout */
+#define RAMDUMP_HEADER_OFFSET 0x1700000 /* 23 MiB offset from start of DRAM carveout */
 #define RAMDUMP_HEADER_ADDR (0x98000000 + RAMDUMP_HEADER_OFFSET) /* Start of DRAM carveout + offset */
 
 #define RAMDUMP_SECTION_SRAM_OFFSET 0x1000
