@@ -55,7 +55,7 @@ enum {
 	 * force to 50 to minimize the chances of userspace binary
 	 * incompatibility on newer upstream kernels
 	 */
-	POWER_SUPPLY_CHARGE_TYPE_TAPER = 50,	/* charging in CV phase */
+	POWER_SUPPLY_CHARGE_TYPE_TAPER_EXT = 50,	/* charging in CV phase */
 };
 
 enum {
@@ -193,7 +193,12 @@ enum power_supply_type {
 	POWER_SUPPLY_TYPE_USB_PD,		/* Power Delivery Port */
 	POWER_SUPPLY_TYPE_USB_PD_DRP,		/* PD Dual Role Port */
 	POWER_SUPPLY_TYPE_APPLE_BRICK_ID,	/* Apple Charging Method */
-	POWER_SUPPLY_TYPE_WIRELESS,		/* Wireless */
+
+	/*
+	 * force to 50 to minimize the chances of userspace binary
+	 * incompatibility on newer upstream kernels
+	 */
+	POWER_SUPPLY_TYPE_WIRELESS_EXT = 50,	/* Wireless */
 };
 
 enum power_supply_usb_type {
