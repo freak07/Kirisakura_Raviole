@@ -24,12 +24,19 @@
 #include "aoc_alsa.h"
 #include "google-aoc-enum.h"
 
+#define BE_MAP_SZ(x) \
+		ARRAY_SIZE(((struct be_path_cache *)0)->x)
+
 struct be_path_cache {
-	unsigned long fe_idx_mask;
+	DECLARE_BITMAP(fe_put_mask, IDX_FE_MAX);
 };
 
 static struct be_path_cache port_array[PORT_MAX] = {
-	[0 ... PORT_MAX - 1] = { .fe_idx_mask = 0 },
+	[0 ... PORT_MAX - 1] = {
+		.fe_put_mask = {
+			[0 ... BE_MAP_SZ(fe_put_mask) - 1] = 0,
+		},
+	},
 };
 
 static const struct snd_soc_dai_ops be_dai_ops;
@@ -169,6 +176,22 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 	},
 
 	{
+		.playback = {
+			.stream_name = "NoHost1 Playback",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S24_3LE |
+					SNDRV_PCM_FMTBIT_FLOAT_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 2,
+		},
+		.name = "NoHost1 PB",
+		.id = IDX_NOHOST1_RX,
+	},
+
+	{
 		.capture = {
 			.stream_name = "EP1 Capture",
 			.rates = SNDRV_PCM_RATE_8000_48000,
@@ -250,6 +273,20 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 		},
 		.name = "EP6 CAP",
 		.id = IDX_EP6_TX,
+	},
+
+	{
+		.capture = {
+			.stream_name = "NoHost1 Capture",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.name = "NoHost1 CAP",
+		.id = IDX_NOHOST1_TX,
 	},
 
 	/* BE dai */
@@ -401,6 +438,81 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 		.ops = &be_dai_ops,
 		.name = "TDM_1_TX",
 		.id = TDM_1_TX,
+	},
+
+	{
+		.capture = {
+			.stream_name = "INTERNAL_MIC_TX Capture",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.ops = &be_dai_ops,
+		.name = "INTERNAL_MIC_TX",
+		.id = INTERNAL_MIC_TX,
+	},
+
+	{
+		.playback = {
+			.stream_name = "BT_RX Playback",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.ops = &be_dai_ops,
+		.name = "BT_RX",
+		.id = BT_RX,
+	},
+
+	{
+		.capture = {
+			.stream_name = "BT_TX Capture",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.ops = &be_dai_ops,
+		.name = "BT_TX",
+		.id = BT_TX,
+	},
+
+	{
+		.playback = {
+			.stream_name = "USB_RX Playback",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.ops = &be_dai_ops,
+		.name = "USB_RX",
+		.id = USB_RX,
+	},
+
+	{
+		.capture = {
+			.stream_name = "USB_TX Capture",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.ops = &be_dai_ops,
+		.name = "USB_TX",
+		.id = USB_TX,
 	},
 };
 
@@ -613,14 +725,14 @@ static int aoc_path_get(uint32_t ep_idx, uint32_t hw_idx,
 	ep_idx = AOC_ID_TO_INDEX(ep_idx);
 	hw_idx = AOC_ID_TO_INDEX(hw_idx);
 
-	if (hw_idx >= PORT_MAX || ep_idx >= 32) {
+	if (hw_idx >= PORT_MAX || ep_idx >= IDX_FE_MAX) {
 		pr_err("%s: invalid idx hw_idx 0x%x ep_idx %x", __func__,
 		       hw_idx, ep_idx);
 		return -EINVAL;
 	}
 
 	mutex_lock(&path_mutex);
-	enable = (test_bit(ep_idx, &port_array[hw_idx].fe_idx_mask)) ? 1 : 0;
+	enable = test_bit(ep_idx, port_array[hw_idx].fe_put_mask) ? 1 : 0;
 	mutex_unlock(&path_mutex);
 
 	ucontrol->value.integer.value[0] = enable;
@@ -647,7 +759,7 @@ static int aoc_path_put(uint32_t ep_idx, uint32_t hw_idx,
 	ep_idx = AOC_ID_TO_INDEX(ep_idx);
 	hw_idx = AOC_ID_TO_INDEX(hw_idx);
 
-	if (hw_idx >= PORT_MAX || ep_idx >= 32) {
+	if (hw_idx >= PORT_MAX || ep_idx >= IDX_FE_MAX) {
 		pr_err("%s: invalid idx hw_idx 0x%x ep_idx %x", __func__,
 		       hw_idx, ep_idx);
 		return -EINVAL;
@@ -658,9 +770,9 @@ static int aoc_path_put(uint32_t ep_idx, uint32_t hw_idx,
 
 	mutex_lock(&path_mutex);
 	if (enable)
-		set_bit(ep_idx, &port_array[hw_idx].fe_idx_mask);
+		set_bit(ep_idx, port_array[hw_idx].fe_put_mask);
 	else
-		clear_bit(ep_idx, &port_array[hw_idx].fe_idx_mask);
+		clear_bit(ep_idx, port_array[hw_idx].fe_put_mask);
 	mutex_unlock(&path_mutex);
 
 	/* Notify AoC driver here if necessary */
@@ -679,7 +791,7 @@ static int i2s_0_rx_put(struct snd_kcontrol *kcontrol,
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
 
-	u32 ep_idx = (u32)mc->shift;
+	u32 ep_idx = mc->shift;
 
 	return aoc_path_put(ep_idx, I2S_0_RX, kcontrol, ucontrol);
 }
@@ -689,26 +801,20 @@ static int i2s_0_rx_get(struct snd_kcontrol *kcontrol,
 {
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	u32 ep_idx = (u32)mc->shift;
+	u32 ep_idx = mc->shift;
 
 	return aoc_path_get(ep_idx, I2S_0_RX, kcontrol, ucontrol);
 }
 
 const struct snd_kcontrol_new i2s_0_rx_ctrl[] = {
-	SOC_SINGLE_EXT("EP1", SND_SOC_NOPM, IDX_EP1_RX, 1, 0, i2s_0_rx_get,
-		       i2s_0_rx_put),
-	SOC_SINGLE_EXT("EP2", SND_SOC_NOPM, IDX_EP2_RX, 1, 0, i2s_0_rx_get,
-		       i2s_0_rx_put),
-	SOC_SINGLE_EXT("EP3", SND_SOC_NOPM, IDX_EP3_RX, 1, 0, i2s_0_rx_get,
-		       i2s_0_rx_put),
-	SOC_SINGLE_EXT("EP4", SND_SOC_NOPM, IDX_EP4_RX, 1, 0, i2s_0_rx_get,
-		       i2s_0_rx_put),
-	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, i2s_0_rx_get,
-		       i2s_0_rx_put),
-	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, i2s_0_rx_get,
-		       i2s_0_rx_put),
-	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, i2s_0_rx_get,
-		       i2s_0_rx_put),
+	SOC_SINGLE_EXT("EP1", SND_SOC_NOPM, IDX_EP1_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
+	SOC_SINGLE_EXT("EP2", SND_SOC_NOPM, IDX_EP2_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
+	SOC_SINGLE_EXT("EP3", SND_SOC_NOPM, IDX_EP3_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
+	SOC_SINGLE_EXT("EP4", SND_SOC_NOPM, IDX_EP4_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
+	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
+	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
+	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
+	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
 };
 
 static int i2s_1_rx_put(struct snd_kcontrol *kcontrol,
@@ -717,7 +823,7 @@ static int i2s_1_rx_put(struct snd_kcontrol *kcontrol,
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
 
-	u32 ep_idx = (u32)mc->shift;
+	u32 ep_idx = mc->shift;
 
 	return aoc_path_put(ep_idx, I2S_1_RX, kcontrol, ucontrol);
 }
@@ -727,26 +833,20 @@ static int i2s_1_rx_get(struct snd_kcontrol *kcontrol,
 {
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	u32 ep_idx = (u32)mc->shift;
+	u32 ep_idx = mc->shift;
 
 	return aoc_path_get(ep_idx, I2S_1_RX, kcontrol, ucontrol);
 }
 
 const struct snd_kcontrol_new i2s_1_rx_ctrl[] = {
-	SOC_SINGLE_EXT("EP1", SND_SOC_NOPM, IDX_EP1_RX, 1, 0, i2s_1_rx_get,
-		       i2s_1_rx_put),
-	SOC_SINGLE_EXT("EP2", SND_SOC_NOPM, IDX_EP2_RX, 1, 0, i2s_1_rx_get,
-		       i2s_1_rx_put),
-	SOC_SINGLE_EXT("EP3", SND_SOC_NOPM, IDX_EP3_RX, 1, 0, i2s_1_rx_get,
-		       i2s_1_rx_put),
-	SOC_SINGLE_EXT("EP4", SND_SOC_NOPM, IDX_EP4_RX, 1, 0, i2s_1_rx_get,
-		       i2s_1_rx_put),
-	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, i2s_1_rx_get,
-		       i2s_1_rx_put),
-	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, i2s_1_rx_get,
-		       i2s_1_rx_put),
-	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, i2s_1_rx_get,
-		       i2s_1_rx_put),
+	SOC_SINGLE_EXT("EP1", SND_SOC_NOPM, IDX_EP1_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
+	SOC_SINGLE_EXT("EP2", SND_SOC_NOPM, IDX_EP2_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
+	SOC_SINGLE_EXT("EP3", SND_SOC_NOPM, IDX_EP3_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
+	SOC_SINGLE_EXT("EP4", SND_SOC_NOPM, IDX_EP4_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
+	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
+	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
+	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
+	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
 };
 
 static int i2s_2_rx_put(struct snd_kcontrol *kcontrol,
@@ -755,7 +855,7 @@ static int i2s_2_rx_put(struct snd_kcontrol *kcontrol,
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
 
-	u32 ep_idx = (u32)mc->shift;
+	u32 ep_idx = mc->shift;
 
 	return aoc_path_put(ep_idx, I2S_2_RX, kcontrol, ucontrol);
 }
@@ -765,26 +865,20 @@ static int i2s_2_rx_get(struct snd_kcontrol *kcontrol,
 {
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	u32 ep_idx = (u32)mc->shift;
+	u32 ep_idx = mc->shift;
 
 	return aoc_path_get(ep_idx, I2S_2_RX, kcontrol, ucontrol);
 }
 
 const struct snd_kcontrol_new i2s_2_rx_ctrl[] = {
-	SOC_SINGLE_EXT("EP1", SND_SOC_NOPM, IDX_EP1_RX, 1, 0, i2s_2_rx_get,
-		       i2s_2_rx_put),
-	SOC_SINGLE_EXT("EP2", SND_SOC_NOPM, IDX_EP2_RX, 1, 0, i2s_2_rx_get,
-		       i2s_2_rx_put),
-	SOC_SINGLE_EXT("EP3", SND_SOC_NOPM, IDX_EP3_RX, 1, 0, i2s_2_rx_get,
-		       i2s_2_rx_put),
-	SOC_SINGLE_EXT("EP4", SND_SOC_NOPM, IDX_EP4_RX, 1, 0, i2s_2_rx_get,
-		       i2s_2_rx_put),
-	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, i2s_2_rx_get,
-		       i2s_2_rx_put),
-	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, i2s_2_rx_get,
-		       i2s_2_rx_put),
-	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, i2s_2_rx_get,
-		       i2s_2_rx_put),
+	SOC_SINGLE_EXT("EP1", SND_SOC_NOPM, IDX_EP1_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
+	SOC_SINGLE_EXT("EP2", SND_SOC_NOPM, IDX_EP2_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
+	SOC_SINGLE_EXT("EP3", SND_SOC_NOPM, IDX_EP3_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
+	SOC_SINGLE_EXT("EP4", SND_SOC_NOPM, IDX_EP4_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
+	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
+	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
+	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
+	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
 };
 
 static int tdm_0_rx_put(struct snd_kcontrol *kcontrol,
@@ -793,7 +887,7 @@ static int tdm_0_rx_put(struct snd_kcontrol *kcontrol,
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
 
-	u32 ep_idx = (u32)mc->shift;
+	u32 ep_idx = mc->shift;
 
 	return aoc_path_put(ep_idx, TDM_0_RX, kcontrol, ucontrol);
 }
@@ -803,28 +897,21 @@ static int tdm_0_rx_get(struct snd_kcontrol *kcontrol,
 {
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	u32 ep_idx = (u32)mc->shift;
+	u32 ep_idx = mc->shift;
 
 	return aoc_path_get(ep_idx, TDM_0_RX, kcontrol, ucontrol);
 }
 
 const struct snd_kcontrol_new tdm_0_rx_ctrl[] = {
-	SOC_SINGLE_EXT("EP1", SND_SOC_NOPM, IDX_EP1_RX, 1, 0, tdm_0_rx_get,
-		       tdm_0_rx_put),
-	SOC_SINGLE_EXT("EP2", SND_SOC_NOPM, IDX_EP2_RX, 1, 0, tdm_0_rx_get,
-		       tdm_0_rx_put),
-	SOC_SINGLE_EXT("EP3", SND_SOC_NOPM, IDX_EP3_RX, 1, 0, tdm_0_rx_get,
-		       tdm_0_rx_put),
-	SOC_SINGLE_EXT("EP4", SND_SOC_NOPM, IDX_EP4_RX, 1, 0, tdm_0_rx_get,
-		       tdm_0_rx_put),
-	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, tdm_0_rx_get,
-		       tdm_0_rx_put),
-	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, tdm_0_rx_get,
-		       tdm_0_rx_put),
-	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, tdm_0_rx_get,
-		       tdm_0_rx_put),
-	SOC_SINGLE_EXT("EP8", SND_SOC_NOPM, IDX_EP8_RX, 1, 0, tdm_0_rx_get,
-		       tdm_0_rx_put),
+	SOC_SINGLE_EXT("EP1", SND_SOC_NOPM, IDX_EP1_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
+	SOC_SINGLE_EXT("EP2", SND_SOC_NOPM, IDX_EP2_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
+	SOC_SINGLE_EXT("EP3", SND_SOC_NOPM, IDX_EP3_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
+	SOC_SINGLE_EXT("EP4", SND_SOC_NOPM, IDX_EP4_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
+	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
+	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
+	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
+	SOC_SINGLE_EXT("EP8", SND_SOC_NOPM, IDX_EP8_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
+	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
 };
 
 static int tdm_1_rx_put(struct snd_kcontrol *kcontrol,
@@ -833,7 +920,7 @@ static int tdm_1_rx_put(struct snd_kcontrol *kcontrol,
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
 
-	u32 ep_idx = (u32)mc->shift;
+	u32 ep_idx = mc->shift;
 
 	return aoc_path_put(ep_idx, TDM_1_RX, kcontrol, ucontrol);
 }
@@ -843,26 +930,85 @@ static int tdm_1_rx_get(struct snd_kcontrol *kcontrol,
 {
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	u32 ep_idx = (u32)mc->shift;
+	u32 ep_idx = mc->shift;
 
 	return aoc_path_get(ep_idx, TDM_1_RX, kcontrol, ucontrol);
 }
 
 const struct snd_kcontrol_new tdm_1_rx_ctrl[] = {
-	SOC_SINGLE_EXT("EP1", SND_SOC_NOPM, IDX_EP1_RX, 1, 0, tdm_1_rx_get,
-		       tdm_1_rx_put),
-	SOC_SINGLE_EXT("EP2", SND_SOC_NOPM, IDX_EP2_RX, 1, 0, tdm_1_rx_get,
-		       tdm_1_rx_put),
-	SOC_SINGLE_EXT("EP3", SND_SOC_NOPM, IDX_EP3_RX, 1, 0, tdm_1_rx_get,
-		       tdm_1_rx_put),
-	SOC_SINGLE_EXT("EP4", SND_SOC_NOPM, IDX_EP4_RX, 1, 0, tdm_1_rx_get,
-		       tdm_1_rx_put),
-	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, tdm_1_rx_get,
-		       tdm_1_rx_put),
-	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, tdm_1_rx_get,
-		       tdm_1_rx_put),
-	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, tdm_1_rx_get,
-		       tdm_1_rx_put),
+	SOC_SINGLE_EXT("EP1", SND_SOC_NOPM, IDX_EP1_RX, 1, 0, tdm_1_rx_get, tdm_1_rx_put),
+	SOC_SINGLE_EXT("EP2", SND_SOC_NOPM, IDX_EP2_RX, 1, 0, tdm_1_rx_get, tdm_1_rx_put),
+	SOC_SINGLE_EXT("EP3", SND_SOC_NOPM, IDX_EP3_RX, 1, 0, tdm_1_rx_get, tdm_1_rx_put),
+	SOC_SINGLE_EXT("EP4", SND_SOC_NOPM, IDX_EP4_RX, 1, 0, tdm_1_rx_get, tdm_1_rx_put),
+	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, tdm_1_rx_get, tdm_1_rx_put),
+	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, tdm_1_rx_get, tdm_1_rx_put),
+	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, tdm_1_rx_get, tdm_1_rx_put),
+	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0,
+		tdm_1_rx_get, tdm_1_rx_put),
+};
+
+static int bt_rx_put(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+
+	u32 ep_idx = mc->shift;
+
+	return aoc_path_put(ep_idx, BT_RX, kcontrol, ucontrol);
+}
+
+static int bt_rx_get(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 ep_idx = mc->shift;
+
+	return aoc_path_get(ep_idx, BT_RX, kcontrol, ucontrol);
+}
+
+const struct snd_kcontrol_new bt_rx_ctrl[] = {
+	SOC_SINGLE_EXT("EP1", SND_SOC_NOPM, IDX_EP1_RX, 1, 0, bt_rx_get, bt_rx_put),
+	SOC_SINGLE_EXT("EP2", SND_SOC_NOPM, IDX_EP2_RX, 1, 0, bt_rx_get, bt_rx_put),
+	SOC_SINGLE_EXT("EP3", SND_SOC_NOPM, IDX_EP3_RX, 1, 0, bt_rx_get, bt_rx_put),
+	SOC_SINGLE_EXT("EP4", SND_SOC_NOPM, IDX_EP4_RX, 1, 0, bt_rx_get, bt_rx_put),
+	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, bt_rx_get, bt_rx_put),
+	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, bt_rx_get, bt_rx_put),
+	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, bt_rx_get, bt_rx_put),
+	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, bt_rx_get, bt_rx_put),
+};
+
+static int usb_rx_put(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+
+	u32 ep_idx = mc->shift;
+
+	return aoc_path_put(ep_idx, USB_RX, kcontrol, ucontrol);
+}
+
+static int usb_rx_get(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 ep_idx = mc->shift;
+
+	return aoc_path_get(ep_idx, USB_RX, kcontrol, ucontrol);
+}
+
+const struct snd_kcontrol_new usb_rx_ctrl[] = {
+	SOC_SINGLE_EXT("EP1", SND_SOC_NOPM, IDX_EP1_RX, 1, 0, usb_rx_get, usb_rx_put),
+	SOC_SINGLE_EXT("EP2", SND_SOC_NOPM, IDX_EP2_RX, 1, 0, usb_rx_get, usb_rx_put),
+	SOC_SINGLE_EXT("EP3", SND_SOC_NOPM, IDX_EP3_RX, 1, 0, usb_rx_get, usb_rx_put),
+	SOC_SINGLE_EXT("EP4", SND_SOC_NOPM, IDX_EP4_RX, 1, 0, usb_rx_get, usb_rx_put),
+	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, usb_rx_get, usb_rx_put),
+	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, usb_rx_get, usb_rx_put),
+	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, usb_rx_get, usb_rx_put),
+	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, usb_rx_get, usb_rx_put),
 };
 
 static int ep1_tx_put(struct snd_kcontrol *kcontrol,
@@ -871,7 +1017,7 @@ static int ep1_tx_put(struct snd_kcontrol *kcontrol,
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
 
-	u32 hw_idx = (u32)mc->shift;
+	u32 hw_idx = mc->shift;
 
 	return aoc_path_put(IDX_EP1_TX, hw_idx, kcontrol, ucontrol);
 }
@@ -881,22 +1027,21 @@ static int ep1_tx_get(struct snd_kcontrol *kcontrol,
 {
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	u32 hw_idx = (u32)mc->shift;
+	u32 hw_idx = mc->shift;
 
 	return aoc_path_get(IDX_EP1_TX, hw_idx, kcontrol, ucontrol);
 }
 
 const struct snd_kcontrol_new ep1_tx_ctrl[] = {
-	SOC_SINGLE_EXT("I2S_0_TX", SND_SOC_NOPM, I2S_0_TX, 1, 0, ep1_tx_get,
-		       ep1_tx_put),
-	SOC_SINGLE_EXT("I2S_1_TX", SND_SOC_NOPM, I2S_1_TX, 1, 0, ep1_tx_get,
-		       ep1_tx_put),
-	SOC_SINGLE_EXT("I2S_2_TX", SND_SOC_NOPM, I2S_2_TX, 1, 0, ep1_tx_get,
-		       ep1_tx_put),
-	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, ep1_tx_get,
-		       ep1_tx_put),
-	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep1_tx_get,
-		       ep1_tx_put),
+	SOC_SINGLE_EXT("I2S_0_TX", SND_SOC_NOPM, I2S_0_TX, 1, 0, ep1_tx_get, ep1_tx_put),
+	SOC_SINGLE_EXT("I2S_1_TX", SND_SOC_NOPM, I2S_1_TX, 1, 0, ep1_tx_get, ep1_tx_put),
+	SOC_SINGLE_EXT("I2S_2_TX", SND_SOC_NOPM, I2S_2_TX, 1, 0, ep1_tx_get, ep1_tx_put),
+	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, ep1_tx_get, ep1_tx_put),
+	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep1_tx_get, ep1_tx_put),
+	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
+		ep1_tx_get, ep1_tx_put),
+	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, ep1_tx_get, ep1_tx_put),
+	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, ep1_tx_get, ep1_tx_put),
 };
 
 static int ep2_tx_put(struct snd_kcontrol *kcontrol,
@@ -905,7 +1050,7 @@ static int ep2_tx_put(struct snd_kcontrol *kcontrol,
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
 
-	u32 hw_idx = (u32)mc->shift;
+	u32 hw_idx = mc->shift;
 
 	return aoc_path_put(IDX_EP2_TX, hw_idx, kcontrol, ucontrol);
 }
@@ -915,22 +1060,21 @@ static int ep2_tx_get(struct snd_kcontrol *kcontrol,
 {
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	u32 hw_idx = (u32)mc->shift;
+	u32 hw_idx = mc->shift;
 
 	return aoc_path_get(IDX_EP2_TX, hw_idx, kcontrol, ucontrol);
 }
 
 const struct snd_kcontrol_new ep2_tx_ctrl[] = {
-	SOC_SINGLE_EXT("I2S_0_TX", SND_SOC_NOPM, I2S_0_TX, 1, 0, ep2_tx_get,
-		       ep2_tx_put),
-	SOC_SINGLE_EXT("I2S_1_TX", SND_SOC_NOPM, I2S_1_TX, 1, 0, ep2_tx_get,
-		       ep2_tx_put),
-	SOC_SINGLE_EXT("I2S_2_TX", SND_SOC_NOPM, I2S_2_TX, 1, 0, ep2_tx_get,
-		       ep2_tx_put),
-	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, ep2_tx_get,
-		       ep2_tx_put),
-	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep2_tx_get,
-		       ep2_tx_put),
+	SOC_SINGLE_EXT("I2S_0_TX", SND_SOC_NOPM, I2S_0_TX, 1, 0, ep2_tx_get, ep2_tx_put),
+	SOC_SINGLE_EXT("I2S_1_TX", SND_SOC_NOPM, I2S_1_TX, 1, 0, ep2_tx_get, ep2_tx_put),
+	SOC_SINGLE_EXT("I2S_2_TX", SND_SOC_NOPM, I2S_2_TX, 1, 0, ep2_tx_get, ep2_tx_put),
+	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, ep2_tx_get, ep2_tx_put),
+	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep2_tx_get, ep2_tx_put),
+	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
+		ep2_tx_get, ep2_tx_put),
+	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, ep2_tx_get, ep2_tx_put),
+	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, ep2_tx_get, ep2_tx_put),
 };
 
 static int ep3_tx_put(struct snd_kcontrol *kcontrol,
@@ -939,7 +1083,7 @@ static int ep3_tx_put(struct snd_kcontrol *kcontrol,
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
 
-	u32 hw_idx = (u32)mc->shift;
+	u32 hw_idx = mc->shift;
 
 	return aoc_path_put(IDX_EP3_TX, hw_idx, kcontrol, ucontrol);
 }
@@ -949,22 +1093,21 @@ static int ep3_tx_get(struct snd_kcontrol *kcontrol,
 {
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	u32 hw_idx = (u32)mc->shift;
+	u32 hw_idx = mc->shift;
 
 	return aoc_path_get(IDX_EP3_TX, hw_idx, kcontrol, ucontrol);
 }
 
 const struct snd_kcontrol_new ep3_tx_ctrl[] = {
-	SOC_SINGLE_EXT("I2S_0_TX", SND_SOC_NOPM, I2S_0_TX, 1, 0, ep3_tx_get,
-		       ep3_tx_put),
-	SOC_SINGLE_EXT("I2S_1_TX", SND_SOC_NOPM, I2S_1_TX, 1, 0, ep3_tx_get,
-		       ep3_tx_put),
-	SOC_SINGLE_EXT("I2S_2_TX", SND_SOC_NOPM, I2S_2_TX, 1, 0, ep3_tx_get,
-		       ep3_tx_put),
-	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, ep3_tx_get,
-		       ep3_tx_put),
-	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep3_tx_get,
-		       ep3_tx_put),
+	SOC_SINGLE_EXT("I2S_0_TX", SND_SOC_NOPM, I2S_0_TX, 1, 0, ep3_tx_get, ep3_tx_put),
+	SOC_SINGLE_EXT("I2S_1_TX", SND_SOC_NOPM, I2S_1_TX, 1, 0, ep3_tx_get, ep3_tx_put),
+	SOC_SINGLE_EXT("I2S_2_TX", SND_SOC_NOPM, I2S_2_TX, 1, 0, ep3_tx_get, ep3_tx_put),
+	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, ep3_tx_get, ep3_tx_put),
+	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep3_tx_get, ep3_tx_put),
+	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
+		ep3_tx_get, ep3_tx_put),
+	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, ep3_tx_get, ep3_tx_put),
+	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, ep3_tx_get, ep3_tx_put),
 };
 
 static int ep4_tx_put(struct snd_kcontrol *kcontrol,
@@ -973,7 +1116,7 @@ static int ep4_tx_put(struct snd_kcontrol *kcontrol,
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
 
-	u32 hw_idx = (u32)mc->shift;
+	u32 hw_idx = mc->shift;
 
 	return aoc_path_put(IDX_EP4_TX, hw_idx, kcontrol, ucontrol);
 }
@@ -983,22 +1126,119 @@ static int ep4_tx_get(struct snd_kcontrol *kcontrol,
 {
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	u32 hw_idx = (u32)mc->shift;
+	u32 hw_idx = mc->shift;
 
 	return aoc_path_get(IDX_EP4_TX, hw_idx, kcontrol, ucontrol);
 }
 
 const struct snd_kcontrol_new ep4_tx_ctrl[] = {
-	SOC_SINGLE_EXT("I2S_0_TX", SND_SOC_NOPM, I2S_0_TX, 1, 0, ep4_tx_get,
-		       ep4_tx_put),
-	SOC_SINGLE_EXT("I2S_1_TX", SND_SOC_NOPM, I2S_1_TX, 1, 0, ep4_tx_get,
-		       ep4_tx_put),
-	SOC_SINGLE_EXT("I2S_2_TX", SND_SOC_NOPM, I2S_2_TX, 1, 0, ep4_tx_get,
-		       ep4_tx_put),
-	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, ep4_tx_get,
-		       ep4_tx_put),
-	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep4_tx_get,
-		       ep4_tx_put),
+	SOC_SINGLE_EXT("I2S_0_TX", SND_SOC_NOPM, I2S_0_TX, 1, 0, ep4_tx_get, ep4_tx_put),
+	SOC_SINGLE_EXT("I2S_1_TX", SND_SOC_NOPM, I2S_1_TX, 1, 0, ep4_tx_get, ep4_tx_put),
+	SOC_SINGLE_EXT("I2S_2_TX", SND_SOC_NOPM, I2S_2_TX, 1, 0, ep4_tx_get, ep4_tx_put),
+	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, ep4_tx_get, ep4_tx_put),
+	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep4_tx_get, ep4_tx_put),
+	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
+		ep4_tx_get, ep4_tx_put),
+	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, ep4_tx_get, ep4_tx_put),
+	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, ep4_tx_get, ep4_tx_put),
+};
+
+static int ep5_tx_put(struct snd_kcontrol *kcontrol,
+		      struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+
+	u32 hw_idx = mc->shift;
+
+	return aoc_path_put(IDX_EP5_TX, hw_idx, kcontrol, ucontrol);
+}
+
+static int ep5_tx_get(struct snd_kcontrol *kcontrol,
+		      struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 hw_idx = mc->shift;
+
+	return aoc_path_get(IDX_EP5_TX, hw_idx, kcontrol, ucontrol);
+}
+
+const struct snd_kcontrol_new ep5_tx_ctrl[] = {
+	SOC_SINGLE_EXT("I2S_0_TX", SND_SOC_NOPM, I2S_0_TX, 1, 0, ep5_tx_get, ep5_tx_put),
+	SOC_SINGLE_EXT("I2S_1_TX", SND_SOC_NOPM, I2S_1_TX, 1, 0, ep5_tx_get, ep5_tx_put),
+	SOC_SINGLE_EXT("I2S_2_TX", SND_SOC_NOPM, I2S_2_TX, 1, 0, ep5_tx_get, ep5_tx_put),
+	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, ep5_tx_get, ep5_tx_put),
+	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep5_tx_get, ep5_tx_put),
+	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
+		ep5_tx_get, ep5_tx_put),
+	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, ep5_tx_get, ep5_tx_put),
+	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, ep5_tx_get, ep5_tx_put),
+};
+
+static int ep6_tx_put(struct snd_kcontrol *kcontrol,
+		      struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+
+	u32 hw_idx = mc->shift;
+
+	return aoc_path_put(IDX_EP6_TX, hw_idx, kcontrol, ucontrol);
+}
+
+static int ep6_tx_get(struct snd_kcontrol *kcontrol,
+		      struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 hw_idx = mc->shift;
+
+	return aoc_path_get(IDX_EP6_TX, hw_idx, kcontrol, ucontrol);
+}
+
+const struct snd_kcontrol_new ep6_tx_ctrl[] = {
+	SOC_SINGLE_EXT("I2S_0_TX", SND_SOC_NOPM, I2S_0_TX, 1, 0, ep6_tx_get, ep6_tx_put),
+	SOC_SINGLE_EXT("I2S_1_TX", SND_SOC_NOPM, I2S_1_TX, 1, 0, ep6_tx_get, ep6_tx_put),
+	SOC_SINGLE_EXT("I2S_2_TX", SND_SOC_NOPM, I2S_2_TX, 1, 0, ep6_tx_get, ep6_tx_put),
+	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, ep6_tx_get, ep6_tx_put),
+	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep6_tx_get, ep6_tx_put),
+	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
+		ep6_tx_get, ep6_tx_put),
+	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, ep6_tx_get, ep6_tx_put),
+	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, ep6_tx_get, ep6_tx_put),
+};
+
+static int nohost1_tx_put(struct snd_kcontrol *kcontrol,
+		      struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 hw_idx = mc->shift;
+
+	return aoc_path_put(IDX_NOHOST1_TX, hw_idx, kcontrol, ucontrol);
+}
+
+static int nohost1_tx_get(struct snd_kcontrol *kcontrol,
+		      struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 hw_idx = mc->shift;
+
+	return aoc_path_get(IDX_NOHOST1_TX, hw_idx, kcontrol, ucontrol);
+}
+
+const struct snd_kcontrol_new nohost1_tx_ctrl[] = {
+	SOC_SINGLE_EXT("I2S_0_TX", SND_SOC_NOPM, I2S_0_TX, 1, 0, nohost1_tx_get, nohost1_tx_put),
+	SOC_SINGLE_EXT("I2S_1_TX", SND_SOC_NOPM, I2S_1_TX, 1, 0, nohost1_tx_get, nohost1_tx_put),
+	SOC_SINGLE_EXT("I2S_2_TX", SND_SOC_NOPM, I2S_2_TX, 1, 0, nohost1_tx_get, nohost1_tx_put),
+	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, nohost1_tx_get, nohost1_tx_put),
+	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, nohost1_tx_get, nohost1_tx_put),
+	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
+		nohost1_tx_get, nohost1_tx_put),
+	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, nohost1_tx_get, nohost1_tx_put),
+	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, nohost1_tx_get, nohost1_tx_put),
 };
 
 const struct snd_soc_dapm_widget aoc_widget[] = {
@@ -1019,6 +1259,16 @@ const struct snd_soc_dapm_widget aoc_widget[] = {
 	SND_SOC_DAPM_AIF_OUT("EP2_TX", "EP2 Capture", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("EP3_TX", "EP3 Capture", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("EP4_TX", "EP4 Capture", 0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("EP5_TX", "EP5 Capture", 0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("EP6_TX", "EP6 Capture", 0, SND_SOC_NOPM, 0, 0),
+
+	/* NoHost FE */
+	/* RX */
+	SND_SOC_DAPM_AIF_IN("NoHost1_RX", "NoHost1 Playback", 0,
+		SND_SOC_NOPM, 0, 0),
+	/* TX */
+	SND_SOC_DAPM_AIF_OUT("NoHost1_TX", "NoHost1 Capture", 0,
+		SND_SOC_NOPM, 0, 0),
 
 	/* BE */
 	SND_SOC_DAPM_AIF_OUT("I2S_0_RX", "I2S_0_RX", 0, SND_SOC_NOPM, 0, 0),
@@ -1026,17 +1276,23 @@ const struct snd_soc_dapm_widget aoc_widget[] = {
 	SND_SOC_DAPM_AIF_OUT("I2S_2_RX", "I2S_1_RX", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("TDM_0_RX", "TDM_0_RX", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("TDM_1_RX", "TDM_1_RX", 0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("BT_RX", "BT_RX", 0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("USB_RX", "USB_RX", 0, SND_SOC_NOPM, 0, 0),
 
 	SND_SOC_DAPM_AIF_IN("I2S_0_TX", "I2S_0_TX", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("I2S_1_TX", "I2S_1_TX", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("I2S_2_TX", "I2S_2_TX", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("TDM_0_TX", "TDM_0_TX", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("TDM_1_TX", "TDM_1_TX", 0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_IN("INTERNAL_MIC_TX", "INTERNAL_MIC_TX",
+		0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_IN("BT_TX", "BT_TX", 0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_IN("USB_TX", "USB_TX", 0, SND_SOC_NOPM, 0, 0),
 
 	SND_SOC_DAPM_OUTPUT("HW_SINK"),
 	SND_SOC_DAPM_INPUT("HW_SOURCE"),
 
-	//Playback path
+	/* Playback path */
 	SND_SOC_DAPM_MIXER("I2S_0_RX Mixer", SND_SOC_NOPM, 0, 0, i2s_0_rx_ctrl,
 			   ARRAY_SIZE(i2s_0_rx_ctrl)),
 
@@ -1052,7 +1308,13 @@ const struct snd_soc_dapm_widget aoc_widget[] = {
 	SND_SOC_DAPM_MIXER("TDM_1_RX Mixer", SND_SOC_NOPM, 0, 0, tdm_1_rx_ctrl,
 			   ARRAY_SIZE(tdm_1_rx_ctrl)),
 
-	//Record path
+	SND_SOC_DAPM_MIXER("BT_RX Mixer", SND_SOC_NOPM, 0, 0, bt_rx_ctrl,
+			   ARRAY_SIZE(bt_rx_ctrl)),
+
+	SND_SOC_DAPM_MIXER("USB_RX Mixer", SND_SOC_NOPM, 0, 0, usb_rx_ctrl,
+			   ARRAY_SIZE(usb_rx_ctrl)),
+
+	/* Record path */
 	SND_SOC_DAPM_MIXER("EP1 TX Mixer", SND_SOC_NOPM, 0, 0, ep1_tx_ctrl,
 			   ARRAY_SIZE(ep1_tx_ctrl)),
 
@@ -1065,6 +1327,15 @@ const struct snd_soc_dapm_widget aoc_widget[] = {
 	SND_SOC_DAPM_MIXER("EP4 TX Mixer", SND_SOC_NOPM, 0, 0, ep4_tx_ctrl,
 			   ARRAY_SIZE(ep4_tx_ctrl)),
 
+	SND_SOC_DAPM_MIXER("EP5 TX Mixer", SND_SOC_NOPM, 0, 0, ep5_tx_ctrl,
+			   ARRAY_SIZE(ep5_tx_ctrl)),
+
+	SND_SOC_DAPM_MIXER("EP6 TX Mixer", SND_SOC_NOPM, 0, 0, ep6_tx_ctrl,
+			   ARRAY_SIZE(ep6_tx_ctrl)),
+
+	/* NoHost TX path */
+	SND_SOC_DAPM_MIXER("NoHost1 TX Mixer", SND_SOC_NOPM, 0, 0,
+		nohost1_tx_ctrl, ARRAY_SIZE(nohost1_tx_ctrl)),
 };
 
 static const struct snd_soc_dapm_route aoc_routes[] = {
@@ -1075,6 +1346,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "I2S_0_RX Mixer", "EP5", "EP5_RX" },
 	{ "I2S_0_RX Mixer", "EP6", "EP6_RX" },
 	{ "I2S_0_RX Mixer", "EP7", "EP7_RX" },
+	{ "I2S_0_RX Mixer", "NoHost1", "NoHost1_RX" },
 	{ "I2S_0_RX", NULL, "I2S_0_RX Mixer" },
 	{ "HW_SINK", NULL, "I2S_0_RX" },
 
@@ -1085,6 +1357,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "I2S_1_RX Mixer", "EP5", "EP5_RX" },
 	{ "I2S_1_RX Mixer", "EP6", "EP6_RX" },
 	{ "I2S_1_RX Mixer", "EP7", "EP7_RX" },
+	{ "I2S_1_RX Mixer", "NoHost1", "NoHost1_RX" },
 	{ "I2S_1_RX", NULL, "I2S_1_RX Mixer" },
 	{ "HW_SINK", NULL, "I2S_1_RX" },
 
@@ -1095,6 +1368,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "I2S_2_RX Mixer", "EP5", "EP5_RX" },
 	{ "I2S_2_RX Mixer", "EP6", "EP6_RX" },
 	{ "I2S_2_RX Mixer", "EP7", "EP7_RX" },
+	{ "I2S_2_RX Mixer", "NoHost1", "NoHost1_RX" },
 	{ "I2S_2_RX", NULL, "I2S_2_RX Mixer" },
 	{ "HW_SINK", NULL, "I2S_2_RX" },
 
@@ -1106,6 +1380,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "TDM_0_RX Mixer", "EP6", "EP6_RX" },
 	{ "TDM_0_RX Mixer", "EP7", "EP7_RX" },
 	{ "TDM_0_RX Mixer", "EP8", "EP8_RX" },
+	{ "TDM_0_RX Mixer", "NoHost1", "NoHost1_RX" },
 	{ "TDM_0_RX", NULL, "TDM_0_RX Mixer" },
 	{ "HW_SINK", NULL, "TDM_0_RX" },
 
@@ -1116,8 +1391,31 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "TDM_1_RX Mixer", "EP5", "EP5_RX" },
 	{ "TDM_1_RX Mixer", "EP6", "EP6_RX" },
 	{ "TDM_1_RX Mixer", "EP7", "EP7_RX" },
+	{ "TDM_1_RX Mixer", "NoHost1", "NoHost1_RX" },
 	{ "TDM_1_RX", NULL, "TDM_1_RX Mixer" },
 	{ "HW_SINK", NULL, "TDM_1_RX" },
+
+	{ "BT_RX Mixer", "EP1", "EP1_RX" },
+	{ "BT_RX Mixer", "EP2", "EP2_RX" },
+	{ "BT_RX Mixer", "EP3", "EP3_RX" },
+	{ "BT_RX Mixer", "EP4", "EP4_RX" },
+	{ "BT_RX Mixer", "EP5", "EP5_RX" },
+	{ "BT_RX Mixer", "EP6", "EP6_RX" },
+	{ "BT_RX Mixer", "EP7", "EP7_RX" },
+	{ "BT_RX Mixer", "NoHost1", "NoHost1_RX" },
+	{ "BT_RX", NULL, "BT_RX Mixer" },
+	{ "HW_SINK", NULL, "BT_RX" },
+
+	{ "USB_RX Mixer", "EP1", "EP1_RX" },
+	{ "USB_RX Mixer", "EP2", "EP2_RX" },
+	{ "USB_RX Mixer", "EP3", "EP3_RX" },
+	{ "USB_RX Mixer", "EP4", "EP4_RX" },
+	{ "USB_RX Mixer", "EP5", "EP5_RX" },
+	{ "USB_RX Mixer", "EP6", "EP6_RX" },
+	{ "USB_RX Mixer", "EP7", "EP7_RX" },
+	{ "USB_RX Mixer", "NoHost1", "NoHost1_RX" },
+	{ "USB_RX", NULL, "USB_RX Mixer" },
+	{ "HW_SINK", NULL, "USB_RX" },
 
 	{ "EP1_TX", NULL, "EP1 TX Mixer" },
 	{ "EP1 TX Mixer", "I2S_0_TX", "I2S_0_TX" },
@@ -1125,6 +1423,9 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "EP1 TX Mixer", "I2S_2_TX", "I2S_2_TX" },
 	{ "EP1 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
 	{ "EP1 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
+	{ "EP1 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "EP1 TX Mixer", "BT_TX", "BT_TX" },
+	{ "EP1 TX Mixer", "USB_TX", "USB_TX" },
 
 	{ "EP2_TX", NULL, "EP2 TX Mixer" },
 	{ "EP2 TX Mixer", "I2S_0_TX", "I2S_0_TX" },
@@ -1132,6 +1433,9 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "EP2 TX Mixer", "I2S_2_TX", "I2S_2_TX" },
 	{ "EP2 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
 	{ "EP2 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
+	{ "EP2 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "EP2 TX Mixer", "BT_TX", "BT_TX" },
+	{ "EP2 TX Mixer", "USB_TX", "USB_TX" },
 
 	{ "EP3_TX", NULL, "EP3 TX Mixer" },
 	{ "EP3 TX Mixer", "I2S_0_TX", "I2S_0_TX" },
@@ -1139,6 +1443,9 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "EP3 TX Mixer", "I2S_2_TX", "I2S_2_TX" },
 	{ "EP3 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
 	{ "EP3 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
+	{ "EP3 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "EP3 TX Mixer", "BT_TX", "BT_TX" },
+	{ "EP3 TX Mixer", "USB_TX", "USB_TX" },
 
 	{ "EP4_TX", NULL, "EP4 TX Mixer" },
 	{ "EP4 TX Mixer", "I2S_0_TX", "I2S_0_TX" },
@@ -1146,12 +1453,48 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "EP4 TX Mixer", "I2S_2_TX", "I2S_2_TX" },
 	{ "EP4 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
 	{ "EP4 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
+	{ "EP4 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "EP4 TX Mixer", "BT_TX", "BT_TX" },
+	{ "EP4 TX Mixer", "USB_TX", "USB_TX" },
+
+	{ "EP5_TX", NULL, "EP5 TX Mixer" },
+	{ "EP5 TX Mixer", "I2S_0_TX", "I2S_0_TX" },
+	{ "EP5 TX Mixer", "I2S_1_TX", "I2S_1_TX" },
+	{ "EP5 TX Mixer", "I2S_2_TX", "I2S_2_TX" },
+	{ "EP5 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
+	{ "EP5 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
+	{ "EP5 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "EP5 TX Mixer", "BT_TX", "BT_TX" },
+	{ "EP5 TX Mixer", "USB_TX", "USB_TX" },
+
+	{ "EP6_TX", NULL, "EP6 TX Mixer" },
+	{ "EP6 TX Mixer", "I2S_0_TX", "I2S_0_TX" },
+	{ "EP6 TX Mixer", "I2S_1_TX", "I2S_1_TX" },
+	{ "EP6 TX Mixer", "I2S_2_TX", "I2S_2_TX" },
+	{ "EP6 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
+	{ "EP6 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
+	{ "EP6 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "EP6 TX Mixer", "BT_TX", "BT_TX" },
+	{ "EP6 TX Mixer", "USB_TX", "USB_TX" },
+
+	{ "NoHost1_TX", NULL, "NoHost1 TX Mixer" },
+	{ "NoHost1 TX Mixer", "I2S_0_TX", "I2S_0_TX" },
+	{ "NoHost1 TX Mixer", "I2S_1_TX", "I2S_1_TX" },
+	{ "NoHost1 TX Mixer", "I2S_2_TX", "I2S_2_TX" },
+	{ "NoHost1 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
+	{ "NoHost1 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
+	{ "NoHost1 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "NoHost1 TX Mixer", "BT_TX", "BT_TX" },
+	{ "NoHost1 TX Mixer", "USB_TX", "USB_TX" },
 
 	{ "TDM_0_TX", NULL, "HW_SOURCE" },
 	{ "TDM_1_TX", NULL, "HW_SOURCE" },
 	{ "I2S_0_TX", NULL, "HW_SOURCE" },
 	{ "I2S_1_TX", NULL, "HW_SOURCE" },
 	{ "I2S_2_TX", NULL, "HW_SOURCE" },
+	{ "INTERNAL_MIC_TX", NULL, "HW_SOURCE" },
+	{ "BT_TX", NULL, "HW_SOURCE" },
+	{ "USB_TX", NULL, "HW_SOURCE" },
 
 	/* Link path to BE */
 	/* Playback */
@@ -1160,6 +1503,8 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "I2S_2_RX Playback", NULL, "I2S_2_RX" },
 	{ "TDM_0_RX Playback", NULL, "TDM_0_RX" },
 	{ "TDM_1_RX Playback", NULL, "TDM_1_RX" },
+	{ "BT_RX Playback", NULL, "BT_RX" },
+	{ "USB_RX Playback", NULL, "USB_RX" },
 
 	/* Capture */
 	{ "I2S_0_TX", NULL, "I2S_0_TX Capture" },
@@ -1167,25 +1512,39 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "I2S_2_TX", NULL, "I2S_2_TX Capture" },
 	{ "TDM_0_TX", NULL, "TDM_0_TX Capture" },
 	{ "TDM_1_TX", NULL, "TDM_1_TX Capture" },
+	{ "INTERNAL_MIC_TX", NULL, "INTERNAL_MIC_TX Capture" },
+	{ "BT_TX", NULL, "BT_TX Capture" },
+	{ "USB_TX", NULL, "USB_TX Capture" },
 };
 
 static int aoc_of_xlate_dai_name(struct snd_soc_component *component,
 				 struct of_phandle_args *args,
 				 const char **dai_name)
 {
-	int i, ret = -EINVAL;
+	int i, ret = -EINVAL, head, next;
+	uint32_t id;
 
 	if (args->args_count != 1) {
 		pr_err("%s: invalid arg count %d", __func__, args->args_count);
 		return -EINVAL;
 	}
 
+	id = args->args[0];
+	if (id & AOC_BE) {
+		/* reverse scan */
+		head = ARRAY_SIZE(aoc_dai_drv) - 1;
+		next = -1;
+	} else {
+		head = 0;
+		next = 1;
+	}
+
 	mutex_lock(&path_mutex);
-	for (i = 0; i < ARRAY_SIZE(aoc_dai_drv); i++) {
-		if (args->args[0] == aoc_dai_drv[i].id) {
-			*dai_name = aoc_dai_drv[i].name;
+	for (i = 0; i < ARRAY_SIZE(aoc_dai_drv); i++, head += next) {
+		if (id == aoc_dai_drv[head].id) {
+			*dai_name = aoc_dai_drv[head].name;
 			ret = 0;
-			pr_info("%s: find dai %s for id 0x%x", __func__,
+			pr_debug("%s: find dai %s for id 0x%x", __func__,
 				*dai_name, args->args[0]);
 			break;
 		}

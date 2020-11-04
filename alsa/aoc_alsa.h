@@ -62,6 +62,9 @@
 /* TODO: may not needed*/
 #define PLAYBACK_WATERMARK_DEFAULT 48000
 
+#define  MIC_HW_GAIN_IN_CB_MIN -720
+#define  MIC_HW_GAIN_IN_CB_MAX  240
+
 #define alsa2chip(vol) (vol) /* Convert alsa to chip volume */
 #define chip2alsa(vol) (vol) /* Convert chip to alsa volume */
 
@@ -75,6 +78,10 @@ enum {
 enum { ULL = 0, LL0, LL1, LL2, LL3, DEEP_BUFFER, OFF_LOAD, HAPTICS = 10 };
 enum { BUILTIN_MIC0 = 0, BUILTIN_MIC1, BUILTIN_MIC2, BUILTIN_MIC3 };
 enum { MIC_LOW_POWER_GAIN = 0, MIC_HIGH_POWER_GAIN, MIC_CURRENT_GAIN };
+
+enum { NONBLOCKING = 0, BLOCKING = 1 };
+enum { START, STOP };
+enum { PLAYBACK_MODE, VOICE_TX_MODE, VOICE_RX_MODE, HAPTICS_MODE, OFFLOAD_MODE };
 
 struct aoc_chip {
 	struct snd_card *card;
@@ -95,6 +102,7 @@ struct aoc_chip {
 	int old_volume; /* Store the volume value while muted */
 	int mute;
 	int voice_call_mic_mute;
+	int default_mic_hw_gain;
 	int voice_call_audio_enable;
 
 	int mic_loopback_enabled;
@@ -143,9 +151,12 @@ int aoc_audio_setup(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_open(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_close(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
-			 uint32_t samplerate, uint32_t bps, bool pcm_float_fmt);
+			 uint32_t samplerate, uint32_t bps, bool pcm_float_fmt, int source_mode);
 int aoc_audio_start(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream);
+int aoc_audio_path_open(struct aoc_alsa_stream *alsa_stream);
+int aoc_audio_path_close(struct aoc_alsa_stream *alsa_stream);
+
 int aoc_audio_set_ctls(struct aoc_chip *chip);
 
 int aoc_set_builtin_mic_power_state(struct aoc_chip *chip, int iMic, int state);
@@ -177,6 +188,7 @@ int aoc_compr_pause(struct aoc_alsa_stream *alsa_stream);
 int aoc_compr_resume(struct aoc_alsa_stream *alsa_stream);
 
 int aoc_mic_loopback(struct aoc_chip *chip, int enable);
+int haptics_set_pcm_mode(struct aoc_alsa_stream *alsa_stream);
 
 int aoc_pcm_init(void);
 void aoc_pcm_exit(void);
@@ -186,4 +198,6 @@ int aoc_compr_init(void);
 void aoc_compr_exit(void);
 int aoc_path_init(void);
 void aoc_path_exit(void);
+int aoc_nohost_init(void);
+void aoc_nohost_exit(void);
 #endif

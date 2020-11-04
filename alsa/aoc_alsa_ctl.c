@@ -15,6 +15,43 @@
 #define CTRL_VOL_MIN 0
 #define CTRL_VOL_MAX 1000
 
+/*
+ * Redefined the macro from soc.h so that the control value can be negative.
+ * In orginal definition, xmin can be a negative value,  but the min control
+ * value is always zero.
+ */
+#define SOC_SINGLE_RANGE_EXT_TLV_modified(xname, xreg, xshift, xmin, xmax,     \
+					  xinvert, xhandler_get, xhandler_put, \
+					  tlv_array)                           \
+	{                                                                      \
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname),          \
+		.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ |                     \
+			  SNDRV_CTL_ELEM_ACCESS_READWRITE,                     \
+		.tlv.p = (tlv_array),                                          \
+		.info = snd_soc_info_volsw_range_modified,                     \
+		.get = xhandler_get, .put = xhandler_put,                      \
+		.private_value = (uintptr_t)&(struct soc_mixer_control)    \
+		{                                                              \
+			.reg = xreg, .rreg = xreg, .shift = xshift,            \
+			.rshift = xshift, .min = xmin, .max = xmax,            \
+			.platform_max = xmax, .invert = xinvert                \
+		}                                                              \
+	}
+
+static int snd_soc_info_volsw_range_modified(struct snd_kcontrol *kcontrol,
+					     struct snd_ctl_elem_info *uinfo)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->count = 1;
+	uinfo->value.integer.min = mc->min;
+	uinfo->value.integer.max = mc->max;
+
+	return 0;
+}
+
 static int snd_aoc_ctl_info(struct snd_kcontrol *kcontrol,
 			    struct snd_ctl_elem_info *uinfo)
 {
@@ -270,6 +307,10 @@ static int mic_hw_gain_set(struct snd_kcontrol *kcontrol,
 		(struct soc_mixer_control *)kcontrol->private_value;
 	u32 state = (u32)mc->shift;
 
+	if (ucontrol->value.integer.value[0] < MIC_HW_GAIN_IN_CB_MIN ||
+	    ucontrol->value.integer.value[0] > MIC_HW_GAIN_IN_CB_MAX)
+		return -EINVAL;
+
 	if (mutex_lock_interruptible(&chip->audio_mutex))
 		return -EINTR;
 
@@ -510,14 +551,19 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 	SOC_SINGLE_EXT("MIC DC Blocker", SND_SOC_NOPM, 0, 1, 0,
 		       mic_dc_blocker_get, mic_dc_blocker_set),
 
-	SOC_SINGLE_EXT("MIC HW Gain At Lower Power Mode (cB)", SND_SOC_NOPM,
-		       MIC_LOW_POWER_GAIN, 4096, 0, mic_hw_gain_get,
-		       mic_hw_gain_set),
-	SOC_SINGLE_EXT("MIC HW Gain At High Power Mode (cB)", SND_SOC_NOPM,
-		       MIC_HIGH_POWER_GAIN, 4096, 0, mic_hw_gain_get,
-		       mic_hw_gain_set),
-	SOC_SINGLE_EXT("MIC HW Gain (cB)", SND_SOC_NOPM, MIC_CURRENT_GAIN, 4096,
-		       0, mic_hw_gain_get, NULL),
+	SOC_SINGLE_RANGE_EXT_TLV_modified(
+		"MIC HW Gain At Lower Power Mode (cB)", SND_SOC_NOPM,
+		MIC_LOW_POWER_GAIN, MIC_HW_GAIN_IN_CB_MIN, MIC_HW_GAIN_IN_CB_MAX, 0,
+		mic_hw_gain_get, mic_hw_gain_set, NULL),
+	SOC_SINGLE_RANGE_EXT_TLV_modified(
+		"MIC HW Gain At High Power Mode (cB)", SND_SOC_NOPM,
+		MIC_HIGH_POWER_GAIN, MIC_HW_GAIN_IN_CB_MIN, MIC_HW_GAIN_IN_CB_MAX, 0,
+		mic_hw_gain_get, mic_hw_gain_set, NULL),
+	SOC_SINGLE_RANGE_EXT_TLV_modified("MIC HW Gain (cB)", SND_SOC_NOPM,
+					  MIC_CURRENT_GAIN, MIC_HW_GAIN_IN_CB_MIN,
+					  MIC_HW_GAIN_IN_CB_MAX, 0, mic_hw_gain_get,
+					  NULL, NULL),
+
 	SOC_SINGLE_EXT("MIC Recording Gain (dB)", SND_SOC_NOPM, 0, 100, 0, NULL,
 		       NULL),
 	SOC_SINGLE_EXT("Compress Offload Volume", SND_SOC_NOPM, 0, 100, 0, NULL,

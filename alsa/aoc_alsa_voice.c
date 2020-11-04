@@ -123,8 +123,9 @@ static int snd_aoc_pcm_open(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *substr
 	hrtimer_init( &(alsa_stream->hr_timer), CLOCK_MONOTONIC, HRTIMER_MODE_REL );
 	alsa_stream->hr_timer.function = &aoc_pcm_hrtimer_irq_handler;
 
-	/* Just to change the mic volume at the start of a voice call */
-	aoc_voice_call_mic_mute(chip, 1 - chip->voice_call_mic_mute);
+	chip->default_mic_hw_gain =
+		aoc_mic_hw_gain_get(chip, MIC_HIGH_POWER_GAIN);
+
 	aoc_voice_call_mic_mute(chip, chip->voice_call_mic_mute);
 
 	alsa_stream->entry_point_idx = substream->pcm->device;
@@ -164,6 +165,9 @@ static int snd_aoc_pcm_close(EXTRA_ARG_LINUX_5_9  struct snd_pcm_substream *subs
 	err = teardown_phonecall(alsa_stream);
 	if (err < 0)
 		pr_err("ERR: fail in phone call tearing down\n");
+
+	aoc_mic_hw_gain_set(chip, MIC_HIGH_POWER_GAIN,
+			    chip->default_mic_hw_gain);
 
 	runtime = substream->runtime;
 	alsa_stream = runtime->private_data;
@@ -276,18 +280,10 @@ static int snd_aoc_pcm_prepare(EXTRA_ARG_LINUX_5_9  struct snd_pcm_substream *su
 
 	mutex_unlock(&chip->audio_mutex);
 
+	runtime->stop_threshold = runtime->boundary = runtime->buffer_size;
+
 	return err;
 }
-
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0))
-static const struct snd_pcm_ops snd_aoc_pcm_ops = {
-	.open = snd_aoc_pcm_open,
-	.close = snd_aoc_pcm_close,
-	.hw_params = snd_aoc_pcm_hw_params,
-	.hw_free = snd_aoc_pcm_hw_free,
-	.prepare = snd_aoc_pcm_prepare,
-};
-#endif
 
 static int aoc_pcm_new(EXTRA_ARG_LINUX_5_9 struct snd_soc_pcm_runtime *rtd)
 {
@@ -316,7 +312,6 @@ static int aoc_pcm_new(EXTRA_ARG_LINUX_5_9 struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
 static const struct snd_soc_component_driver aoc_pcm_component = {
 	.name = "AoC VOICE",
 	.open = snd_aoc_pcm_open,
@@ -326,18 +321,6 @@ static const struct snd_soc_component_driver aoc_pcm_component = {
 	.prepare = snd_aoc_pcm_prepare,
 	.pcm_construct = aoc_pcm_new,
 };
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
-static const struct snd_soc_component_driver aoc_pcm_component = {
-	.name = "AoC VOICE",
-	.ops = &snd_aoc_pcm_ops,
-	.pcm_new = aoc_pcm_new,
-};
-#else
-static const struct snd_soc_platform_driver aoc_pcm_platform = {
-	.ops = &snd_aoc_pcm_ops,
-	.pcm_new = aoc_pcm_new,
-};
-#endif
 
 static int aoc_pcm_probe(struct platform_device *pdev)
 {
@@ -348,16 +331,11 @@ static int aoc_pcm_probe(struct platform_device *pdev)
 	pr_debug("%s", __func__);
 	if (!np)
 		return -EINVAL;
-#if (KERNEL_VERSION(4, 18, 0) <= LINUX_VERSION_CODE)
+
 	err = devm_snd_soc_register_component(dev, &aoc_pcm_component, NULL, 0);
 	if (err)
 		pr_err("ERR: %d fail to reigster aoc pcm comp\n", err);
-#else
-	err = devm_snd_soc_register_platform(dev, &aoc_pcm_platform);
-	if (err) {
-		pr_err("ERR: %d fail to reigster aoc pcm platform\n", err);
-	}
-#endif
+
 	return err;
 }
 

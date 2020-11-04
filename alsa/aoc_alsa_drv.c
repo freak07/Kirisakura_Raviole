@@ -227,6 +227,12 @@ static int snd_aoc_alsa_probe(void)
 		goto out;
 	}
 
+	err = aoc_nohost_init();
+	if (err) {
+		pr_err("ERR: fail to init aoc nohost driver\n");
+		goto out;
+	}
+
 	return 0;
 
 out:
@@ -235,6 +241,7 @@ out:
 
 static int snd_aoc_alsa_remove(void)
 {
+	aoc_nohost_exit();
 	aoc_path_exit();
 	aoc_compr_exit();
 	aoc_voice_exit();
