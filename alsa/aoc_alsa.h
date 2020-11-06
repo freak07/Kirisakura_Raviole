@@ -176,7 +176,11 @@ int aoc_mic_dc_blocker_get(struct aoc_chip *chip);
 int aoc_mic_dc_blocker_set(struct aoc_chip *chip, int enable);
 
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute);
+
 int aoc_get_dsp_state(struct aoc_chip *chip);
+int aoc_get_asp_mode(struct aoc_chip *chip, int block, int component, int key);
+int aoc_set_asp_mode(struct aoc_chip *chip, int block, int component, int key, int val);
+
 int aoc_get_sink_state(struct aoc_chip *chip, int iSink);
 
 int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,

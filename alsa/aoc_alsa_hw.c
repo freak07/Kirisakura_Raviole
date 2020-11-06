@@ -350,6 +350,59 @@ int aoc_get_dsp_state(struct aoc_chip *chip)
 	return err < 0 ? err : cmd.mode;
 }
 
+int aoc_get_asp_mode(struct aoc_chip *chip, int block, int component, int key)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_GET_PARAMETER cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_PARAMETER_ID,
+		     sizeof(cmd));
+
+	/* Sink 0-4 with block ID from 16-20 */
+	cmd.block = block;
+	cmd.component = component;
+	cmd.key = key;
+	pr_debug("block=%d, component=%d, key=%d\n", block, component, key);
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), (uint8_t *)&cmd, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in getting dsp mode, block=%d, component=%d, key=%d\n",
+		       err, block, component, key);
+		return err;
+	}
+
+	return cmd.val;
+}
+
+int aoc_set_asp_mode(struct aoc_chip *chip, int block, int component, int key,
+		     int val)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_SET_PARAMETER cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SET_PARAMETER_ID,
+		     sizeof(cmd));
+
+	/* Sink 0-4 with block ID from 16-20 */
+	cmd.block = block;
+	cmd.component = component;
+	cmd.key = key;
+	cmd.val = val;
+	pr_debug("block=%d, component=%d, key=%d, val=%d\n", block, component,
+		 key, val);
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), NULL, chip);
+	if (err < 0)
+		pr_err("ERR:%d in dsp mode, block=%d, component=%d, key=%d, val=%d\n",
+		       err, block, component, key, val);
+
+	return err;
+}
+
 int aoc_get_sink_state(struct aoc_chip *chip, int iSink)
 {
 	int err;
