@@ -403,6 +403,28 @@ int aoc_set_asp_mode(struct aoc_chip *chip, int block, int component, int key,
 	return err;
 }
 
+int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int sink)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_GET_SINKS_BITMAPS cmd;
+
+	if (sink >= AUDIO_OUTPUT_SINKS) {
+		pr_err("Err: sink id %d not exists!\n", sink);
+		return -EINVAL;
+	}
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_SINKS_BITMAPS_ID, sizeof(cmd));
+
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("Err:%d in get aoc sink %d channel bitmap!\n", err, sink);
+		return err;
+	}
+
+	return cmd.bitmap[sink];
+}
+
 int aoc_get_sink_state(struct aoc_chip *chip, int iSink)
 {
 	int err;

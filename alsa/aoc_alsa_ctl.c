@@ -494,6 +494,26 @@ static int aoc_sink_state_ctl_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int aoc_sink_channel_bitmap_ctl_get(struct snd_kcontrol *kcontrol,
+				       struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 sink_idx = (u32)mc->shift;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.enumerated.item[0] =
+		aoc_get_sink_channel_bitmap(chip, sink_idx);
+	pr_debug("sink %d channel bitmap - %d\n", sink_idx,
+		 ucontrol->value.enumerated.item[0]);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static int a2dp_encoder_parameters_put(struct snd_kcontrol *kcontrol,
 				       struct snd_ctl_elem_value *ucontrol)
 {
@@ -626,6 +646,18 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		     aoc_sink_state_ctl_get, NULL),
 	SOC_ENUM_EXT("Audio Sink 4 Processing State", sink_4_state_enum,
 		     aoc_sink_state_ctl_get, NULL),
+
+	/* 16 bit for each sink */
+	SOC_SINGLE_EXT("AoC Speaker Sink Channel Bitmap", SND_SOC_NOPM, 0,
+		       0x00ffff, 0, aoc_sink_channel_bitmap_ctl_get, NULL),
+	SOC_SINGLE_EXT("AoC Headphone Sink Channel Bitmap", SND_SOC_NOPM, 1,
+		       0x00ffff, 0, aoc_sink_channel_bitmap_ctl_get, NULL),
+	SOC_SINGLE_EXT("AoC BT Sink Channel Bitmap", SND_SOC_NOPM, 2, 0x00ffff,
+		       0, aoc_sink_channel_bitmap_ctl_get, NULL),
+	SOC_SINGLE_EXT("AoC Modem Sink Channel Bitmap", SND_SOC_NOPM, 3,
+		       0x00ffff, 0, aoc_sink_channel_bitmap_ctl_get, NULL),
+	SOC_SINGLE_EXT("AoC USB Sink Channel Bitmap", SND_SOC_NOPM, 4, 0x00ffff,
+		       0, aoc_sink_channel_bitmap_ctl_get, NULL),
 
 	SOC_SINGLE_EXT("Voice Call Mic Mute", SND_SOC_NOPM, 0, 1, 0,
 		       voice_call_mic_mute_get, voice_call_mic_mute_set),
