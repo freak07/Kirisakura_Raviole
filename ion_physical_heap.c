@@ -3,7 +3,7 @@
  * Copyright (c) 2011,2020 Google LLC
  */
 #include <linux/spinlock.h>
-#include <linux/dma-mapping.h>
+#include <linux/dma-map-ops.h>
 #include <linux/err.h>
 #include <linux/genalloc.h>
 #include <linux/io.h>

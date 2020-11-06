@@ -16,6 +16,7 @@
 #include <linux/atomic.h>
 #include <linux/cdev.h>
 #include <linux/delay.h>
+#include <linux/dma-map-ops.h>
 #include <linux/firmware.h>
 #include <linux/fs.h>
 #include <linux/glob.h>
