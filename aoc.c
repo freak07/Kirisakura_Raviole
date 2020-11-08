@@ -526,6 +526,37 @@ free_fw:
 	release_firmware(fw);
 }
 
+phys_addr_t aoc_service_ring_base_phys_addr(struct aoc_service_dev *dev, aoc_direction dir,
+					    size_t *out_size)
+{
+	const struct device *parent;
+	struct aoc_prvdata *prvdata;
+	aoc_service *service;
+	void *ring_base;
+	int service_number;
+
+	if (!dev)
+		return -EINVAL;
+
+	parent = dev->dev.parent;
+	prvdata = dev_get_drvdata(parent);
+
+	service_number = dev->service_index;
+	service = service_at_index(prvdata, dev->service_index);
+
+	ring_base = aoc_service_ring_base(service, prvdata->ipc_base, dir);
+
+	pr_debug("aoc DRAM starts at (virt): %pK, (phys):%llx, ring base (virt): %pK",
+		 aoc_dram_virt_mapping, prvdata->dram_resource.start, ring_base);
+	print_hex_dump(KERN_DEBUG, "aoc-mem ", DUMP_PREFIX_ADDRESS, 16, 1, ring_base, 16384, false);
+
+	if (out_size)
+		*out_size = aoc_service_ring_size(service, dir);
+
+	return ring_base - aoc_dram_virt_mapping + prvdata->dram_resource.start;
+}
+EXPORT_SYMBOL(aoc_service_ring_base_phys_addr);
+
 ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 			 size_t count, bool block)
 {

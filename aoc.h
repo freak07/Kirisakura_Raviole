@@ -26,6 +26,8 @@ struct aoc_service_dev {
 
 #define AOC_DEVICE(_d) container_of((_d), struct aoc_service_dev, dev)
 
+phys_addr_t aoc_service_ring_base_phys_addr(struct aoc_service_dev *dev, aoc_direction dir,
+					    size_t *out_size);
 ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 			 size_t count, bool block);
 ssize_t aoc_service_read_timeout(struct aoc_service_dev *dev, uint8_t *buffer,
