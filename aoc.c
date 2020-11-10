@@ -200,6 +200,20 @@ static bool aoc_is_valid_dram_address(struct aoc_prvdata *prv, void *addr)
 	return (offset < prv->dram_size);
 }
 
+static inline u32 aoc_dram_translate_to_aoc(struct aoc_prvdata *p,
+					    phys_addr_t addr)
+{
+	phys_addr_t phys_start = p->dram_resource.start;
+	phys_addr_t phys_end = phys_start + resource_size(&p->dram_resource);
+	u32 offset;
+
+	if (addr < phys_start || addr >= phys_end)
+		return 0;
+
+	offset = addr - phys_start;
+	return AOC_BINARY_DRAM_BASE + offset;
+}
+
 static inline bool aoc_is_online(void)
 {
 	return aoc_control != NULL && aoc_control->magic == AOC_MAGIC;
@@ -1368,39 +1382,53 @@ void aoc_remove_map_handler(struct aoc_service_dev *dev)
 }
 EXPORT_SYMBOL(aoc_remove_map_handler);
 
-static int aoc_dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
-			  enum dma_data_direction dir, unsigned long attrs)
+static void aoc_pheap_alloc_cb(struct ion_buffer *buffer, void *ctx)
 {
+	struct device *dev = ctx;
 	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
-	phys_addr_t phys = sg_phys(sg);
-	size_t size = sg->length;
+	struct sg_table *sg = buffer->sg_table;
+	phys_addr_t phys;
+	size_t size;
 
-	if (prvdata->map_handler) {
-		prvdata->map_handler(0, phys, size, true,
-				     prvdata->map_handler_ctx);
+	if (sg->nents != 1) {
+		dev_warn(dev, "Unable to map sg_table with %d ents\n",
+			 sg->nents);
+		return;
 	}
 
-	return 1;
-}
-
-static void aoc_dma_unmap_sg(struct device *dev, struct scatterlist *sg,
-			     int nents, enum dma_data_direction dir,
-			     unsigned long attrs)
-{
-	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
-	phys_addr_t phys = sg_phys(sg);
-	size_t size = sg_dma_len(sg);
+	phys = sg_phys(&sg->sgl[0]);
+	phys = aoc_dram_translate_to_aoc(prvdata, phys);
+	size = sg->sgl[0].length;
 
 	if (prvdata->map_handler) {
-		prvdata->map_handler(0, phys, size, false,
+		prvdata->map_handler((u32)buffer->priv_virt, phys, size, true,
 				     prvdata->map_handler_ctx);
 	}
 }
 
-const struct dma_map_ops aoc_dma_map_ops = {
-	.map_sg = aoc_dma_map_sg,
-	.unmap_sg = aoc_dma_unmap_sg,
-};
+static void aoc_pheap_free_cb(struct ion_buffer *buffer, void *ctx)
+{
+	struct device *dev = ctx;
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+	struct sg_table *sg = buffer->sg_table;
+	phys_addr_t phys;
+	size_t size;
+
+	if (sg->nents != 1) {
+		dev_warn(dev, "Unable to map sg_table with %d ents\n",
+			 sg->nents);
+		return;
+	}
+
+	phys = sg_phys(&sg->sgl[0]);
+	phys = aoc_dram_translate_to_aoc(prvdata, phys);
+	size = sg->sgl[0].length;
+
+	if (prvdata->map_handler) {
+		prvdata->map_handler((u32)buffer->priv_virt, phys, size, false,
+				     prvdata->map_handler_ctx);
+	}
+}
 
 #ifdef AOC_JUNO
 static irqreturn_t aoc_int_handler(int irq, void *dev)
@@ -1545,20 +1573,28 @@ err_coredump:
 
 static bool aoc_create_ion_heap(struct aoc_prvdata *prvdata)
 {
-	phys_addr_t base = prvdata->dram_resource.start + (30 * SZ_1M);
-	size_t size = SZ_2M;
+	phys_addr_t base = prvdata->dram_resource.start + (28 * SZ_1M);
+	struct device *dev = prvdata->dev;
+	struct ion_heap *heap;
+	size_t size = SZ_4M;
 	size_t align = SZ_16K;
 	const char *name = "sensor_direct_heap";
 
-	prvdata->sensor_heap =
-		ion_physical_heap_create(base, size, align, name, prvdata->dev);
-	if (IS_ERR(prvdata->sensor_heap))
-		pr_err("ION heap failure: %ld\n",
-		       PTR_ERR(prvdata->sensor_heap));
-	else
-		ion_device_add_heap(prvdata->sensor_heap);
+	heap = ion_physical_heap_create(base, size, align, name);
+	if (IS_ERR(heap)) {
+		dev_err(dev, "ION heap failure: %ld\n", PTR_ERR(heap));
+	} else {
+		prvdata->sensor_heap = heap;
 
-	return !IS_ERR(prvdata->sensor_heap);
+		ion_physical_heap_set_allocate_callback(
+			heap, aoc_pheap_alloc_cb, dev);
+		ion_physical_heap_set_free_callback(heap, aoc_pheap_free_cb,
+						    dev);
+
+		ion_device_add_heap(heap);
+	}
+
+	return !IS_ERR(heap);
 }
 
 static int aoc_open(struct inode *inode, struct file *file)
@@ -1739,8 +1775,6 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	pr_notice("found aoc with interrupt:%d sram:%pR dram:%pR\n", aoc_irq,
 		  aoc_sram_resource, &prvdata->dram_resource);
 	aoc_platform_device = pdev;
-
-	dev->dma_ops = &aoc_dma_map_ops;
 
 	aoc_sram_virt_mapping = devm_ioremap_resource(dev, aoc_sram_resource);
 	aoc_dram_virt_mapping =

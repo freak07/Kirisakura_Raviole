@@ -23,10 +23,15 @@
 struct ion_physical_heap {
 	struct ion_heap heap;
 	struct gen_pool *pool;
-	struct device *parent;
 	phys_addr_t base;
 	size_t size;
 	size_t alloc_align;
+
+	ion_physical_heap_allocate_callback *allocate_cb;
+	void *allocate_ctx;
+
+	ion_physical_heap_free_callback *free_cb;
+	void *free_ctx;
 };
 
 static int _clear_pages(struct page **pages, int num, pgprot_t pgprot)
@@ -81,6 +86,28 @@ static int _pages_zero(struct page *page, size_t size, pgprot_t pgprot)
 	return _sglist_zero(&sg, 1, pgprot);
 }
 
+void ion_physical_heap_set_allocate_callback(
+	struct ion_heap *heap, ion_physical_heap_allocate_callback cb,
+	void *ctx)
+{
+	struct ion_physical_heap *physical_heap =
+		container_of(heap, struct ion_physical_heap, heap);
+
+	physical_heap->allocate_cb = cb;
+	physical_heap->allocate_ctx = ctx;
+}
+
+void ion_physical_heap_set_free_callback(struct ion_heap *heap,
+					 ion_physical_heap_free_callback cb,
+					 void *ctx)
+{
+	struct ion_physical_heap *physical_heap =
+		container_of(heap, struct ion_physical_heap, heap);
+
+	physical_heap->free_cb = cb;
+	physical_heap->free_ctx = ctx;
+}
+
 static phys_addr_t ion_physical_allocate(struct ion_physical_heap *heap,
 					 unsigned long size)
 {
@@ -92,23 +119,23 @@ static phys_addr_t ion_physical_allocate(struct ion_physical_heap *heap,
 	return offset;
 }
 
-static void ion_physical_free(struct ion_physical_heap *carveout_heap,
+static void ion_physical_free(struct ion_physical_heap *physical_heap,
 			      phys_addr_t addr, unsigned long size)
 {
 	if (addr == ION_PHYSICAL_ALLOCATE_FAIL)
 		return;
-	gen_pool_free(carveout_heap->pool, addr,
-		      ALIGN(size, carveout_heap->alloc_align));
+	gen_pool_free(physical_heap->pool, addr,
+		      ALIGN(size, physical_heap->alloc_align));
 }
 
 static int ion_physical_heap_allocate(struct ion_heap *heap,
 				      struct ion_buffer *buffer,
 				      unsigned long size, unsigned long flags)
 {
-	struct ion_physical_heap *carveout_heap =
+	struct ion_physical_heap *physical_heap =
 		container_of(heap, struct ion_physical_heap, heap);
 	struct sg_table *table;
-	unsigned long aligned_size = ALIGN(size, carveout_heap->alloc_align);
+	unsigned long aligned_size = ALIGN(size, physical_heap->alloc_align);
 	phys_addr_t paddr;
 	int ret;
 
@@ -122,7 +149,7 @@ static int ion_physical_heap_allocate(struct ion_heap *heap,
 		goto err_free;
 	}
 
-	paddr = ion_physical_allocate(carveout_heap, aligned_size);
+	paddr = ion_physical_allocate(physical_heap, aligned_size);
 	if (paddr == ION_PHYSICAL_ALLOCATE_FAIL) {
 		pr_err("%s: failed to allocate from %s(id %d), size %lu",
 		       __func__, heap->name, heap->id, size);
@@ -132,6 +159,10 @@ static int ion_physical_heap_allocate(struct ion_heap *heap,
 
 	sg_set_page(table->sgl, pfn_to_page(PFN_DOWN(paddr)), size, 0);
 	buffer->sg_table = table;
+	buffer->priv_virt = (void *)(uintptr_t)hash_long(paddr, 32);
+
+	if (physical_heap->allocate_cb)
+		physical_heap->allocate_cb(buffer, physical_heap->allocate_ctx);
 
 	return 0;
 
@@ -144,39 +175,21 @@ err_free:
 
 static void ion_physical_heap_free(struct ion_buffer *buffer)
 {
-	struct ion_physical_heap *carveout_heap =
+	struct ion_physical_heap *physical_heap =
 		container_of(buffer->heap, struct ion_physical_heap, heap);
-	struct device *dev = carveout_heap->parent;
 	struct sg_table *table = buffer->sg_table;
 	struct page *page = sg_page(table->sgl);
 	phys_addr_t paddr = PFN_PHYS(page_to_pfn(page));
 	unsigned long size = buffer->size;
 
-	if (dev && dev->dma_ops && dev->dma_ops->unmap_sg)
-		dev->dma_ops->unmap_sg(dev, buffer->sg_table->sgl,
-				       buffer->sg_table->orig_nents,
-				       DMA_FROM_DEVICE, 0);
+	if (physical_heap->free_cb)
+		physical_heap->free_cb(buffer, physical_heap->free_ctx);
+
 	_buffer_zero(buffer);
-	ion_physical_free(carveout_heap, paddr, size);
+	ion_physical_free(physical_heap, paddr, size);
 
 	sg_free_table(table);
 	kfree(table);
-}
-
-static int carveout_heap_map_user(struct ion_heap *heap,
-				  struct ion_buffer *buffer,
-				  struct vm_area_struct *vma)
-{
-	struct ion_physical_heap *carveout_heap =
-		container_of(heap, struct ion_physical_heap, heap);
-	struct device *dev = carveout_heap->parent;
-
-	if (dev && dev->dma_ops && dev->dma_ops->map_sg)
-		dev->dma_ops->map_sg(dev, buffer->sg_table->sgl,
-				     buffer->sg_table->orig_nents,
-				     DMA_FROM_DEVICE, 0);
-
-	return ion_heap_map_user(heap, buffer, vma);
 }
 
 static long ion_physical_get_pool_size(struct ion_heap *heap)
@@ -187,23 +200,16 @@ static long ion_physical_get_pool_size(struct ion_heap *heap)
 	return physical_heap->size / PAGE_SIZE;
 }
 
-static struct ion_heap_ops carveout_heap_ops = {
+static struct ion_heap_ops physical_heap_ops = {
 	.allocate = ion_physical_heap_allocate,
 	.free = ion_physical_heap_free,
 	.get_pool_size = ion_physical_get_pool_size,
 };
 
-static int ion_physical_heap_debug_show(struct ion_heap *heap,
-					struct seq_file *s, void *unused)
-{
-	return 0;
-}
-
 struct ion_heap *ion_physical_heap_create(phys_addr_t base, size_t size,
-					  size_t align, const char *name,
-					  struct device *dev)
+					  size_t align, const char *name)
 {
-	struct ion_physical_heap *carveout_heap;
+	struct ion_physical_heap *physical_heap;
 	int ret;
 
 	struct page *page;
@@ -214,32 +220,31 @@ struct ion_heap *ion_physical_heap_create(phys_addr_t base, size_t size,
 	if (ret)
 		return ERR_PTR(ret);
 
-	carveout_heap = kzalloc(sizeof(*carveout_heap), GFP_KERNEL);
-	if (!carveout_heap)
+	physical_heap = kzalloc(sizeof(*physical_heap), GFP_KERNEL);
+	if (!physical_heap)
 		return ERR_PTR(-ENOMEM);
 
-	carveout_heap->pool =
+	physical_heap->pool =
 		gen_pool_create(get_order(align) + PAGE_SHIFT, -1);
-	if (!carveout_heap->pool) {
-		kfree(carveout_heap);
+	if (!physical_heap->pool) {
+		kfree(physical_heap);
 		return ERR_PTR(-ENOMEM);
 	}
-	carveout_heap->base = base;
-	gen_pool_add(carveout_heap->pool, carveout_heap->base, size, -1);
-	carveout_heap->heap.ops = &carveout_heap_ops;
-	carveout_heap->heap.name =
+	physical_heap->base = base;
+	gen_pool_add(physical_heap->pool, physical_heap->base, size, -1);
+	physical_heap->heap.ops = &physical_heap_ops;
+	physical_heap->heap.name =
 		kstrndup(name, MAX_HEAP_NAME - 1, GFP_KERNEL);
-	if (!carveout_heap->heap.name) {
-		gen_pool_destroy(carveout_heap->pool);
-		kfree(carveout_heap);
+	if (!physical_heap->heap.name) {
+		gen_pool_destroy(physical_heap->pool);
+		kfree(physical_heap);
 		return ERR_PTR(-ENOMEM);
 	}
-	carveout_heap->heap.type = ION_HEAP_TYPE_CUSTOM;
-	carveout_heap->heap.owner = THIS_MODULE;
+	physical_heap->heap.type = ION_HEAP_TYPE_CUSTOM;
+	physical_heap->heap.owner = THIS_MODULE;
 
-	carveout_heap->size = size;
-	carveout_heap->alloc_align = align;
-	carveout_heap->parent = dev;
+	physical_heap->size = size;
+	physical_heap->alloc_align = align;
 
-	return &carveout_heap->heap;
+	return &physical_heap->heap;
 }
