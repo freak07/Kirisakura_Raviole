@@ -58,7 +58,10 @@
 #define AOC_PCU_RESET_CONTROL_RESET_VALUE 0x0
 
 static struct platform_device *aoc_platform_device;
+static struct device *aoc_device;
+static struct class *aoc_class;
 
+static int aoc_major_dev;
 static bool aoc_online;
 
 struct aoc_prvdata {
@@ -1544,6 +1547,56 @@ static bool aoc_create_ion_heap(struct aoc_prvdata *prvdata)
 	return !IS_ERR(prvdata->sensor_heap);
 }
 
+static int aoc_open(struct inode *inode, struct file *file)
+{
+	return -1;
+}
+
+static int aoc_release(struct inode *inode, struct file *file)
+{
+	return -1;
+}
+
+static const struct file_operations fops = {
+	.open = aoc_open,
+	.release = aoc_release,
+
+	.owner = THIS_MODULE,
+};
+
+static char *aoc_devnode(struct device *dev, umode_t *mode)
+{
+	if (!mode || !dev)
+		return NULL;
+
+	if (MAJOR(dev->devt) == aoc_major)
+		*mode = 0666;
+
+	return kasprintf(GFP_KERNEL, "%s", dev_name(dev));
+}
+
+static int aoc_create_chrdev(struct platform_device *pdev)
+{
+	aoc_major = register_chrdev(0, AOC_CHARDEV_NAME, &fops);
+	aoc_major_dev = MKDEV(aoc_major, 0);
+
+	aoc_class = class_create(THIS_MODULE, AOC_CHARDEV_NAME);
+	if (!aoc_class) {
+		pr_err("failed to create aoc_class\n");
+		return -ENXIO;
+	}
+
+	aoc_class->devnode = aoc_devnode;
+
+	aoc_device = device_create(aoc_class, NULL, aoc_major_dev, NULL,
+				   AOC_CHARDEV_NAME);
+	if (!aoc_device) {
+		pr_err("failed to create aoc_device\n");
+		return -ENXIO;
+	}
+
+	return 0;
+}
 static void aoc_cleanup_resources(struct platform_device *pdev)
 {
 	struct aoc_prvdata *prvdata = platform_get_drvdata(pdev);
@@ -1666,6 +1719,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		return -EIO;
 	}
 #endif
+
+	aoc_create_chrdev(pdev);
 
 	pr_notice("found aoc with interrupt:%d sram:%pR dram:%pR\n", aoc_irq,
 		  aoc_sram_resource, &prvdata->dram_resource);
