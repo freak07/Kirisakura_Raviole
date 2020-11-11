@@ -79,7 +79,7 @@ static struct snd_pcm_hardware snd_aoc_playback_hw = {
 	.rate_max = 48000,
 	.channels_min = 1,
 	.channels_max = 4,
-	.buffer_bytes_max = 15360,
+	.buffer_bytes_max = 16384,
 	.period_bytes_min = 16,
 	.period_bytes_max = 7680,
 	.periods_min = 2,
@@ -412,6 +412,16 @@ static int snd_aoc_pcm_prepare(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *sub
 	else
 		source_mode = PLAYBACK_MODE;
 
+	/* Reset the writer pointer of the DRAM buffer */
+	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if (!aoc_ring_reset_write_pointer(alsa_stream->dev->service, AOC_DOWN)) {
+			err = -EIO;
+			pr_err("ERR in resetting the DRAM ring buffer writer pointer\n");
+			goto out;
+		}
+	}
+
+	/* Set the audio formats and flush the DRAM buffer */
 	err = aoc_audio_set_params(alsa_stream, channels,
 				   alsa_stream->params_rate,
 				   alsa_stream->pcm_format_width,
@@ -438,6 +448,8 @@ static int snd_aoc_pcm_prepare(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *sub
 			      aoc_ring_bytes_written(dev->service, AOC_UP);
 	alsa_stream->prev_consumed = alsa_stream->hw_ptr_base;
 	alsa_stream->n_overflow = 0;
+
+	pr_debug("pcm prepare: hw_ptr_base = %lu\n", alsa_stream->hw_ptr_base);
 
 	pr_debug("buffer_size=%d, period_size=%d pos=%d frame_bits=%d\n",
 		 alsa_stream->buffer_size, alsa_stream->period_size,
@@ -563,8 +575,71 @@ snd_aoc_pcm_pointer(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *substream)
 	return pointer;
 }
 
-static int snd_aoc_pcm_lib_ioctl(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *substream,
-				 unsigned int cmd, void *arg)
+static int snd_aoc_pcm_mmap(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *substream,
+			    struct vm_area_struct *vma)
+{
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
+	size_t ring_size;
+	int err;
+
+	phys_addr_t aoc_ring_base =
+		aoc_service_ring_base_phys_addr(alsa_stream->dev, AOC_DOWN, &ring_size);
+
+	alsa_stream->vma = vma;
+
+	err = remap_pfn_range(vma, vma->vm_start, aoc_ring_base >> PAGE_SHIFT,
+			      vma->vm_end - vma->vm_start, pgprot_writecombine(vma->vm_page_prot));
+
+	pr_debug("mmap ring base physical addr: %pa, size = %zu, vm_start=%lx:%lu\n",
+		 &aoc_ring_base, ring_size, vma->vm_start, vma->vm_end - vma->vm_start);
+
+	return err;
+}
+
+static int snd_aoc_pcm_ack(struct snd_pcm_substream *substream)
+{
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
+	struct aoc_service_dev *dev = alsa_stream->dev;
+	unsigned long old_appl_ptr, appl_ptr;
+
+	/* mmap only for ULL. TODO: extend to more entry points */
+	if (alsa_stream->entry_point_idx != ULL)
+		return 0;
+
+	appl_ptr = frames_to_bytes(runtime, runtime->control->appl_ptr);
+
+	/* Update write/read pointer depending on the stream type */
+	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		old_appl_ptr =
+			aoc_ring_bytes_written(dev->service, AOC_DOWN) - alsa_stream->hw_ptr_base;
+
+		pr_debug_ratelimited("ack(): old_ptr=%lu(hw_ptr=%lu), new_ptr=%lu, written:%lu\n",
+				     old_appl_ptr, alsa_stream->hw_ptr_base, appl_ptr,
+				     appl_ptr - old_appl_ptr);
+
+		if (!aoc_service_advance_write_index(dev->service, AOC_DOWN,
+						     appl_ptr - old_appl_ptr))
+			return -EINVAL;
+
+	} else {
+		old_appl_ptr = aoc_ring_bytes_read(dev->service, AOC_UP) - alsa_stream->hw_ptr_base;
+
+		pr_debug_ratelimited("ack(): old_ptr=%lu(hw_ptr=%lu), new_ptr=%lu, written:%lu\n",
+				     old_appl_ptr, alsa_stream->hw_ptr_base, appl_ptr,
+				     appl_ptr - old_appl_ptr);
+
+		if (!aoc_service_advance_read_index(dev->service, AOC_UP, appl_ptr - old_appl_ptr))
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int
+snd_aoc_pcm_lib_ioctl(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *substream,
+		      unsigned int cmd, void *arg)
 {
 	int err = snd_pcm_lib_ioctl(substream, cmd, arg);
 
@@ -611,6 +686,11 @@ static int aoc_pcm_new(EXTRA_ARG_LINUX_5_9 struct snd_soc_pcm_runtime *rtd)
 			snd_aoc_playback_hw.buffer_bytes_max);
 	}
 
+	/* For pcm mmap, 5.9 removed ack() in snd_soc_component */
+	if (!rtd->ops.ack) {
+		rtd->ops.ack = snd_aoc_pcm_ack;
+	}
+
 	return 0;
 }
 
@@ -626,6 +706,7 @@ static const struct snd_soc_component_driver aoc_pcm_component = {
 	.prepare = snd_aoc_pcm_prepare,
 	.trigger = snd_aoc_pcm_trigger,
 	.pointer = snd_aoc_pcm_pointer,
+	.mmap = snd_aoc_pcm_mmap,
 	.pcm_construct = aoc_pcm_new,
 };
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))

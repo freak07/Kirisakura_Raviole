@@ -165,6 +165,7 @@ struct aoc_alsa_stream {
 	int pcm_format_width; /* Number of bits */
 	bool pcm_float_fmt; /* Floating point */
 
+	struct vm_area_struct *vma; /* for MMAP */
 	unsigned int period_size;
 	unsigned int buffer_size;
 	unsigned int pos;
