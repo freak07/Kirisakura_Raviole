@@ -787,6 +787,15 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 		return rc;
 	}
 
+	prvdata->mbox_channel =
+		mbox_request_channel_byname(&prvdata->mbox_client, "aoc2ap");
+	if (IS_ERR(prvdata->mbox_channel)) {
+		rc = PTR_ERR(prvdata->mbox_channel);
+		dev_err(prvdata->dev, "failed to find mailbox interface : %d\n", rc);
+		prvdata->mbox_channel = NULL;
+		return rc;
+	}
+
 	rc = start_firmware_load(prvdata->dev);
 	if (rc) {
 		dev_err(prvdata->dev, "load aoc firmware failed: rc = %d\n", rc);
@@ -1303,6 +1312,11 @@ static void aoc_did_become_online(struct work_struct *work)
 static void aoc_take_offline(struct aoc_prvdata *prvdata)
 {
 	pr_notice("taking aoc offline\n");
+
+	if (prvdata->mbox_channel) {
+		mbox_free_channel(prvdata->mbox_channel);
+		prvdata->mbox_channel = NULL;
+	}
 
 	aoc_online = false;
 
