@@ -201,7 +201,6 @@ int aoc_compr_pause(struct aoc_alsa_stream *alsa_stream);
 int aoc_compr_resume(struct aoc_alsa_stream *alsa_stream);
 
 int aoc_mic_loopback(struct aoc_chip *chip, int enable);
-int haptics_set_pcm_mode(struct aoc_alsa_stream *alsa_stream);
 
 int aoc_pcm_init(void);
 void aoc_pcm_exit(void);

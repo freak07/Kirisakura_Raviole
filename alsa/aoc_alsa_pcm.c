@@ -415,14 +415,6 @@ static int snd_aoc_pcm_prepare(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *sub
 	else
 		source_mode = PLAYBACK_MODE;
 
-	if (source_mode == HAPTICS_MODE) {
-		err = haptics_set_pcm_mode(alsa_stream);
-		if (err < 0) {
-			pr_err("ERR:%d in setting haptics to pcm mode\n", err);
-			goto out;
-		}
-	}
-
 	err = aoc_audio_set_params(alsa_stream, channels,
 				   alsa_stream->params_rate,
 				   alsa_stream->pcm_format_width,

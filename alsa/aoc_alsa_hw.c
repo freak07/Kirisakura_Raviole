@@ -444,29 +444,6 @@ int aoc_get_sink_state(struct aoc_chip *chip, int iSink)
 	return err < 0 ? err : cmd.mode;
 }
 
-static int aoc_haptics_set_mode(struct aoc_alsa_stream *alsa_stream, int mode)
-{
-	int err;
-	struct CMD_AUDIO_OUTPUT_CFG_HAPTICS cmd;
-
-	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_CFG_HAPTICS_ID,
-		     sizeof(cmd));
-
-	cmd.mode = mode;
-
-	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
-				sizeof(cmd), NULL, alsa_stream->chip);
-	if (err < 0)
-		pr_err("ERR:%d in set haptics mode\n", err);
-
-	return err < 0 ? err : 0;
-}
-
-int haptics_set_pcm_mode(struct aoc_alsa_stream *alsa_stream)
-{
-	return  aoc_haptics_set_mode(alsa_stream, HAPTICS_MODE_PCM);
-}
-
 static int
 aoc_audio_playback_trigger_source(struct aoc_alsa_stream *alsa_stream, int cmd,
 				  int src)
