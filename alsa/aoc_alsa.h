@@ -80,6 +80,19 @@ enum bluetooth_mode {
 	AHS_BT_MODE_A2DP_ENC_AAC,
 };
 
+/* AoC USB Config parameters */
+enum {
+	USB_DEV_ID,
+	USB_TX_EP_ID,
+	USB_TX_SR,
+	USB_TX_CH,
+	USB_TX_BW,
+	USB_RX_EP_ID,
+	USB_RX_SR,
+	USB_RX_CH,
+	USB_RX_BW
+};
+
 enum { CTRL_VOL_MUTE, CTRL_VOL_UNMUTE };
 enum {
 	PCM_PLAYBACK_VOLUME,
@@ -125,6 +138,7 @@ struct aoc_chip {
 	spinlock_t audio_lock;
 
 	struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG a2dp_encoder_cfg;
+	struct CMD_AUDIO_OUTPUT_USB_CONFIG usb_sink_cfg;
 };
 
 struct aoc_alsa_stream {
@@ -196,6 +210,8 @@ int aoc_get_sink_state(struct aoc_chip *chip, int sink);
 int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int sink);
 int aoc_get_sink_mode(struct aoc_chip *chip, int sink);
 int aoc_set_sink_mode(struct aoc_chip *chip, int sink, int mode);
+
+int aoc_set_usb_config(struct aoc_chip *chip);
 
 int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 		    uint32_t count);

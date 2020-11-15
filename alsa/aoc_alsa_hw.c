@@ -469,6 +469,23 @@ int aoc_get_sink_state(struct aoc_chip *chip, int sink)
 	return err < 0 ? err : cmd.mode;
 }
 
+/* TODO: usb cfg may be devided into three commands, dev/ep-ids, rx, tx */
+int aoc_set_usb_config(struct aoc_chip *chip)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_USB_CONFIG cmd = chip->usb_sink_cfg;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_USB_CONFIG_ID, sizeof(cmd));
+
+	cmd.rx_enable = true;
+	cmd.tx_enable = true;
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0)
+		pr_err("Err:%d in aoc set usb config!\n", err);
+
+	return err;
+}
+
 static int
 aoc_audio_playback_trigger_source(struct aoc_alsa_stream *alsa_stream, int cmd,
 				  int src)
