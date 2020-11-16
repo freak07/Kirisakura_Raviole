@@ -200,7 +200,7 @@ static bool aoc_is_valid_dram_address(struct aoc_prvdata *prv, void *addr)
 	return (offset < prv->dram_size);
 }
 
-static inline u32 aoc_dram_translate_to_aoc(struct aoc_prvdata *p,
+static inline phys_addr_t aoc_dram_translate_to_aoc(struct aoc_prvdata *p,
 					    phys_addr_t addr)
 {
 	phys_addr_t phys_start = p->dram_resource.start;
@@ -1586,10 +1586,8 @@ static bool aoc_create_ion_heap(struct aoc_prvdata *prvdata)
 	} else {
 		prvdata->sensor_heap = heap;
 
-		ion_physical_heap_set_allocate_callback(
-			heap, aoc_pheap_alloc_cb, dev);
-		ion_physical_heap_set_free_callback(heap, aoc_pheap_free_cb,
-						    dev);
+		ion_physical_heap_set_allocate_callback(heap, aoc_pheap_alloc_cb, dev);
+		ion_physical_heap_set_free_callback(heap, aoc_pheap_free_cb, dev);
 
 		ion_device_add_heap(heap);
 	}
