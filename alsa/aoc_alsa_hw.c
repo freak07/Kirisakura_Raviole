@@ -51,7 +51,7 @@ static int aoc_audio_control(const char *cmd_channel, const uint8_t *cmd,
 			      cmd_size, cmd_count);
 #endif
 
-	buffer = kmalloc_array(buffer_size, sizeof(*buffer), GFP_KERNEL);
+	buffer = kmalloc_array(buffer_size, sizeof(*buffer), GFP_ATOMIC);
 	if (!buffer) {
 		err = -ENOMEM;
 		pr_err("ERR: no memory!\n");
