@@ -790,12 +790,14 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 	writel(prvdata->aoc_s2mpu_saved_value, prvdata->aoc_s2mpu_virt + AOC_S2MPU_CTRL0);
 
 	/* Restore SysMMU */
-	rc = pm_runtime_suspend(prvdata->dev);
+	rc = pm_runtime_set_suspended(prvdata->dev);
 	if (rc < 0) {
 		dev_err(prvdata->dev, "sysmmu restore failed: pm_runtime_suspend rc = %d\n", rc);
 		return rc;
 	}
-	rc = pm_runtime_resume(prvdata->dev);
+	/* Wait for suppliers including SysMMU to suspend */
+	flush_workqueue(pm_wq);
+	rc = pm_runtime_set_active(prvdata->dev);
 	if (rc < 0) {
 		dev_err(prvdata->dev, "sysmmu restore failed: pm_runtime_resume rc = %d\n", rc);
 		return rc;
@@ -1816,7 +1818,6 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	prvdata->aoc_s2mpu_saved_value = ioread32(prvdata->aoc_s2mpu_virt + AOC_S2MPU_CTRL0);
 
 	pm_runtime_set_active(dev);
-	pm_runtime_enable(dev);
 
 	prvdata->domain = iommu_get_domain_for_dev(dev);
 	if (!prvdata->domain) {
