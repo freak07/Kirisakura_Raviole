@@ -15,6 +15,7 @@ KBUILD_OPTIONS += CONFIG_AOC_DRIVER=m CONFIG_WC_MBOX=m \
 		  CONFIG_AOC_CONTROL_DRIVER=m
 
 ccflags-y := -I$(KERNEL_SRC)/../google-modules/aoc_ipc
+headers-y := uapi/aoc.h
 
 modules modules_install clean:
 	$(MAKE) -C $(KERNEL_SRC) M=$(M) $(KBUILD_OPTIONS) W=1 $(@)

@@ -12,6 +12,9 @@
 #include <linux/device.h>
 #include <linux/sizes.h>
 #include "aoc_ipc_core.h"
+#include "uapi/aoc.h"
+
+#ifdef __KERNEL__
 
 struct aoc_service_dev {
 	struct device dev;
@@ -53,19 +56,7 @@ void aoc_set_map_handler(struct aoc_service_dev *dev, aoc_map_handler handler,
 			 void *ctx);
 void aoc_remove_map_handler(struct aoc_service_dev *dev);
 
-#define AOC_IOCTL_MAGIC 0xac
 #define AOC_SERVICE_NAME_LENGTH 32
-
-#define AOC_SET_ENDPOINT _IOW(AOC_IOCTL_MAGIC, 3, int)
-#define AOC_RELEASE_ENDPOINT _IOW(AOC_IOCTL_MAGIC, 4, int)
-#define AOC_IS_ONLINE _IOR(AOC_IOCTL_MAGIC, 5, int)
-
-#define AOC_START_FIRMWARE_DOWNLOAD _IOW(AOC_IOCTL_MAGIC, 200, int)
-#define AOC_COMMIT_FIRMWARE_DOWNLOAD _IOW(AOC_IOCTL_MAGIC, 201, int)
-#define AOC_ABORT_FIRMWARE_DOWNLOAD _IOW(AOC_IOCTL_MAGIC, 202, int)
-#define AOC_FPGA_RESET _IOW(AOC_IOCTL_MAGIC, 203, int)
-
-#ifdef __KERNEL__
 
 /* Rings should have the ring flag set, slots = 1, size = ring size
  * tx/rx stats for rings are measured in bytes, otherwise msg sends
