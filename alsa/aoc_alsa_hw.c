@@ -567,11 +567,19 @@ static int aoc_audio_path_bind(int src, int dst, int cmd, struct aoc_chip *chip)
 
 int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest)
 {
+	/* voice call capture or playback */
+	if (src == 3 || src == 4)
+		return aoc_phonecall_path_open(chip, src, dest);
+
 	return aoc_audio_path_bind(src, dest, START, chip);
 }
 
 int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest)
 {
+	/* voice call capture or playback */
+	if (src == 3 || src == 4)
+		return aoc_phonecall_path_close(chip, src, dest);
+
 	return aoc_audio_path_bind(src, dest, STOP, chip);
 }
 
@@ -1008,11 +1016,11 @@ out:
 	return err;
 }
 
-static int aoc_audio_modem_input(struct aoc_alsa_stream *alsa_stream,
-				 int input_cmd)
+static int aoc_audio_modem_mic_input(struct aoc_chip *chip,
+				 int input_cmd, int mic_input_source)
 {
 	int err;
-	struct CMD_HDR cmd0; /* for modem input STOP */
+	struct CMD_HDR cmd0; /* For modem mic input STOP */
 	struct CMD_AUDIO_INPUT_MODEM_INPUT_START cmd1;
 
 	if (input_cmd == START) {
@@ -1020,10 +1028,9 @@ static int aoc_audio_modem_input(struct aoc_alsa_stream *alsa_stream,
 			     CMD_AUDIO_INPUT_MODEM_INPUT_START_ID,
 			     sizeof(cmd1));
 
-		/* TODO: mic input source will change based on audio device type */
-		cmd1.mic_input_source = 0;
+		cmd1.mic_input_source = mic_input_source;
 		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd1,
-					sizeof(cmd1), NULL, alsa_stream->chip);
+					sizeof(cmd1), NULL, chip);
 		if (err < 0)
 			pr_err("ERR:%d modem input start fail!\n", err);
 
@@ -1032,11 +1039,85 @@ static int aoc_audio_modem_input(struct aoc_alsa_stream *alsa_stream,
 			     sizeof(cmd0));
 
 		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd0,
-					sizeof(cmd0), NULL, alsa_stream->chip);
+					sizeof(cmd0), NULL, chip);
 		if (err < 0)
 			pr_err("ERR:%d modem input stop fail!\n", err);
 	}
 
+	return err;
+}
+
+int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst)
+{
+	int err;
+	int mic_input_source;
+
+	pr_info("Open phone call path - src:%d, dst:%d\n",  src, dst);
+
+	if (!chip->voice_call_audio_enable) {
+		pr_info("phone call audio NOT enabled\n");
+		return 0;
+	}
+
+	if (src != 4)
+		return 0;
+
+	/* Audio playback enabled for momdem output */
+	err = aoc_audio_path_bind(8, dst, START, chip);
+	if (err < 0) {
+		pr_err("ERR:%d Telephony Downlink bind fail\n", err);
+		goto exit;
+	}
+
+	/* Audio capture enabled for modem input */
+	switch (dst) {
+	case ASNK_SPEAKER:
+		mic_input_source = MODEM_MIC_INPUT_INDEX;
+		break;
+	case ASNK_BT:
+		mic_input_source = MODEM_BT_INPUT_INDEX;
+		break;
+	case ASNK_USB:
+		mic_input_source =  MODEM_USB_INPUT_INDEX;
+		break;
+	default:
+		mic_input_source = 0;
+	}
+	err = aoc_audio_modem_mic_input(chip, START, mic_input_source);
+	if (err < 0)
+		pr_err("ERR:%d modem input start fail\n", err);
+
+exit:
+	return err;
+}
+
+int aoc_phonecall_path_close(struct aoc_chip *chip, int src, int dst)
+{
+	int err;
+
+	pr_info("close phone call path - src:%d, dst:%d\n", src, dst);
+
+	if (!chip->voice_call_audio_enable) {
+		pr_info("phone call audio NOT enabled\n");
+		return 0;
+	}
+
+	if (src != 4)
+		return 0;
+
+	/* Audio capture disabled for modem input */
+	err = aoc_audio_modem_mic_input(chip, STOP, 0);
+	if (err < 0) {
+		pr_err("ERR:%d modem input stop fail\n", err);
+		goto exit;
+	}
+
+	/* Audio playback disabled for modem ouput */
+	err = aoc_audio_path_bind(8, dst, STOP, chip);
+	if (err < 0)
+		pr_err("ERR:%d Telephony Downlink unbind fail\n", err);
+
+exit:
 	return err;
 }
 
@@ -1056,26 +1137,11 @@ int prepare_phonecall(struct aoc_alsa_stream *alsa_stream)
 	if (src != 4)
 		return 0;
 
-	err = aoc_audio_modem_input(alsa_stream, START);
-	if (err < 0) {
-		pr_err("ERR:%d modem input start fail\n", err);
-		goto exit;
-	}
-	pr_notice("modem input STARTED\n");
-
-	/* Rx */
-	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 8, 0);
-	if (err < 0) {
-		pr_err("ERR:%d Telephony Downlink bind fail\n", err);
-		goto exit;
-	}
-
-	/* Tx */
+	/* Binding modem to start audio flow */
 	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 3, 3);
 	if (err < 0)
 		pr_err("ERR:%d Telephony Uplink bind fail\n", err);
 
-exit:
 	return err;
 }
 
@@ -1087,30 +1153,15 @@ int teardown_phonecall(struct aoc_alsa_stream *alsa_stream)
 	if (!alsa_stream->chip->voice_call_audio_enable)
 		return 0;
 
-	pr_debug("stop phone call - dev %d\n", alsa_stream->entry_point_idx);
+	pr_info("stop phone call - dev %d\n", alsa_stream->entry_point_idx);
 	if (src != 4)
 		return 0;
 
-	/* unbind */
+	/* Unbinding modem to stop audio flow */
 	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 3, 3);
-	if (err < 0) {
-		pr_err("ERR:%d Telephony Uplink unbind fail\n", err);
-		goto exit;
-	}
-
-	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 8, 0);
-	if (err < 0) {
-		pr_err("ERR:%d Telephony Donwlink unbind fail\n", err);
-		goto exit;
-	}
-
-	err = aoc_audio_modem_input(alsa_stream, STOP);
 	if (err < 0)
-		pr_err("ERR:%d modem input stop fail\n", err);
+		pr_err("ERR:%d Telephony Uplink unbind fail\n", err);
 
-	pr_notice("modem input STOPPED\n");
-
-exit:
 	return err;
 }
 

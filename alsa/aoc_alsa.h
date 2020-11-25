@@ -186,7 +186,8 @@ int aoc_audio_start(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest);
 int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest);
-
+int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst);
+int aoc_phonecall_path_close(struct aoc_chip *chip, int src, int dst);
 int aoc_audio_set_ctls(struct aoc_chip *chip);
 
 int aoc_a2dp_get_enc_param_size(void);
