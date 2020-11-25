@@ -361,7 +361,8 @@ int aoc_get_asp_mode(struct aoc_chip *chip, int block, int component, int key)
 	cmd.block = block;
 	cmd.component = component;
 	cmd.key = key;
-	pr_debug("block=%d, component=%d, key=%d\n", block, component, key);
+
+	pr_info("get asp mode: block=%d, component=%d, key=%d\n", block, component, key);
 
 	/* Send cmd to AOC */
 	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
@@ -389,8 +390,9 @@ int aoc_set_asp_mode(struct aoc_chip *chip, int block, int component, int key,
 	cmd.component = component;
 	cmd.key = key;
 	cmd.val = val;
-	pr_debug("block=%d, component=%d, key=%d, val=%d\n", block, component,
-		 key, val);
+
+	pr_info("set asp mode: block=%d, component=%d, key=%d, val=%d\n", block,
+		component, key, val);
 
 	/* Send cmd to AOC */
 	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,

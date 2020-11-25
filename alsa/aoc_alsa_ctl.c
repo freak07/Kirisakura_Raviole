@@ -694,7 +694,10 @@ static const char *block_asp_mode_texts[] = { "ASP_OFF", "ASP_ON", "ASP_BYPASS",
 static SOC_ENUM_SINGLE_DECL(block_16_state_enum, 2, 16, block_asp_mode_texts);
 static SOC_ENUM_SINGLE_DECL(block_17_state_enum, 2, 17, block_asp_mode_texts);
 static SOC_ENUM_SINGLE_DECL(block_18_state_enum, 2, 18, block_asp_mode_texts);
+/* ASR mode: block 19, module 15, key 0 for FT*/
 static SOC_ENUM_SINGLE_DECL(block_19_state_enum, 15, 19, block_asp_mode_texts);
+/* ASR mode: block 19, module 15, key 1 for ASRC*/
+static SOC_ENUM_SINGLE_DECL(block_19_15_1_state_enum, (15|(1<<8)), 19, block_asp_mode_texts);
 static SOC_ENUM_SINGLE_DECL(block_20_state_enum, 2, 20, block_asp_mode_texts);
 
 /* TODO: seek better way to create a series of controls  */
@@ -777,6 +780,9 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
 	SOC_ENUM_EXT("AoC USB Mixer ASP Mode", block_20_state_enum,
 		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
+	SOC_ENUM_EXT("AoC Modem Downlink ASRC Mode", block_19_15_1_state_enum,
+		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
+
 	SOC_ENUM_EXT("BT Mode", bt_mode_enum, aoc_sink_mode_ctl_get,
 		     aoc_sink_mode_ctl_set),
 
