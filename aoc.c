@@ -789,17 +789,16 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 	 */
 	writel(prvdata->aoc_s2mpu_saved_value, prvdata->aoc_s2mpu_virt + AOC_S2MPU_CTRL0);
 
-	/* Restore SysMMU */
-	rc = pm_runtime_set_suspended(prvdata->dev);
-	if (rc < 0) {
-		dev_err(prvdata->dev, "sysmmu restore failed: pm_runtime_suspend rc = %d\n", rc);
-		return rc;
-	}
-	/* Wait for suppliers including SysMMU to suspend */
-	flush_workqueue(pm_wq);
+	/* Restore SysMMU settings by briefly setting AoC to runtime active. Since SysMMU is a
+	 * supplier to AoC, it will be set to runtime active as a side effect. */
 	rc = pm_runtime_set_active(prvdata->dev);
 	if (rc < 0) {
 		dev_err(prvdata->dev, "sysmmu restore failed: pm_runtime_resume rc = %d\n", rc);
+		return rc;
+	}
+	rc = pm_runtime_set_suspended(prvdata->dev);
+	if (rc < 0) {
+		dev_err(prvdata->dev, "sysmmu restore failed: pm_runtime_suspend rc = %d\n", rc);
 		return rc;
 	}
 
@@ -1818,6 +1817,10 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	prvdata->aoc_s2mpu_saved_value = ioread32(prvdata->aoc_s2mpu_virt + AOC_S2MPU_CTRL0);
 
 	pm_runtime_set_active(dev);
+	/* Leave AoC in suspended state. Otherwise, AoC SysMMU is set to active which results in the
+	 * SysMMU driver trying to access SysMMU SFRs during device suspend/resume operations. The
+	 * latter is problematic if AoC is in monitor mode and BLK_AOC is off. */
+	pm_runtime_set_suspended(dev);
 
 	prvdata->domain = iommu_get_domain_for_dev(dev);
 	if (!prvdata->domain) {
