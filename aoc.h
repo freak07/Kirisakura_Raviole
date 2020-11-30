@@ -18,6 +18,7 @@ struct aoc_service_dev {
 	int service_index;
 	aoc_service *service;
 	void *ipc_base;
+	bool dead;
 };
 
 #define AOC_DEVICE(_d) container_of((_d), struct aoc_service_dev, dev)

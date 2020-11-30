@@ -40,7 +40,9 @@
 #include <linux/timer.h>
 #include <linux/uaccess.h>
 #include <linux/uio.h>
+#include <linux/wait.h>
 #include <linux/workqueue.h>
+#include <soc/google/acpm_ipc_ctrl.h>
 
 #include "ion_physical_heap.h"
 
@@ -52,9 +54,15 @@
 #include "aoc_ipc_core_internal.h"
 
 #define MAX_FIRMWARE_LENGTH 128
+#define AOC_S2MPU_CTRL0 0x0
+#define AOC_PCU_RESET_CONTROL 0x0
+#define AOC_PCU_RESET_CONTROL_RESET_VALUE 0x0
 
 static struct platform_device *aoc_platform_device;
+static struct device *aoc_device;
+static struct class *aoc_class;
 
+static int aoc_major_dev;
 static bool aoc_online;
 
 struct aoc_prvdata {
@@ -73,12 +81,17 @@ struct aoc_prvdata {
 	void *sram_virt;
 	void *dram_virt;
 	void *aoc_req_virt;
+	void *aoc_s2mpu_virt;
 	size_t sram_size;
 	size_t dram_size;
 	size_t aoc_req_size;
+	u32 aoc_s2mpu_saved_value;
 
 	int watchdog_irq;
 	struct work_struct watchdog_work;
+	bool aoc_reset_done;
+	wait_queue_head_t aoc_reset_wait_queue;
+	unsigned int acpm_async_id;
 
 	char firmware_name[MAX_FIRMWARE_LENGTH];
 };
@@ -147,7 +160,10 @@ static struct aoc_service_metadata *metadata;
 static bool aoc_fpga_reset(struct aoc_prvdata *prvdata);
 static bool write_reset_trampoline(u32 addr);
 static bool aoc_a32_reset(void);
+static int aoc_watchdog_restart(struct aoc_prvdata *prvdata);
+static void acpm_aoc_reset_callback(unsigned int *cmd, unsigned int size);
 
+static int start_firmware_load(struct device *dev);
 static void aoc_take_offline(struct aoc_prvdata *prvdata);
 static void signal_aoc(struct mbox_chan *channel);
 
@@ -183,6 +199,20 @@ static bool aoc_is_valid_dram_address(struct aoc_prvdata *prv, void *addr)
 
 	offset = addr - prv->dram_virt;
 	return (offset < prv->dram_size);
+}
+
+static inline phys_addr_t aoc_dram_translate_to_aoc(struct aoc_prvdata *p,
+					    phys_addr_t addr)
+{
+	phys_addr_t phys_start = p->dram_resource.start;
+	phys_addr_t phys_end = phys_start + resource_size(&p->dram_resource);
+	u32 offset;
+
+	if (addr < phys_start || addr >= phys_end)
+		return 0;
+
+	offset = addr - phys_start;
+	return AOC_BINARY_DRAM_BASE + offset;
 }
 
 static inline bool aoc_is_online(void)
@@ -468,6 +498,9 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 	if (!dev || !buffer || !count)
 		return -EINVAL;
 
+	if (dev->dead)
+		return -ENODEV;
+
 	if (!aoc_online)
 		return -ENODEV;
 
@@ -489,10 +522,13 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 		set_bit(service_number, &read_blocked_mask);
 		ret = wait_event_interruptible(
 			metadata[service_number].read_queue,
-			aoc_service_can_read_message(service, AOC_UP) ||
-				!aoc_online);
+			!aoc_online || dev->dead ||
+				aoc_service_can_read_message(service, AOC_UP));
 		clear_bit(service_number, &read_blocked_mask);
 	}
+
+	if (dev->dead)
+		return -ENODEV;
 
 	if (!aoc_online)
 		return -ENODEV;
@@ -530,6 +566,9 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 	if (!dev || !buffer || !count)
 		return -EINVAL;
 
+	if (dev->dead)
+		return -ENODEV;
+
 	if (!aoc_online)
 		return -ENODEV;
 
@@ -554,10 +593,13 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 		set_bit(service_number, &write_blocked_mask);
 		ret = wait_event_interruptible(
 			metadata[service_number].write_queue,
-			aoc_service_can_write_message(service, AOC_DOWN) ||
-				!aoc_online);
+			!aoc_online || dev->dead ||
+				aoc_service_can_write_message(service, AOC_DOWN));
 		clear_bit(service_number, &write_blocked_mask);
 	}
+
+	if (dev->dead)
+		return -ENODEV;
 
 	if (!aoc_online)
 		return -ENODEV;
@@ -716,6 +758,80 @@ static bool aoc_a32_reset(void)
 	iowrite32(pcu_value, pcu);
 
 	return true;
+}
+
+static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
+{
+	const int aoc_reset_timeout_ms = 1000;
+	int rc;
+	u32 *pcu;
+
+	dev_info(prvdata->dev, "waiting for aoc reset to finish\n");
+	if (wait_event_timeout(prvdata->aoc_reset_wait_queue, prvdata->aoc_reset_done,
+			       aoc_reset_timeout_ms) == 0) {
+		dev_err(prvdata->dev, "timed out waiting for aoc reset\n");
+		return -ETIMEDOUT;
+	}
+	dev_info(prvdata->dev, "aoc reset finished\n");
+	prvdata->aoc_reset_done = false;
+
+	pcu = aoc_sram_translate(AOC_PCU_BASE);
+	if (!pcu)
+		return -ENODEV;
+
+	if (readl(pcu + AOC_PCU_RESET_CONTROL) != AOC_PCU_RESET_CONTROL_RESET_VALUE) {
+		dev_err(prvdata->dev, "aoc watchdog reset failed\n");
+		return -ENODEV;
+	}
+
+	/*
+	 * AOC_TZPC has been restored by ACPM, so we can access AOC_S2MPU.
+	 * Restore AOC_S2MPU.
+	 */
+	writel(prvdata->aoc_s2mpu_saved_value, prvdata->aoc_s2mpu_virt + AOC_S2MPU_CTRL0);
+
+	/* Restore SysMMU settings by briefly setting AoC to runtime active. Since SysMMU is a
+	 * supplier to AoC, it will be set to runtime active as a side effect. */
+	rc = pm_runtime_set_active(prvdata->dev);
+	if (rc < 0) {
+		dev_err(prvdata->dev, "sysmmu restore failed: pm_runtime_resume rc = %d\n", rc);
+		return rc;
+	}
+	rc = pm_runtime_set_suspended(prvdata->dev);
+	if (rc < 0) {
+		dev_err(prvdata->dev, "sysmmu restore failed: pm_runtime_suspend rc = %d\n", rc);
+		return rc;
+	}
+
+	prvdata->mbox_channel =
+		mbox_request_channel_byname(&prvdata->mbox_client, "aoc2ap");
+	if (IS_ERR(prvdata->mbox_channel)) {
+		rc = PTR_ERR(prvdata->mbox_channel);
+		dev_err(prvdata->dev, "failed to find mailbox interface : %d\n", rc);
+		prvdata->mbox_channel = NULL;
+		return rc;
+	}
+
+	rc = start_firmware_load(prvdata->dev);
+	if (rc) {
+		dev_err(prvdata->dev, "load aoc firmware failed: rc = %d\n", rc);
+		return rc;
+	}
+
+	enable_irq(prvdata->watchdog_irq);
+	return rc;
+}
+
+static void acpm_aoc_reset_callback(unsigned int *cmd, unsigned int size)
+{
+	struct aoc_prvdata *prvdata;
+
+	if (!aoc_platform_device)
+		return;
+
+	prvdata = platform_get_drvdata(aoc_platform_device);
+	prvdata->aoc_reset_done = true;
+	wake_up(&prvdata->aoc_reset_wait_queue);
 }
 
 static ssize_t revision_show(struct device *dev, struct device_attribute *attr,
@@ -1016,6 +1132,11 @@ static int aoc_remove_device(struct device *dev, void *ctx)
 	struct aoc_service_dev *the_dev = AOC_DEVICE(dev);
 	int service_number;
 
+	/*
+	 * Once dead is set to true, function calls using this AoC device will return error.
+	 * Clients may still hold a refcount on the AoC device, so freeing is delayed.
+	 */
+	the_dev->dead = true;
 	// Allow any pending reads and writes to finish before removing devices
 	service_number = the_dev->service_index;
 	wake_up(&metadata[service_number].read_queue);
@@ -1063,6 +1184,7 @@ static struct aoc_service_dev *register_service_device(int index,
 	dev->service_index = index;
 	dev->service = s;
 	dev->ipc_base = prv->ipc_base;
+	dev->dead = false;
 
 	/*
 	 * Bus corruption has been seen during reboot cycling.  Check for it
@@ -1262,39 +1384,53 @@ void aoc_remove_map_handler(struct aoc_service_dev *dev)
 }
 EXPORT_SYMBOL(aoc_remove_map_handler);
 
-static int aoc_dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
-			  enum dma_data_direction dir, unsigned long attrs)
+static void aoc_pheap_alloc_cb(struct ion_buffer *buffer, void *ctx)
 {
+	struct device *dev = ctx;
 	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
-	phys_addr_t phys = sg_phys(sg);
-	size_t size = sg->length;
+	struct sg_table *sg = buffer->sg_table;
+	phys_addr_t phys;
+	size_t size;
 
-	if (prvdata->map_handler) {
-		prvdata->map_handler(0, phys, size, true,
-				     prvdata->map_handler_ctx);
+	if (sg->nents != 1) {
+		dev_warn(dev, "Unable to map sg_table with %d ents\n",
+			 sg->nents);
+		return;
 	}
 
-	return 1;
-}
-
-static void aoc_dma_unmap_sg(struct device *dev, struct scatterlist *sg,
-			     int nents, enum dma_data_direction dir,
-			     unsigned long attrs)
-{
-	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
-	phys_addr_t phys = sg_phys(sg);
-	size_t size = sg_dma_len(sg);
+	phys = sg_phys(&sg->sgl[0]);
+	phys = aoc_dram_translate_to_aoc(prvdata, phys);
+	size = sg->sgl[0].length;
 
 	if (prvdata->map_handler) {
-		prvdata->map_handler(0, phys, size, false,
+		prvdata->map_handler((u32)buffer->priv_virt, phys, size, true,
 				     prvdata->map_handler_ctx);
 	}
 }
 
-const struct dma_map_ops aoc_dma_map_ops = {
-	.map_sg = aoc_dma_map_sg,
-	.unmap_sg = aoc_dma_unmap_sg,
-};
+static void aoc_pheap_free_cb(struct ion_buffer *buffer, void *ctx)
+{
+	struct device *dev = ctx;
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+	struct sg_table *sg = buffer->sg_table;
+	phys_addr_t phys;
+	size_t size;
+
+	if (sg->nents != 1) {
+		dev_warn(dev, "Unable to map sg_table with %d ents\n",
+			 sg->nents);
+		return;
+	}
+
+	phys = sg_phys(&sg->sgl[0]);
+	phys = aoc_dram_translate_to_aoc(prvdata, phys);
+	size = sg->sgl[0].length;
+
+	if (prvdata->map_handler) {
+		prvdata->map_handler((u32)buffer->priv_virt, phys, size, false,
+				     prvdata->map_handler_ctx);
+	}
+}
 
 #ifdef AOC_JUNO
 static irqreturn_t aoc_int_handler(int irq, void *dev)
@@ -1343,6 +1479,7 @@ static void aoc_watchdog(struct work_struct *work)
 	const int sscd_retry_ms = 1000;
 	int sscd_rc;
 	char crash_info[RAMDUMP_SECTION_CRASH_INFO_SIZE];
+	int restart_rc;
 
 	dev_err(prvdata->dev, "aoc watchdog triggered, generating coredump\n");
 	if (!sscd_pdata.sscd_report) {
@@ -1428,27 +1565,88 @@ err_vmap:
 err_kmalloc:
 err_coredump:
 	aoc_take_offline(prvdata);
+	restart_rc = aoc_watchdog_restart(prvdata);
+	if (restart_rc)
+		dev_info(prvdata->dev, "aoc subsystem restart failed: rc = %d\n", restart_rc);
+	else
+		dev_info(prvdata->dev, "aoc subsystem restart succeeded\n");
 }
 #endif
 
 static bool aoc_create_ion_heap(struct aoc_prvdata *prvdata)
 {
-	phys_addr_t base = prvdata->dram_resource.start + (30 * SZ_1M);
-	size_t size = SZ_2M;
+	phys_addr_t base = prvdata->dram_resource.start + (28 * SZ_1M);
+	struct device *dev = prvdata->dev;
+	struct ion_heap *heap;
+	size_t size = SZ_4M;
 	size_t align = SZ_16K;
 	const char *name = "sensor_direct_heap";
 
-	prvdata->sensor_heap =
-		ion_physical_heap_create(base, size, align, name, prvdata->dev);
-	if (IS_ERR(prvdata->sensor_heap))
-		pr_err("ION heap failure: %ld\n",
-		       PTR_ERR(prvdata->sensor_heap));
-	else
-		ion_device_add_heap(prvdata->sensor_heap);
+	heap = ion_physical_heap_create(base, size, align, name);
+	if (IS_ERR(heap)) {
+		dev_err(dev, "ION heap failure: %ld\n", PTR_ERR(heap));
+	} else {
+		prvdata->sensor_heap = heap;
 
-	return !IS_ERR(prvdata->sensor_heap);
+		ion_physical_heap_set_allocate_callback(heap, aoc_pheap_alloc_cb, dev);
+		ion_physical_heap_set_free_callback(heap, aoc_pheap_free_cb, dev);
+
+		ion_device_add_heap(heap);
+	}
+
+	return !IS_ERR(heap);
 }
 
+static int aoc_open(struct inode *inode, struct file *file)
+{
+	return -1;
+}
+
+static int aoc_release(struct inode *inode, struct file *file)
+{
+	return -1;
+}
+
+static const struct file_operations fops = {
+	.open = aoc_open,
+	.release = aoc_release,
+
+	.owner = THIS_MODULE,
+};
+
+static char *aoc_devnode(struct device *dev, umode_t *mode)
+{
+	if (!mode || !dev)
+		return NULL;
+
+	if (MAJOR(dev->devt) == aoc_major)
+		*mode = 0666;
+
+	return kasprintf(GFP_KERNEL, "%s", dev_name(dev));
+}
+
+static int aoc_create_chrdev(struct platform_device *pdev)
+{
+	aoc_major = register_chrdev(0, AOC_CHARDEV_NAME, &fops);
+	aoc_major_dev = MKDEV(aoc_major, 0);
+
+	aoc_class = class_create(THIS_MODULE, AOC_CHARDEV_NAME);
+	if (!aoc_class) {
+		pr_err("failed to create aoc_class\n");
+		return -ENXIO;
+	}
+
+	aoc_class->devnode = aoc_devnode;
+
+	aoc_device = device_create(aoc_class, NULL, aoc_major_dev, NULL,
+				   AOC_CHARDEV_NAME);
+	if (!aoc_device) {
+		pr_err("failed to create aoc_device\n");
+		return -ENXIO;
+	}
+
+	return 0;
+}
 static void aoc_cleanup_resources(struct platform_device *pdev)
 {
 	struct aoc_prvdata *prvdata = platform_get_drvdata(pdev);
@@ -1486,6 +1684,7 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	struct aoc_prvdata *prvdata = NULL;
 	struct device_node *aoc_node, *mem_node;
 	struct resource *rsrc;
+	unsigned int acpm_async_size;
 	int ret;
 
 	if (aoc_platform_device != NULL) {
@@ -1553,6 +1752,7 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		return -EIO;
 	}
 
+	init_waitqueue_head(&prvdata->aoc_reset_wait_queue);
 	INIT_WORK(&prvdata->watchdog_work, aoc_watchdog);
 
 	prvdata->watchdog_irq = platform_get_irq_byname(pdev, "watchdog");
@@ -1570,11 +1770,11 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	}
 #endif
 
+	aoc_create_chrdev(pdev);
+
 	pr_notice("found aoc with interrupt:%d sram:%pR dram:%pR\n", aoc_irq,
 		  aoc_sram_resource, &prvdata->dram_resource);
 	aoc_platform_device = pdev;
-
-	dev->dma_ops = &aoc_dma_map_ops;
 
 	aoc_sram_virt_mapping = devm_ioremap_resource(dev, aoc_sram_resource);
 	aoc_dram_virt_mapping =
@@ -1608,8 +1808,20 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	}
 
 #ifndef AOC_JUNO
+	prvdata->aoc_s2mpu_virt = devm_platform_ioremap_resource_byname(pdev, "aoc_s2mpu");
+	if (IS_ERR(prvdata->aoc_s2mpu_virt)) {
+		dev_err(dev, "failed to map aoc_s2mpu: rc = %ld\n",
+			PTR_ERR(prvdata->aoc_s2mpu_virt));
+		aoc_cleanup_resources(pdev);
+		return PTR_ERR(prvdata->aoc_s2mpu_virt);
+	}
+	prvdata->aoc_s2mpu_saved_value = ioread32(prvdata->aoc_s2mpu_virt + AOC_S2MPU_CTRL0);
+
 	pm_runtime_set_active(dev);
-	pm_runtime_enable(dev);
+	/* Leave AoC in suspended state. Otherwise, AoC SysMMU is set to active which results in the
+	 * SysMMU driver trying to access SysMMU SFRs during device suspend/resume operations. The
+	 * latter is problematic if AoC is in monitor mode and BLK_AOC is off. */
+	pm_runtime_set_suspended(dev);
 
 	prvdata->domain = iommu_get_domain_for_dev(dev);
 	if (!prvdata->domain) {
@@ -1640,6 +1852,13 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	}
 #endif
 
+	ret = acpm_ipc_request_channel(aoc_node, acpm_aoc_reset_callback,
+				       &prvdata->acpm_async_id, &acpm_async_size);
+	if (ret < 0) {
+		dev_err(dev, "failed to register acpm aoc reset callback\n");
+		return ret;
+	}
+
 	if (aoc_autoload_firmware) {
 		ret = start_firmware_load(dev);
 		if (ret != 0)
@@ -1655,8 +1874,12 @@ static int aoc_platform_probe(struct platform_device *pdev)
 
 static int aoc_platform_remove(struct platform_device *pdev)
 {
+	struct aoc_prvdata *prvdata;
+
 	pr_debug("platform_remove\n");
 
+	prvdata = platform_get_drvdata(pdev);
+	acpm_ipc_release_channel(pdev->dev.of_node, prvdata->acpm_async_id);
 	sysfs_remove_groups(&pdev->dev.kobj, aoc_groups);
 
 	aoc_cleanup_resources(pdev);

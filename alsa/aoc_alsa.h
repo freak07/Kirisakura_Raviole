@@ -28,6 +28,8 @@
 #include <sound/compress_offload.h>
 #include <sound/compress_driver.h>
 
+#include "../aoc-interface.h"
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
 #define EXTRA_ARG_LINUX_5_9 struct snd_soc_component *component,
 #else
@@ -73,7 +75,8 @@ enum {
 	PCM_PLAYBACK_VOLUME,
 	PCM_PLAYBACK_MUTE,
 	BUILDIN_MIC_POWER_STATE,
-	BUILDIN_MIC_CAPTURE_LIST
+	BUILDIN_MIC_CAPTURE_LIST,
+	A2DP_ENCODER_PARAMETERS,
 };
 enum { ULL = 0, LL0, LL1, LL2, LL3, DEEP_BUFFER, OFF_LOAD, HAPTICS = 10 };
 enum { BUILTIN_MIC0 = 0, BUILTIN_MIC1, BUILTIN_MIC2, BUILTIN_MIC3 };
@@ -109,6 +112,8 @@ struct aoc_chip {
 	unsigned int opened;
 	struct mutex audio_mutex;
 	spinlock_t audio_lock;
+
+	struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG a2dp_encoder_cfg;
 };
 
 struct aoc_alsa_stream {
@@ -159,6 +164,9 @@ int aoc_audio_path_close(struct aoc_alsa_stream *alsa_stream);
 
 int aoc_audio_set_ctls(struct aoc_chip *chip);
 
+int aoc_a2dp_get_enc_param_size(void);
+int aoc_a2dp_set_enc_param(struct aoc_chip *chip, struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG *cfg);
+
 int aoc_set_builtin_mic_power_state(struct aoc_chip *chip, int iMic, int state);
 int aoc_get_builtin_mic_power_state(struct aoc_chip *chip, int iMic);
 int aoc_mic_clock_rate_get(struct aoc_chip *chip);
@@ -168,8 +176,13 @@ int aoc_mic_dc_blocker_get(struct aoc_chip *chip);
 int aoc_mic_dc_blocker_set(struct aoc_chip *chip, int enable);
 
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute);
+
 int aoc_get_dsp_state(struct aoc_chip *chip);
+int aoc_get_asp_mode(struct aoc_chip *chip, int block, int component, int key);
+int aoc_set_asp_mode(struct aoc_chip *chip, int block, int component, int key, int val);
+
 int aoc_get_sink_state(struct aoc_chip *chip, int iSink);
+int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int iSink);
 
 int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 		    uint32_t count);
@@ -188,7 +201,6 @@ int aoc_compr_pause(struct aoc_alsa_stream *alsa_stream);
 int aoc_compr_resume(struct aoc_alsa_stream *alsa_stream);
 
 int aoc_mic_loopback(struct aoc_chip *chip, int enable);
-int haptics_set_pcm_mode(struct aoc_alsa_stream *alsa_stream);
 
 int aoc_pcm_init(void);
 void aoc_pcm_exit(void);

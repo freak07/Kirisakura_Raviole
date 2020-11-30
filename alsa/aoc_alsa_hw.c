@@ -350,6 +350,81 @@ int aoc_get_dsp_state(struct aoc_chip *chip)
 	return err < 0 ? err : cmd.mode;
 }
 
+int aoc_get_asp_mode(struct aoc_chip *chip, int block, int component, int key)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_GET_PARAMETER cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_PARAMETER_ID,
+		     sizeof(cmd));
+
+	/* Sink 0-4 with block ID from 16-20 */
+	cmd.block = block;
+	cmd.component = component;
+	cmd.key = key;
+	pr_debug("block=%d, component=%d, key=%d\n", block, component, key);
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), (uint8_t *)&cmd, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in getting dsp mode, block=%d, component=%d, key=%d\n",
+		       err, block, component, key);
+		return err;
+	}
+
+	return cmd.val;
+}
+
+int aoc_set_asp_mode(struct aoc_chip *chip, int block, int component, int key,
+		     int val)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_SET_PARAMETER cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SET_PARAMETER_ID,
+		     sizeof(cmd));
+
+	/* Sink 0-4 with block ID from 16-20 */
+	cmd.block = block;
+	cmd.component = component;
+	cmd.key = key;
+	cmd.val = val;
+	pr_debug("block=%d, component=%d, key=%d, val=%d\n", block, component,
+		 key, val);
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), NULL, chip);
+	if (err < 0)
+		pr_err("ERR:%d in dsp mode, block=%d, component=%d, key=%d, val=%d\n",
+		       err, block, component, key, val);
+
+	return err;
+}
+
+int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int sink)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_GET_SINKS_BITMAPS cmd;
+
+	if (sink >= AUDIO_OUTPUT_SINKS) {
+		pr_err("Err: sink id %d not exists!\n", sink);
+		return -EINVAL;
+	}
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_SINKS_BITMAPS_ID, sizeof(cmd));
+
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("Err:%d in get aoc sink %d channel bitmap!\n", err, sink);
+		return err;
+	}
+
+	return cmd.bitmap[sink];
+}
+
 int aoc_get_sink_state(struct aoc_chip *chip, int iSink)
 {
 	int err;
@@ -367,29 +442,6 @@ int aoc_get_sink_state(struct aoc_chip *chip, int iSink)
 	pr_info("sink_state:%d - %d\n", iSink, cmd.mode);
 
 	return err < 0 ? err : cmd.mode;
-}
-
-static int aoc_haptics_set_mode(struct aoc_alsa_stream *alsa_stream, int mode)
-{
-	int err;
-	struct CMD_AUDIO_OUTPUT_CFG_HAPTICS cmd;
-
-	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_CFG_HAPTICS_ID,
-		     sizeof(cmd));
-
-	cmd.mode = mode;
-
-	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
-				sizeof(cmd), NULL, alsa_stream->chip);
-	if (err < 0)
-		pr_err("ERR:%d in set haptics mode\n", err);
-
-	return err < 0 ? err : 0;
-}
-
-int haptics_set_pcm_mode(struct aoc_alsa_stream *alsa_stream)
-{
-	return  aoc_haptics_set_mode(alsa_stream, HAPTICS_MODE_PCM);
 }
 
 static int
@@ -1119,3 +1171,36 @@ int aoc_audio_close(struct aoc_alsa_stream *alsa_stream)
 {
 	return 0;
 }
+
+static void print_enc_param(struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG *enc_cfg)
+{
+	int i;
+
+	pr_info("codecType = %x\n", enc_cfg->codecType);
+	pr_info("bitrate = %x\n", enc_cfg->bitrate);
+	pr_info("peerMTU = %x\n", enc_cfg->peerMTU);
+	for (i = 0;i < 6;i ++)
+		pr_info("  params[%d] = %x\n", i, enc_cfg->params[i]);
+}
+
+int aoc_a2dp_set_enc_param(struct aoc_chip *chip, struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG *cfg)
+{
+	int err = 0;
+	struct CMD_AUDIO_OUTPUT_BT_A2DP_ENC_CFG cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_BT_A2DP_ENC_CFG_ID,
+		     sizeof(cmd));
+	memcpy(&cmd.bt_a2dp_enc_cfg, cfg, sizeof(*cfg));
+
+	print_enc_param(&cmd.bt_a2dp_enc_cfg);
+
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+
+	if (err < 0)
+		pr_err("ERR:%d set enc parameter failed\n", err);
+
+	return err;
+}
+

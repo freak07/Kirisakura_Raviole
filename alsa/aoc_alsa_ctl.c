@@ -75,6 +75,9 @@ static int snd_aoc_ctl_info(struct snd_kcontrol *kcontrol,
 		uinfo->count = NUM_OF_BUILTIN_MIC;
 		uinfo->value.integer.min = -1;
 		uinfo->value.integer.max = NUM_OF_BUILTIN_MIC - 1;
+	} else if (kcontrol->private_value == A2DP_ENCODER_PARAMETERS) {
+		uinfo->type = SNDRV_CTL_ELEM_TYPE_BYTES;
+		uinfo->count = sizeof(struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG);
 	}
 	return 0;
 }
@@ -418,6 +421,47 @@ static int aoc_dsp_state_ctl_info(struct snd_kcontrol *kcontrol,
 				 dsp_state_texts);
 }
 
+static int aoc_asp_mode_ctl_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_enum *mc = (struct soc_enum *)kcontrol->private_value;
+
+	u32 block = (u32)mc->shift_l;
+	u32 component = (u32)(0x00ff & mc->reg);
+	u32 key = (u32)(0xff00 & mc->reg) >> 8;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.enumerated.item[0] =
+		aoc_get_asp_mode(chip, block, component, key);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int aoc_asp_mode_ctl_set(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_enum *mc = (struct soc_enum *)kcontrol->private_value;
+	u32 block = (u32)mc->shift_l;
+	u32 component = (u32)(0x00ff & mc->reg);
+	u32 key = (u32)(0xff00 & mc->reg) >> 8;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	aoc_set_asp_mode(chip, block, component, key,
+			 ucontrol->value.enumerated.item[0]);
+	pr_debug("asp mode set: block %d component %d - %d\n", block, component,
+		 ucontrol->value.enumerated.item[0]);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static int aoc_dsp_state_ctl_get(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
@@ -449,6 +493,67 @@ static int aoc_sink_state_ctl_get(struct snd_kcontrol *kcontrol,
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
 }
+
+static int aoc_sink_channel_bitmap_ctl_get(struct snd_kcontrol *kcontrol,
+				       struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 sink_idx = (u32)mc->shift;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.enumerated.item[0] =
+		aoc_get_sink_channel_bitmap(chip, sink_idx);
+	pr_debug("sink %d channel bitmap - %d\n", sink_idx,
+		 ucontrol->value.enumerated.item[0]);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int a2dp_encoder_parameters_put(struct snd_kcontrol *kcontrol,
+				       struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int para_size = sizeof(chip->a2dp_encoder_cfg);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	memcpy(&chip->a2dp_encoder_cfg, ucontrol->value.bytes.data, para_size);
+
+	aoc_a2dp_set_enc_param(chip, &chip->a2dp_encoder_cfg);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int a2dp_encoder_parameters_get(struct snd_kcontrol *kcontrol,
+				       struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	memcpy(ucontrol->value.bytes.data, &chip->a2dp_encoder_cfg,
+		sizeof(chip->a2dp_encoder_cfg));
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+/* TODO: seek better way to create a series of controls  */
+static const char *block_asp_mode_texts[] = { "ASP_OFF", "ASP_ON", "ASP_BYPASS",
+					      "ASP_GROUND" };
+static SOC_ENUM_SINGLE_DECL(block_16_state_enum, 2, 16, block_asp_mode_texts);
+static SOC_ENUM_SINGLE_DECL(block_17_state_enum, 2, 17, block_asp_mode_texts);
+static SOC_ENUM_SINGLE_DECL(block_18_state_enum, 2, 18, block_asp_mode_texts);
+static SOC_ENUM_SINGLE_DECL(block_19_state_enum, 15, 19, block_asp_mode_texts);
+static SOC_ENUM_SINGLE_DECL(block_20_state_enum, 2, 20, block_asp_mode_texts);
 
 /* TODO: seek better way to create a series of controls  */
 static const char *sink_processing_state_texts[] = { "Idle", "Active",
@@ -520,16 +625,39 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		.count = 1,
 	},
 
+	SOC_ENUM_EXT("AoC Speaker Mixer ASP Mode", block_16_state_enum,
+		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
+	SOC_ENUM_EXT("AoC Headphone Mixer ASP Mode", block_17_state_enum,
+		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
+	SOC_ENUM_EXT("AoC BT Mixer ASP Mode", block_18_state_enum,
+		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
+	SOC_ENUM_EXT("AoC Modem Mixer ASP Mode", block_19_state_enum,
+		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
+	SOC_ENUM_EXT("AoC USB Mixer ASP Mode", block_20_state_enum,
+		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
+
 	SOC_ENUM_EXT("Audio Sink 0 Processing State", sink_0_state_enum,
-		     aoc_sink_state_ctl_get, aoc_sink_state_ctl_get),
+		     aoc_sink_state_ctl_get, NULL),
 	SOC_ENUM_EXT("Audio Sink 1 Processing State", sink_1_state_enum,
-		     aoc_sink_state_ctl_get, aoc_sink_state_ctl_get),
+		     aoc_sink_state_ctl_get, NULL),
 	SOC_ENUM_EXT("Audio Sink 2 Processing State", sink_2_state_enum,
-		     aoc_sink_state_ctl_get, aoc_sink_state_ctl_get),
+		     aoc_sink_state_ctl_get, NULL),
 	SOC_ENUM_EXT("Audio Sink 3 Processing State", sink_3_state_enum,
-		     aoc_sink_state_ctl_get, aoc_sink_state_ctl_get),
+		     aoc_sink_state_ctl_get, NULL),
 	SOC_ENUM_EXT("Audio Sink 4 Processing State", sink_4_state_enum,
-		     aoc_sink_state_ctl_get, aoc_sink_state_ctl_get),
+		     aoc_sink_state_ctl_get, NULL),
+
+	/* 16 bit for each sink */
+	SOC_SINGLE_EXT("AoC Speaker Sink Channel Bitmap", SND_SOC_NOPM, 0,
+		       0x00ffff, 0, aoc_sink_channel_bitmap_ctl_get, NULL),
+	SOC_SINGLE_EXT("AoC Headphone Sink Channel Bitmap", SND_SOC_NOPM, 1,
+		       0x00ffff, 0, aoc_sink_channel_bitmap_ctl_get, NULL),
+	SOC_SINGLE_EXT("AoC BT Sink Channel Bitmap", SND_SOC_NOPM, 2, 0x00ffff,
+		       0, aoc_sink_channel_bitmap_ctl_get, NULL),
+	SOC_SINGLE_EXT("AoC Modem Sink Channel Bitmap", SND_SOC_NOPM, 3,
+		       0x00ffff, 0, aoc_sink_channel_bitmap_ctl_get, NULL),
+	SOC_SINGLE_EXT("AoC USB Sink Channel Bitmap", SND_SOC_NOPM, 4, 0x00ffff,
+		       0, aoc_sink_channel_bitmap_ctl_get, NULL),
 
 	SOC_SINGLE_EXT("Voice Call Mic Mute", SND_SOC_NOPM, 0, 1, 0,
 		       voice_call_mic_mute_get, voice_call_mic_mute_set),
@@ -553,16 +681,18 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 
 	SOC_SINGLE_RANGE_EXT_TLV_modified(
 		"MIC HW Gain At Lower Power Mode (cB)", SND_SOC_NOPM,
-		MIC_LOW_POWER_GAIN, MIC_HW_GAIN_IN_CB_MIN, MIC_HW_GAIN_IN_CB_MAX, 0,
-		mic_hw_gain_get, mic_hw_gain_set, NULL),
+		MIC_LOW_POWER_GAIN, MIC_HW_GAIN_IN_CB_MIN,
+		MIC_HW_GAIN_IN_CB_MAX, 0, mic_hw_gain_get, mic_hw_gain_set,
+		NULL),
 	SOC_SINGLE_RANGE_EXT_TLV_modified(
 		"MIC HW Gain At High Power Mode (cB)", SND_SOC_NOPM,
-		MIC_HIGH_POWER_GAIN, MIC_HW_GAIN_IN_CB_MIN, MIC_HW_GAIN_IN_CB_MAX, 0,
-		mic_hw_gain_get, mic_hw_gain_set, NULL),
-	SOC_SINGLE_RANGE_EXT_TLV_modified("MIC HW Gain (cB)", SND_SOC_NOPM,
-					  MIC_CURRENT_GAIN, MIC_HW_GAIN_IN_CB_MIN,
-					  MIC_HW_GAIN_IN_CB_MAX, 0, mic_hw_gain_get,
-					  NULL, NULL),
+		MIC_HIGH_POWER_GAIN, MIC_HW_GAIN_IN_CB_MIN,
+		MIC_HW_GAIN_IN_CB_MAX, 0, mic_hw_gain_get, mic_hw_gain_set,
+		NULL),
+	SOC_SINGLE_RANGE_EXT_TLV_modified(
+		"MIC HW Gain (cB)", SND_SOC_NOPM, MIC_CURRENT_GAIN,
+		MIC_HW_GAIN_IN_CB_MIN, MIC_HW_GAIN_IN_CB_MAX, 0,
+		mic_hw_gain_get, NULL, NULL),
 
 	SOC_SINGLE_EXT("MIC Recording Gain (dB)", SND_SOC_NOPM, 0, 100, 0, NULL,
 		       NULL),
@@ -571,6 +701,17 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 	SOC_SINGLE_EXT("Voice Call Rx Volume", SND_SOC_NOPM, 0, 100, 0, NULL,
 		       NULL),
 	SOC_SINGLE_EXT("VOIP Rx Volume", SND_SOC_NOPM, 0, 100, 0, NULL, NULL),
+	{
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+		.name = "A2DP Encoder Parameters",
+		.index = 0,
+		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
+		.private_value = A2DP_ENCODER_PARAMETERS,
+		.info = snd_aoc_ctl_info,
+		.get = a2dp_encoder_parameters_get,
+		.put = a2dp_encoder_parameters_put,
+		.count = 1,
+	},
 };
 
 int snd_aoc_new_ctl(struct aoc_chip *chip)
