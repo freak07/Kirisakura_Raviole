@@ -93,6 +93,7 @@ struct aoc_prvdata {
 	unsigned int acpm_async_id;
 
 	char firmware_name[MAX_FIRMWARE_LENGTH];
+	char *firmware_version;
 };
 
 /* TODO: Reduce the global variables (move into a driver structure) */
@@ -452,6 +453,8 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	ipc_offset = _aoc_fw_ipc_offset(fw);
 	bootloader_offset = _aoc_fw_bootloader_offset(fw);
 	version = _aoc_fw_version(fw);
+
+	prvdata->firmware_version = devm_kasprintf(dev, GFP_KERNEL, "%s", version);
 
 	pr_notice("successfully loaded firmware version %s type %s",
 		  version ? version : "unknown",
@@ -1295,8 +1298,9 @@ static void aoc_did_become_online(struct work_struct *work)
 
 	aoc_req_assert(prvdata, false);
 
-	pr_notice("firmware version %u did become online with %d services\n",
-		  le32_to_cpu(aoc_control->fw_version), aoc_num_services());
+	pr_notice("firmware version %s did become online with %d services\n",
+		  prvdata->firmware_version ? prvdata->firmware_version : "0",
+		  aoc_num_services());
 
 	if (s > AOC_MAX_ENDPOINTS) {
 		dev_err(dev, "Firmware supports too many (%d) services\n", s);
