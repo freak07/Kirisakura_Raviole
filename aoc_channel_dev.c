@@ -12,6 +12,7 @@
 #include <linux/kthread.h>
 #include <linux/list.h>
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/mutex.h>
 #include <linux/poll.h>
 #include <linux/rwlock_types.h>
@@ -27,6 +28,11 @@ static int aocc_major = -1;
 static int aocc_major_dev;
 static unsigned int aocc_next_minor; /* protected by aocc_devices_lock */
 static struct class *aocc_class;
+static long received_msg_count = 0;
+static long sent_msg_count = 0;
+
+module_param(received_msg_count, long, S_IRUGO);
+module_param(sent_msg_count, long, S_IRUGO);
 
 struct aocc_device_entry {
 	struct device *aocc_device;
@@ -156,6 +162,7 @@ static int aocc_demux_kthread(void *data)
 			continue;
 		}
 
+		received_msg_count++;
 		node->msg_size = retval;
 		channel = node->channel_index;
 
@@ -541,6 +548,8 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 	if (leftover == 0) {
 		retval = aoc_service_write(private->aocc_device_entry->service, buffer,
 					   count + sizeof(int), false);
+		if (retval > 0)
+			sent_msg_count++;
 	} else {
 		retval = -ENOMEM;
 	}
