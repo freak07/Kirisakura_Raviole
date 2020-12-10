@@ -43,6 +43,10 @@
 #include <linux/workqueue.h>
 #include <soc/google/acpm_ipc_ctrl.h>
 
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
+#include <soc/google/exynos-itmon.h>
+#endif
+
 #include "ion_physical_heap.h"
 
 #include "aoc_firmware.h"
@@ -94,6 +98,10 @@ struct aoc_prvdata {
 
 	char firmware_name[MAX_FIRMWARE_LENGTH];
 	char *firmware_version;
+
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
+	struct notifier_block itmon_nb;
+#endif
 };
 
 /* TODO: Reduce the global variables (move into a driver structure) */
@@ -171,6 +179,24 @@ static void aoc_process_services(struct aoc_prvdata *prvdata);
 
 static irqreturn_t watchdog_int_handler(int irq, void *dev);
 static void aoc_watchdog(struct work_struct *work);
+
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
+static int aoc_itmon_notifier(struct notifier_block *nb, unsigned long action,
+			      void *nb_data)
+{
+	struct aoc_prvdata *prvdata;
+	struct itmon_notifier *itmon_info = nb_data;
+
+	prvdata = container_of(nb, struct aoc_prvdata, itmon_nb);
+	if (itmon_info->target_addr == 0) {
+		dev_err(prvdata->dev,
+			"Possible repro of b/174577569, please upload a bugreport and /data/vendor/ssrdump to that bug\n");
+		return NOTIFY_STOP;
+	}
+
+	return NOTIFY_OK;
+}
+#endif
 
 static inline void *aoc_sram_translate(u32 offset)
 {
@@ -1908,6 +1934,11 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to register acpm aoc reset callback\n");
 		return ret;
 	}
+
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
+	prvdata->itmon_nb.notifier_call = aoc_itmon_notifier;
+	itmon_notifier_chain_register(&prvdata->itmon_nb);
+#endif
 
 	if (aoc_autoload_firmware) {
 		ret = start_firmware_load(dev);
