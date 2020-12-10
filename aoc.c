@@ -1901,7 +1901,7 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lon
 {
 	struct dma_buf *dmabuf;
 	struct ion_buffer *ionbuf;
-	long ret = -EINVAL;
+	long ret = -EFAULT;
 
 	struct aoc_prvdata *prvdata = file->private_data;
 
@@ -1913,10 +1913,8 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lon
 		BUILD_BUG_ON(sizeof(struct aoc_ion_handle) !=
 			     _IOC_SIZE(AOC_IOCTL_ION_FD_TO_HANDLE));
 
-		if (copy_from_user(&handle, (struct aoc_ion_handle *)arg, _IOC_SIZE(cmd))) {
-			ret = -EFAULT;
+		if (copy_from_user(&handle, (struct aoc_ion_handle *)arg, _IOC_SIZE(cmd)))
 			break;
-		}
 
 		dmabuf = dma_buf_get(handle.fd);
 		if (IS_ERR(dmabuf)) {
@@ -1930,9 +1928,7 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lon
 
 		dma_buf_put(dmabuf);
 
-		if (copy_to_user((struct aoc_ion_handle *)arg, &handle, _IOC_SIZE(cmd)))
-			ret = -EFAULT;
-		else
+		if (!copy_to_user((struct aoc_ion_handle *)arg, &handle, _IOC_SIZE(cmd)))
 			ret = 0;
 	}
 	break;
@@ -1942,14 +1938,13 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lon
 
 		BUILD_BUG_ON(sizeof(disable_mm) != _IOC_SIZE(AOC_IOCTL_DISABLE_MM));
 
-		if (copy_from_user(&disable_mm, (u32 *)arg, _IOC_SIZE(cmd))) {
-			ret = -EFAULT;
+		if (copy_from_user(&disable_mm, (u32 *)arg, _IOC_SIZE(cmd)))
 			break;
-		}
 
 		prvdata->disable_monitor_mode = disable_mm;
 		if (prvdata->disable_monitor_mode != 0)
 			pr_info("AoC Monitor Mode disabled\n");
+
 		ret = 0;
 	}
 	break;
@@ -1960,14 +1955,13 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lon
 
 		BUILD_BUG_ON(sizeof(force_vnom) != _IOC_SIZE(AOC_IOCTL_FORCE_VNOM));
 
-		if (copy_from_user(&force_vnom, (u32 *)arg, _IOC_SIZE(cmd))) {
-			ret = -EFAULT;
+		if (copy_from_user(&force_vnom, (u32 *)arg, _IOC_SIZE(cmd)))
 			break;
-		}
 
 		prvdata->force_voltage_nominal = force_vnom;
 		if (prvdata->force_voltage_nominal != 0)
 			pr_info("AoC Force Nominal Voltage enabled\n");
+
 		ret = 0;
 	}
 	break;
@@ -1978,16 +1972,23 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lon
 
 		BUILD_BUG_ON(sizeof(enable_uart) != _IOC_SIZE(AOC_IOCTL_ENABLE_UART_TX));
 
-		if (copy_from_user(&enable_uart, (u32 *)arg, _IOC_SIZE(cmd))) {
-			ret = -EFAULT;
+		if (copy_from_user(&enable_uart, (u32 *)arg, _IOC_SIZE(cmd)))
 			break;
-		}
 
 		prvdata->enable_uart_tx = enable_uart;
 		if (prvdata->enable_uart_tx != 0)
 			pr_info("AoC UART Logging Enabled\n");
+
 		ret = 0;
 	}
+	break;
+
+	case AOC_IS_ONLINE:
+		{
+			int online = aoc_online;
+			if (!copy_to_user((int *)arg, &online, _IOC_SIZE(cmd)))
+				ret = 0;
+		}
 	break;
 
 	default:
