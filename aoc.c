@@ -1417,6 +1417,36 @@ static int aoc_iommu_fault_handler(struct iommu_fault *fault, void *token)
 	return -EAGAIN;
 }
 
+#define SSMT_BYPASS_VALUE	0x80000000U
+#define SSMT_NS_READ_PID(n)	(0x4000 + 4 * (n))
+#define SSMT_NS_WRITE_PID(n)	(0x4200 + 4 * (n))
+
+static void aoc_configure_ssmt(struct platform_device *pdev)
+{
+#ifndef AOC_JUNO
+	struct device *dev = &pdev->dev;
+	int stream_id;
+
+	void __iomem *ssmt_base = devm_platform_ioremap_resource_byname(pdev, "ssmt_aoc");
+
+	if (IS_ERR(ssmt_base)) {
+		dev_err(dev, "ssmt_aoc base address failure: %ld\n", PTR_ERR(ssmt_base));
+		return;
+	}
+
+	/* Configure registers NS_READ_PID_<n>, NS_WRITE_PID_<n> for each stream id */
+	for (stream_id = 0; stream_id <= 32; stream_id++) {
+		/* Skip over stream id 31 */
+		if (stream_id == 31)
+			continue;
+		writel_relaxed(SSMT_BYPASS_VALUE, ssmt_base + SSMT_NS_READ_PID(stream_id));
+		writel_relaxed(SSMT_BYPASS_VALUE, ssmt_base + SSMT_NS_WRITE_PID(stream_id));
+	}
+
+	devm_iounmap(dev, ssmt_base);
+#endif
+}
+
 static void aoc_configure_sysmmu(struct aoc_prvdata *p)
 {
 #ifndef AOC_JUNO
@@ -2063,6 +2093,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		pr_err("failed to find iommu domain\n");
 		return -EIO;
 	}
+
+	aoc_configure_ssmt(pdev);
 
 	aoc_configure_sysmmu(prvdata);
 
