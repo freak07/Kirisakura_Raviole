@@ -9,7 +9,6 @@
  * published by the Free Software Foundation.
  */
 
-#include "../aoc-interface.h"
 #include "aoc_alsa.h"
 #include "aoc_alsa_drv.h"
 
@@ -51,7 +50,7 @@ static int aoc_audio_control(const char *cmd_channel, const uint8_t *cmd,
 			      cmd_size, cmd_count);
 #endif
 
-	buffer = kmalloc_array(buffer_size, sizeof(*buffer), GFP_KERNEL);
+	buffer = kmalloc_array(buffer_size, sizeof(*buffer), GFP_ATOMIC);
 	if (!buffer) {
 		err = -ENOMEM;
 		pr_err("ERR: no memory!\n");
@@ -362,7 +361,8 @@ int aoc_get_asp_mode(struct aoc_chip *chip, int block, int component, int key)
 	cmd.block = block;
 	cmd.component = component;
 	cmd.key = key;
-	pr_debug("block=%d, component=%d, key=%d\n", block, component, key);
+
+	pr_info("get asp mode: block=%d, component=%d, key=%d\n", block, component, key);
 
 	/* Send cmd to AOC */
 	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
@@ -390,8 +390,9 @@ int aoc_set_asp_mode(struct aoc_chip *chip, int block, int component, int key,
 	cmd.component = component;
 	cmd.key = key;
 	cmd.val = val;
-	pr_debug("block=%d, component=%d, key=%d, val=%d\n", block, component,
-		 key, val);
+
+	pr_info("set asp mode: block=%d, component=%d, key=%d, val=%d\n", block,
+		component, key, val);
 
 	/* Send cmd to AOC */
 	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
@@ -425,7 +426,33 @@ int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int sink)
 	return cmd.bitmap[sink];
 }
 
-int aoc_get_sink_state(struct aoc_chip *chip, int iSink)
+int aoc_get_sink_mode(struct aoc_chip *chip, int sink)
+{
+	return chip->sink_mode[sink];
+}
+
+int aoc_set_sink_mode(struct aoc_chip *chip, int sink, int mode)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_SINK cmd;
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SINK_ID, sizeof(cmd));
+
+	cmd.sink = sink;
+	cmd.mode = mode;
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), (uint8_t *)&cmd, chip);
+	if (err < 0) {
+		pr_err("Error in get aoc sink processing state !\n");
+		return err;
+	}
+
+	chip->sink_mode[sink] = mode;
+	pr_info("sink state set :%d - %d\n", sink, cmd.mode);
+
+	return 0;
+}
+
+int aoc_get_sink_state(struct aoc_chip *chip, int sink)
 {
 	int err;
 	struct CMD_AUDIO_OUTPUT_GET_SINK_PROCESSING_STATE cmd;
@@ -433,15 +460,32 @@ int aoc_get_sink_state(struct aoc_chip *chip, int iSink)
 		     CMD_AUDIO_OUTPUT_GET_SINK_PROCESSING_STATE_ID,
 		     sizeof(cmd));
 
-	cmd.sink = iSink;
+	cmd.sink = sink;
 	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
 				sizeof(cmd), (uint8_t *)&cmd, chip);
 	if (err < 0)
 		pr_err("Error in get aoc sink processing state !\n");
 
-	pr_info("sink_state:%d - %d\n", iSink, cmd.mode);
+	pr_info("sink_state:%d - %d\n", sink, cmd.mode);
 
 	return err < 0 ? err : cmd.mode;
+}
+
+/* TODO: usb cfg may be devided into three commands, dev/ep-ids, rx, tx */
+int aoc_set_usb_config(struct aoc_chip *chip)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_USB_CONFIG cmd = chip->usb_sink_cfg;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_USB_CONFIG_ID, sizeof(cmd));
+
+	cmd.rx_enable = true;
+	cmd.tx_enable = true;
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0)
+		pr_err("Err:%d in aoc set usb config!\n", err);
+
+	return err;
 }
 
 static int
@@ -497,46 +541,46 @@ static int aoc_audio_playback_trigger_bind(struct aoc_alsa_stream *alsa_stream,
 	return err;
 }
 
-static int aoc_audio_path(struct aoc_alsa_stream *alsa_stream, int cmd)
+/* Bind/unbind the source and dest */
+static int aoc_audio_path_bind(int src, int dst, int cmd, struct aoc_chip *chip)
 {
-	int i, err = 0;
-	int src, dst;
+	int err;
+	struct CMD_AUDIO_OUTPUT_BIND bind;
 
-	src = alsa_stream->entry_point_idx;
-
-	if (!alsa_stream->cstream &&
-	    (alsa_stream->substream->stream == SNDRV_PCM_STREAM_CAPTURE))
+	if (dst < 0)
 		return 0;
 
-	/* Binding or unbinding source/sinks */
-	for (i = 0; i < MAX_NUM_OF_SINKS_PER_STREAM; i++) {
-		/* Bind and unbind have reverse order in the list of sinks */
-		if (cmd == START)
-			dst = alsa_stream->chip->sink_id_list[i];
-		else
-			dst = alsa_stream->chip->sink_id_list
-				      [MAX_NUM_OF_SINKS_PER_STREAM - 1 - i];
+	pr_info("%s: src:%d - sink:%d!\n", cmd == START ? "bind" : "unbind", src, dst);
 
-		if (dst == -1)
-			continue;
-		err = aoc_audio_playback_trigger_bind(alsa_stream, cmd, src,
-						      dst);
-		if (err < 0)
-			pr_err("ERR:%d in playback source/sink %s\n", err,
-			       (cmd == START) ? "BIND" : "UNBIND");
-	}
+	AocCmdHdrSet(&(bind.parent), CMD_AUDIO_OUTPUT_BIND_ID, sizeof(bind));
+	bind.bind = (cmd == START) ? 1 : 0;
+	bind.src = src;
+	bind.dst = dst;
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&bind, sizeof(bind), NULL, chip);
+
+	if (err < 0)
+		pr_err("ERR:%d %s: src:%d - sink:%d!\n", err, (cmd == START) ? "bind" : "unbind",
+		       src, dst);
 
 	return err;
 }
 
-int aoc_audio_path_open(struct aoc_alsa_stream *alsa_stream)
+int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest)
 {
-	return aoc_audio_path(alsa_stream, START);
+	/* voice call capture or playback */
+	if (src == 3 || src == 4)
+		return aoc_phonecall_path_open(chip, src, dest);
+
+	return aoc_audio_path_bind(src, dest, START, chip);
 }
 
-int aoc_audio_path_close(struct aoc_alsa_stream *alsa_stream)
+int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest)
 {
-	return aoc_audio_path(alsa_stream, STOP);
+	/* voice call capture or playback */
+	if (src == 3 || src == 4)
+		return aoc_phonecall_path_close(chip, src, dest);
+
+	return aoc_audio_path_bind(src, dest, STOP, chip);
 }
 
 static int aoc_audio_playback_set_params(struct aoc_alsa_stream *alsa_stream,
@@ -972,11 +1016,11 @@ out:
 	return err;
 }
 
-static int aoc_audio_modem_input(struct aoc_alsa_stream *alsa_stream,
-				 int input_cmd)
+static int aoc_audio_modem_mic_input(struct aoc_chip *chip,
+				 int input_cmd, int mic_input_source)
 {
 	int err;
-	struct CMD_HDR cmd0; /* for modem input STOP */
+	struct CMD_HDR cmd0; /* For modem mic input STOP */
 	struct CMD_AUDIO_INPUT_MODEM_INPUT_START cmd1;
 
 	if (input_cmd == START) {
@@ -984,10 +1028,9 @@ static int aoc_audio_modem_input(struct aoc_alsa_stream *alsa_stream,
 			     CMD_AUDIO_INPUT_MODEM_INPUT_START_ID,
 			     sizeof(cmd1));
 
-		/* TODO: mic input source will change based on audio device type */
-		cmd1.mic_input_source = 0;
+		cmd1.mic_input_source = mic_input_source;
 		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd1,
-					sizeof(cmd1), NULL, alsa_stream->chip);
+					sizeof(cmd1), NULL, chip);
 		if (err < 0)
 			pr_err("ERR:%d modem input start fail!\n", err);
 
@@ -996,11 +1039,85 @@ static int aoc_audio_modem_input(struct aoc_alsa_stream *alsa_stream,
 			     sizeof(cmd0));
 
 		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd0,
-					sizeof(cmd0), NULL, alsa_stream->chip);
+					sizeof(cmd0), NULL, chip);
 		if (err < 0)
 			pr_err("ERR:%d modem input stop fail!\n", err);
 	}
 
+	return err;
+}
+
+int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst)
+{
+	int err;
+	int mic_input_source;
+
+	pr_info("Open phone call path - src:%d, dst:%d\n",  src, dst);
+
+	if (!chip->voice_call_audio_enable) {
+		pr_info("phone call audio NOT enabled\n");
+		return 0;
+	}
+
+	if (src != 4)
+		return 0;
+
+	/* Audio playback enabled for momdem output */
+	err = aoc_audio_path_bind(8, dst, START, chip);
+	if (err < 0) {
+		pr_err("ERR:%d Telephony Downlink bind fail\n", err);
+		goto exit;
+	}
+
+	/* Audio capture enabled for modem input */
+	switch (dst) {
+	case ASNK_SPEAKER:
+		mic_input_source = MODEM_MIC_INPUT_INDEX;
+		break;
+	case ASNK_BT:
+		mic_input_source = MODEM_BT_INPUT_INDEX;
+		break;
+	case ASNK_USB:
+		mic_input_source =  MODEM_USB_INPUT_INDEX;
+		break;
+	default:
+		mic_input_source = 0;
+	}
+	err = aoc_audio_modem_mic_input(chip, START, mic_input_source);
+	if (err < 0)
+		pr_err("ERR:%d modem input start fail\n", err);
+
+exit:
+	return err;
+}
+
+int aoc_phonecall_path_close(struct aoc_chip *chip, int src, int dst)
+{
+	int err;
+
+	pr_info("close phone call path - src:%d, dst:%d\n", src, dst);
+
+	if (!chip->voice_call_audio_enable) {
+		pr_info("phone call audio NOT enabled\n");
+		return 0;
+	}
+
+	if (src != 4)
+		return 0;
+
+	/* Audio capture disabled for modem input */
+	err = aoc_audio_modem_mic_input(chip, STOP, 0);
+	if (err < 0) {
+		pr_err("ERR:%d modem input stop fail\n", err);
+		goto exit;
+	}
+
+	/* Audio playback disabled for modem ouput */
+	err = aoc_audio_path_bind(8, dst, STOP, chip);
+	if (err < 0)
+		pr_err("ERR:%d Telephony Downlink unbind fail\n", err);
+
+exit:
 	return err;
 }
 
@@ -1020,26 +1137,11 @@ int prepare_phonecall(struct aoc_alsa_stream *alsa_stream)
 	if (src != 4)
 		return 0;
 
-	err = aoc_audio_modem_input(alsa_stream, START);
-	if (err < 0) {
-		pr_err("ERR:%d modem input start fail\n", err);
-		goto exit;
-	}
-	pr_notice("modem input STARTED\n");
-
-	/* Rx */
-	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 8, 0);
-	if (err < 0) {
-		pr_err("ERR:%d Telephony Downlink bind fail\n", err);
-		goto exit;
-	}
-
-	/* Tx */
+	/* Binding modem to start audio flow */
 	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 3, 3);
 	if (err < 0)
 		pr_err("ERR:%d Telephony Uplink bind fail\n", err);
 
-exit:
 	return err;
 }
 
@@ -1051,30 +1153,15 @@ int teardown_phonecall(struct aoc_alsa_stream *alsa_stream)
 	if (!alsa_stream->chip->voice_call_audio_enable)
 		return 0;
 
-	pr_debug("stop phone call - dev %d\n", alsa_stream->entry_point_idx);
+	pr_info("stop phone call - dev %d\n", alsa_stream->entry_point_idx);
 	if (src != 4)
 		return 0;
 
-	/* unbind */
+	/* Unbinding modem to stop audio flow */
 	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 3, 3);
-	if (err < 0) {
-		pr_err("ERR:%d Telephony Uplink unbind fail\n", err);
-		goto exit;
-	}
-
-	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 8, 0);
-	if (err < 0) {
-		pr_err("ERR:%d Telephony Donwlink unbind fail\n", err);
-		goto exit;
-	}
-
-	err = aoc_audio_modem_input(alsa_stream, STOP);
 	if (err < 0)
-		pr_err("ERR:%d modem input stop fail\n", err);
+		pr_err("ERR:%d Telephony Uplink unbind fail\n", err);
 
-	pr_notice("modem input STOPPED\n");
-
-exit:
 	return err;
 }
 

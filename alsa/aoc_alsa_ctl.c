@@ -462,6 +462,143 @@ static int aoc_asp_mode_ctl_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int aoc_sink_mode_ctl_get(struct snd_kcontrol *kcontrol,
+				 struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_enum *mc = (struct soc_enum *)kcontrol->private_value;
+	u32 sink_idx = (u32)mc->shift_l;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.enumerated.item[0] = aoc_get_sink_mode(chip, sink_idx);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int aoc_sink_mode_ctl_set(struct snd_kcontrol *kcontrol,
+				  struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_enum *mc = (struct soc_enum *)kcontrol->private_value;
+	u32 sink_idx = (u32)mc->shift_l;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	aoc_set_sink_mode(chip, sink_idx, ucontrol->value.enumerated.item[0]);
+	pr_debug("sink mode set: %d - %d\n", sink_idx,
+		 ucontrol->value.enumerated.item[0]);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int usb_cfg_ctl_get(struct snd_kcontrol *kcontrol,
+			   struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 idx = (u32)mc->shift;
+	int val;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	switch (idx) {
+	case USB_DEV_ID:
+		val = chip->usb_sink_cfg.dev_id;
+		break;
+	case USB_TX_EP_ID:
+		val = chip->usb_sink_cfg.tx_ep_num;
+		break;
+	case USB_TX_SR:
+		val = chip->usb_sink_cfg.tx_sr;
+		break;
+	case USB_TX_CH:
+		val = chip->usb_sink_cfg.tx_ch;
+		break;
+	case USB_TX_BW:
+		val = chip->usb_sink_cfg.tx_width;
+		break;
+	case USB_RX_EP_ID:
+		val = chip->usb_sink_cfg.rx_ep_num;
+		break;
+	case USB_RX_SR:
+		val = chip->usb_sink_cfg.rx_sr;
+		break;
+	case USB_RX_CH:
+		val = chip->usb_sink_cfg.rx_ch;
+		break;
+	case USB_RX_BW:
+		val = chip->usb_sink_cfg.rx_width;
+		break;
+	default:
+		val = -1;
+		pr_err("ERR: incorrect index for USB config in %s\n", __func__);
+	}
+
+	ucontrol->value.enumerated.item[0] = val;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int usb_cfg_ctl_set(struct snd_kcontrol *kcontrol,
+			   struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 idx = (u32)mc->shift;
+	int err = 0;
+	int val = ucontrol->value.enumerated.item[0];
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	switch (idx) {
+	case USB_DEV_ID:
+		chip->usb_sink_cfg.dev_id = val;
+		break;
+	case USB_TX_EP_ID:
+		chip->usb_sink_cfg.tx_ep_num = val;
+		break;
+	case USB_TX_SR:
+		chip->usb_sink_cfg.tx_sr = val;
+		break;
+	case USB_TX_CH:
+		chip->usb_sink_cfg.tx_ch = val;
+		break;
+	case USB_TX_BW:
+		chip->usb_sink_cfg.tx_width = val;
+		break;
+	case USB_RX_EP_ID:
+		chip->usb_sink_cfg.rx_ep_num = val;
+		break;
+	case USB_RX_SR:
+		chip->usb_sink_cfg.rx_sr = val;
+		break;
+	case USB_RX_CH:
+		chip->usb_sink_cfg.rx_ch = val;
+		break;
+	case USB_RX_BW:
+		chip->usb_sink_cfg.rx_width = val;
+		break;
+	default:
+		pr_err("ERR: incorrect index for USB config in %s\n", __func__);
+	}
+
+	if ((err = aoc_set_usb_config(chip)))
+		pr_err("ERR:%d fail to update aoc usb config!\n", err);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
 static int aoc_dsp_state_ctl_get(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
@@ -545,6 +682,11 @@ static int a2dp_encoder_parameters_get(struct snd_kcontrol *kcontrol,
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
 }
+/* TODO: this has to be consistent to BT/USB Mode enum in aoc_alsa.h */
+static const char *bt_mode_texts[] = { "Unconfigured", "SCO",
+				       "ESCO",	       "A2DP_RAW",
+				       "A2DP_ENC_SBC", "A2DP_ENC_AAC" };
+static SOC_ENUM_SINGLE_DECL(bt_mode_enum, 1, ASNK_BT, bt_mode_texts);
 
 /* TODO: seek better way to create a series of controls  */
 static const char *block_asp_mode_texts[] = { "ASP_OFF", "ASP_ON", "ASP_BYPASS",
@@ -552,7 +694,10 @@ static const char *block_asp_mode_texts[] = { "ASP_OFF", "ASP_ON", "ASP_BYPASS",
 static SOC_ENUM_SINGLE_DECL(block_16_state_enum, 2, 16, block_asp_mode_texts);
 static SOC_ENUM_SINGLE_DECL(block_17_state_enum, 2, 17, block_asp_mode_texts);
 static SOC_ENUM_SINGLE_DECL(block_18_state_enum, 2, 18, block_asp_mode_texts);
+/* ASR mode: block 19, module 15, key 0 for FT*/
 static SOC_ENUM_SINGLE_DECL(block_19_state_enum, 15, 19, block_asp_mode_texts);
+/* ASR mode: block 19, module 15, key 1 for ASRC*/
+static SOC_ENUM_SINGLE_DECL(block_19_15_1_state_enum, (15|(1<<8)), 19, block_asp_mode_texts);
 static SOC_ENUM_SINGLE_DECL(block_20_state_enum, 2, 20, block_asp_mode_texts);
 
 /* TODO: seek better way to create a series of controls  */
@@ -635,6 +780,30 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
 	SOC_ENUM_EXT("AoC USB Mixer ASP Mode", block_20_state_enum,
 		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
+	SOC_ENUM_EXT("AoC Modem Downlink ASRC Mode", block_19_15_1_state_enum,
+		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
+
+	SOC_ENUM_EXT("BT Mode", bt_mode_enum, aoc_sink_mode_ctl_get,
+		     aoc_sink_mode_ctl_set),
+
+	SOC_SINGLE_EXT("USB Dev ID", SND_SOC_NOPM, USB_DEV_ID, 100, 0,
+		       usb_cfg_ctl_get, usb_cfg_ctl_set),
+	SOC_SINGLE_EXT("USB Playback EP ID", SND_SOC_NOPM, USB_TX_EP_ID, 100, 0,
+		       usb_cfg_ctl_get, usb_cfg_ctl_set),
+	SOC_SINGLE_EXT("USB Playback SR", SND_SOC_NOPM, USB_TX_SR, 48000, 0,
+		       usb_cfg_ctl_get, usb_cfg_ctl_set),
+	SOC_SINGLE_EXT("USB Playback CH", SND_SOC_NOPM, USB_TX_CH, 2, 0,
+		       usb_cfg_ctl_get, usb_cfg_ctl_set),
+	SOC_SINGLE_EXT("USB Playback BW", SND_SOC_NOPM, USB_TX_BW, 32, 0,
+		       usb_cfg_ctl_get, usb_cfg_ctl_set),
+	SOC_SINGLE_EXT("USB Capture EP ID", SND_SOC_NOPM, USB_RX_EP_ID, 100, 0,
+		       usb_cfg_ctl_get, usb_cfg_ctl_set),
+	SOC_SINGLE_EXT("USB Capture SR", SND_SOC_NOPM, USB_RX_SR, 48000, 0,
+		       usb_cfg_ctl_get, usb_cfg_ctl_set),
+	SOC_SINGLE_EXT("USB Capture CH", SND_SOC_NOPM, USB_RX_CH, 2, 0,
+		       usb_cfg_ctl_get, usb_cfg_ctl_set),
+	SOC_SINGLE_EXT("USB Capture BW", SND_SOC_NOPM, USB_RX_BW, 32, 0,
+		       usb_cfg_ctl_get, usb_cfg_ctl_set),
 
 	SOC_ENUM_EXT("Audio Sink 0 Processing State", sink_0_state_enum,
 		     aoc_sink_state_ctl_get, NULL),
@@ -721,8 +890,7 @@ int snd_aoc_new_ctl(struct aoc_chip *chip)
 
 	strcpy(chip->card->mixername, "Aoc Mixer");
 	for (idx = 0; idx < ARRAY_SIZE(snd_aoc_ctl); idx++) {
-		err = snd_ctl_add(chip->card,
-				  snd_ctl_new1(&snd_aoc_ctl[idx], chip));
+		err = snd_ctl_add(chip->card, snd_ctl_new1(&snd_aoc_ctl[idx], chip));
 		if (err < 0)
 			return err;
 	}

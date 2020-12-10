@@ -94,6 +94,7 @@ struct aoc_prvdata {
 	unsigned int acpm_async_id;
 
 	char firmware_name[MAX_FIRMWARE_LENGTH];
+	char *firmware_version;
 };
 
 /* TODO: Reduce the global variables (move into a driver structure) */
@@ -453,6 +454,8 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	ipc_offset = _aoc_fw_ipc_offset(fw);
 	bootloader_offset = _aoc_fw_bootloader_offset(fw);
 	version = _aoc_fw_version(fw);
+
+	prvdata->firmware_version = devm_kasprintf(dev, GFP_KERNEL, "%s", version);
 
 	pr_notice("successfully loaded firmware version %s type %s",
 		  version ? version : "unknown",
@@ -1296,8 +1299,9 @@ static void aoc_did_become_online(struct work_struct *work)
 
 	aoc_req_assert(prvdata, false);
 
-	pr_notice("firmware version %u did become online with %d services\n",
-		  le32_to_cpu(aoc_control->fw_version), aoc_num_services());
+	pr_notice("firmware version %s did become online with %d services\n",
+		  prvdata->firmware_version ? prvdata->firmware_version : "0",
+		  aoc_num_services());
 
 	if (s > AOC_MAX_ENDPOINTS) {
 		dev_err(dev, "Firmware supports too many (%d) services\n", s);
@@ -1599,17 +1603,64 @@ static bool aoc_create_ion_heap(struct aoc_prvdata *prvdata)
 
 static int aoc_open(struct inode *inode, struct file *file)
 {
-	return -1;
+	return 0;
+}
+
+static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	struct dma_buf *dmabuf;
+	struct ion_buffer *ionbuf;
+	long ret = -EINVAL;
+
+	switch (cmd) {
+	case AOC_IOCTL_ION_FD_TO_HANDLE:
+		{
+			struct aoc_ion_handle handle;
+
+			if (copy_from_user(&handle, (struct aoc_ion_handle *)arg, _IOC_SIZE(cmd))) {
+				ret = -EFAULT;
+				break;
+			}
+
+			dmabuf = dma_buf_get(handle.fd);
+			if (IS_ERR(dmabuf)) {
+				pr_err("fd is not an ion buffer\n");
+				ret = PTR_ERR(dmabuf);
+				break;
+			}
+
+			ionbuf = dmabuf->priv;
+			handle.handle = (u32)ionbuf->priv_virt;
+
+			dma_buf_put(dmabuf);
+
+			if (copy_to_user((struct aoc_ion_handle *)arg, &handle, _IOC_SIZE(cmd)))
+				ret = -EFAULT;
+			else
+				ret = 0;
+		}
+		break;
+
+	default:
+		/* ioctl(2) The specified request does not apply to the kind of object
+		 * that the file descriptor fd references
+		 */
+		ret = -ENOTTY;
+		break;
+	}
+
+	return ret;
 }
 
 static int aoc_release(struct inode *inode, struct file *file)
 {
-	return -1;
+	return 0;
 }
 
 static const struct file_operations fops = {
 	.open = aoc_open,
 	.release = aoc_release,
+	.unlocked_ioctl = aoc_unlocked_ioctl,
 
 	.owner = THIS_MODULE,
 };

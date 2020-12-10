@@ -70,6 +70,29 @@
 #define alsa2chip(vol) (vol) /* Convert alsa to chip volume */
 #define chip2alsa(vol) (vol) /* Convert chip to alsa volume */
 
+/* TODO: Copied from AoC repo and will be removed */
+enum bluetooth_mode {
+	AHS_BT_MODE_UNCONFIGURED = 0,
+	AHS_BT_MODE_SCO,
+	AHS_BT_MODE_ESCO,
+	AHS_BT_MODE_A2DP_RAW,
+	AHS_BT_MODE_A2DP_ENC_SBC,
+	AHS_BT_MODE_A2DP_ENC_AAC,
+};
+
+/* AoC USB Config parameters */
+enum {
+	USB_DEV_ID,
+	USB_TX_EP_ID,
+	USB_TX_SR,
+	USB_TX_CH,
+	USB_TX_BW,
+	USB_RX_EP_ID,
+	USB_RX_SR,
+	USB_RX_CH,
+	USB_RX_BW
+};
+
 enum { CTRL_VOL_MUTE, CTRL_VOL_UNMUTE };
 enum {
 	PCM_PLAYBACK_VOLUME,
@@ -83,7 +106,7 @@ enum { BUILTIN_MIC0 = 0, BUILTIN_MIC1, BUILTIN_MIC2, BUILTIN_MIC3 };
 enum { MIC_LOW_POWER_GAIN = 0, MIC_HIGH_POWER_GAIN, MIC_CURRENT_GAIN };
 
 enum { NONBLOCKING = 0, BLOCKING = 1 };
-enum { START, STOP };
+enum { STOP = 0, START };
 enum { PLAYBACK_MODE, VOICE_TX_MODE, VOICE_RX_MODE, HAPTICS_MODE, OFFLOAD_MODE };
 
 struct aoc_chip {
@@ -100,6 +123,7 @@ struct aoc_chip {
 
 	int default_sink_id;
 	int sink_id_list[MAX_NUM_OF_SINKS_PER_STREAM];
+	int sink_mode[AUDIO_OUTPUT_SINKS];
 
 	int volume;
 	int old_volume; /* Store the volume value while muted */
@@ -114,6 +138,7 @@ struct aoc_chip {
 	spinlock_t audio_lock;
 
 	struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG a2dp_encoder_cfg;
+	struct CMD_AUDIO_OUTPUT_USB_CONFIG usb_sink_cfg;
 };
 
 struct aoc_alsa_stream {
@@ -159,9 +184,10 @@ int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 			 uint32_t samplerate, uint32_t bps, bool pcm_float_fmt, int source_mode);
 int aoc_audio_start(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream);
-int aoc_audio_path_open(struct aoc_alsa_stream *alsa_stream);
-int aoc_audio_path_close(struct aoc_alsa_stream *alsa_stream);
-
+int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest);
+int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest);
+int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst);
+int aoc_phonecall_path_close(struct aoc_chip *chip, int src, int dst);
 int aoc_audio_set_ctls(struct aoc_chip *chip);
 
 int aoc_a2dp_get_enc_param_size(void);
@@ -181,8 +207,12 @@ int aoc_get_dsp_state(struct aoc_chip *chip);
 int aoc_get_asp_mode(struct aoc_chip *chip, int block, int component, int key);
 int aoc_set_asp_mode(struct aoc_chip *chip, int block, int component, int key, int val);
 
-int aoc_get_sink_state(struct aoc_chip *chip, int iSink);
-int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int iSink);
+int aoc_get_sink_state(struct aoc_chip *chip, int sink);
+int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int sink);
+int aoc_get_sink_mode(struct aoc_chip *chip, int sink);
+int aoc_set_sink_mode(struct aoc_chip *chip, int sink, int mode);
+
+int aoc_set_usb_config(struct aoc_chip *chip);
 
 int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 		    uint32_t count);

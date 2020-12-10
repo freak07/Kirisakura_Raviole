@@ -335,9 +335,6 @@ static int snd_aoc_pcm_close(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *subst
 			pr_err("ERR: fail to stop alsa stream\n");
 	}
 
-	if ((err = aoc_audio_path_close(alsa_stream)) < 0)
-		pr_err("ERR:%d in audio path close\n", err);
-
 	alsa_stream->period_size = 0;
 	alsa_stream->buffer_size = 0;
 
@@ -427,11 +424,6 @@ static int snd_aoc_pcm_prepare(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *sub
 	pr_debug("channels = %d, rate = %d, bits = %d, float-fmt = %d\n",
 		 channels, alsa_stream->params_rate,
 		 alsa_stream->pcm_format_width, alsa_stream->pcm_float_fmt);
-
-	if ((err = aoc_audio_path_open(alsa_stream)) < 0) {
-		pr_err("ERR:%d in audio path open\n", err);
-		goto out;
-	}
 
 	aoc_audio_setup(alsa_stream);
 

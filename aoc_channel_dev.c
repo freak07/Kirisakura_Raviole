@@ -77,6 +77,8 @@ struct aoc_message_node {
 enum aoc_cmd_code {
 	AOCC_CMD_OPEN_CHANNEL = 0,
 	AOCC_CMD_CLOSE_CHANNEL,
+	AOCC_CMD_BLOCK_CHANNEL,
+	AOCC_CMD_UNBLOCK_CHANNEL,
 };
 
 struct aocc_channel_control_msg {
@@ -93,6 +95,7 @@ struct file_prvdata {
 	struct list_head pending_aoc_messages;
 	rwlock_t pending_msg_lock;
 	atomic_t pending_msg_count;
+	bool is_channel_blocked;
 };
 
 /* Globals */
@@ -175,6 +178,13 @@ static int aocc_demux_kthread(void *data)
 				list_add_tail(&node->msg_list,
 					      &entry->pending_aoc_messages);
 				atomic_inc(&entry->pending_msg_count);
+				if (atomic_read(&entry->pending_msg_count) >
+				    (AOCC_MAX_PENDING_MSGS - 1) &&
+				    !entry->is_channel_blocked) {
+					aocc_send_cmd_msg(service,
+						AOCC_CMD_BLOCK_CHANNEL, channel);
+					entry->is_channel_blocked = true;
+				}
 				write_unlock(&entry->pending_msg_lock);
 
 				/* wake up anyone blocked on reading */
@@ -187,6 +197,8 @@ static int aocc_demux_kthread(void *data)
 		if (!handler_found) {
 			pr_warn_ratelimited("Could not find handler for channel %d",
 				            channel);
+			/* Notifies AOC the channel is closed. */
+			aocc_send_cmd_msg(service, AOCC_CMD_CLOSE_CHANNEL, channel);
 			kfree(node);
 			continue;
 		}
@@ -476,6 +488,12 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 	write_lock(&private->pending_msg_lock);
 	list_del(&node->msg_list);
 	atomic_dec(&private->pending_msg_count);
+	if (atomic_read(&private->pending_msg_count) <
+	    (AOCC_MAX_PENDING_MSGS - 1) && private->is_channel_blocked) {
+		aocc_send_cmd_msg(private->aocc_device_entry->service,
+			AOCC_CMD_UNBLOCK_CHANNEL, private->channel_index);
+			private->is_channel_blocked = false;
+	}
 	write_unlock(&private->pending_msg_lock);
 	kfree(node);
 
