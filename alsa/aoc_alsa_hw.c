@@ -669,14 +669,6 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 	int i, iMic, err = 0;
 	struct CMD_AUDIO_INPUT_MIC_RECORD_AP_SET_PARAMS cmd;
 
-	if (!aoc_ring_flush_read_data(alsa_stream->dev->service, AOC_UP, 0)) {
-		pr_err("ERR: ring buffer flush fail\n");
-		/* TODO differentiate different cases */
-		err = -EINVAL;
-		goto exit;
-	}
-	pr_debug("aoc ring buffer flushed\n");
-
 	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_MIC_RECORD_AP_SET_PARAMS_ID,
 		     sizeof(cmd));
 
@@ -743,8 +735,16 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 
 	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
 				NULL, alsa_stream->chip);
-	if (err < 0)
+	if (err < 0) {
 		pr_err("ERR:%d in capture parameter setup\n", err);
+		goto exit;
+	}
+
+	pr_debug("Flush aoc ring buffer\n");
+	if (!aoc_ring_flush_read_data(alsa_stream->dev->service, AOC_UP, 0)) {
+		pr_err("ERR: capture ring buffer flush fail\n");
+		err = -EINVAL;
+	}
 
 exit:
 	return err;
