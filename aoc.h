@@ -89,6 +89,11 @@ enum AOC_FIRMWARE_INFORMATION {
 	kAOCBoardID = 0x1001,
 	kAOCBoardRevision = 0x1002,
 	kAOCSRAMRepaired = 0x1003,
+	kAOCASVTableVersion = 0x1004,
+	kAOCCarveoutAddress = 0x1005,
+	kAOCCarveoutSize = 0x1006,
+	kAOCSensorDirectHeapAddress = 0x1007,
+	kAOCSensorDirectHeapSize = 0x1008,
 };
 
 #define module_aoc_driver(__aoc_driver)                                        \

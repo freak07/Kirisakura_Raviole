@@ -456,10 +456,17 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	u32 board_id = dt_property(prvdata->dev->of_node, "board_id");
 	u32 board_rev = dt_property(prvdata->dev->of_node, "board_rev");
 	u32 sram_was_repaired = aoc_sram_was_repaired(prvdata);
+	u32 carveout_base = prvdata->dram_resource.start;
+	u32 carveout_size = prvdata->dram_size;
+
 	struct aoc_fw_data fw_data[] = {
 		{ .key = kAOCBoardID, .value = board_id },
 		{ .key = kAOCBoardRevision, .value = board_rev },
-		{ .key = kAOCSRAMRepaired, .value = sram_was_repaired } };
+		{ .key = kAOCSRAMRepaired, .value = sram_was_repaired },
+		{ .key = kAOCCarveoutAddress, .value = carveout_base},
+		{ .key = kAOCCarveoutSize, .value = carveout_size},
+		{ .key = kAOCSensorDirectHeapAddress, .value = carveout_base + (28 * SZ_1M)},
+		{ .key = kAOCSensorDirectHeapSize, .value = SZ_4M } };
 	const char *version;
 
 	u32 ipc_offset, bootloader_offset;
