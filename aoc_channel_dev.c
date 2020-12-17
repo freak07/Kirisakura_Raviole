@@ -333,6 +333,7 @@ static int aocc_open(struct inode *inode, struct file *file)
 	entry = aocc_device_entry_for_inode(inode);
 	if (!entry) {
 		rc = -ENODEV;
+		mutex_unlock(&aocc_devices_lock);
 		goto err_aocc_device_entry;
 	}
 
@@ -340,6 +341,7 @@ static int aocc_open(struct inode *inode, struct file *file)
 	if (atomic_read(&channel_index_counter) == 0) {
 		pr_err("Too many channels have been opened.");
 		rc = -EMFILE;
+		mutex_unlock(&aocc_devices_lock);
 		goto err_channel_index_counter;
 	}
 
@@ -377,9 +379,16 @@ static int aocc_open(struct inode *inode, struct file *file)
 	return 0;
 
 err_send_cmd_msg:
+	write_lock(&s_open_files_lock);
+	list_del(&prvdata->open_files_list);
+	write_unlock(&s_open_files_lock);
+
+	mutex_lock(&aocc_devices_lock);
+	put_device(&entry->service->dev);
+	kref_put(&entry->refcount, aocc_device_entry_release);
+	mutex_unlock(&aocc_devices_lock);
 err_channel_index_counter:
 err_aocc_device_entry:
-	mutex_unlock(&aocc_devices_lock);
 	kfree(prvdata);
 err_kmalloc:
 	return rc;
