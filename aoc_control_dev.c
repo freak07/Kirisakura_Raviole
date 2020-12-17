@@ -8,6 +8,7 @@
 
 #include <linux/delay.h>
 #include <linux/device.h>
+#include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/kthread.h>
 #include <linux/module.h>
@@ -32,6 +33,7 @@ struct stats_prvdata {
 	struct aoc_service_dev *service;
 	struct aoc_stat *discovered_stats;
 	int total_stats;
+	long service_timeout;
 };
 
 /* Driver methods */
@@ -50,11 +52,11 @@ static ssize_t read_attribute(struct stats_prvdata *prvdata, void *in_cmd,
 	if (ret != 0)
 		return ret;
 
-	ret = aoc_service_write(service, in_cmd, in_size, true);
+	ret = aoc_service_write_timeout(service, in_cmd, in_size, prvdata->service_timeout);
 	if (ret < 0)
 		goto out;
 
-	ret = aoc_service_read(service, out_cmd, out_size, true);
+	ret = aoc_service_read_timeout(service, out_cmd, out_size, prvdata->service_timeout);
 
 out:
 	mutex_unlock(&prvdata->lock);
@@ -394,6 +396,7 @@ static int aoc_control_probe(struct aoc_service_dev *sd)
 
 	prvdata = devm_kzalloc(dev, sizeof(*prvdata), GFP_KERNEL);
 	prvdata->service = sd;
+	prvdata->service_timeout = msecs_to_jiffies(100);
 	mutex_init(&prvdata->lock);
 
 	INIT_WORK(&prvdata->discovery_work, discovery_workitem);

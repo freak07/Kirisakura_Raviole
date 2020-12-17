@@ -12,6 +12,7 @@
 #include <linux/kthread.h>
 #include <linux/list.h>
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/mutex.h>
 #include <linux/poll.h>
 #include <linux/rwlock_types.h>
@@ -27,6 +28,11 @@ static int aocc_major = -1;
 static int aocc_major_dev;
 static unsigned int aocc_next_minor; /* protected by aocc_devices_lock */
 static struct class *aocc_class;
+static long received_msg_count = 0;
+static long sent_msg_count = 0;
+
+module_param(received_msg_count, long, S_IRUGO);
+module_param(sent_msg_count, long, S_IRUGO);
 
 struct aocc_device_entry {
 	struct device *aocc_device;
@@ -105,12 +111,13 @@ static rwlock_t s_open_files_lock;
 static struct task_struct *s_demux_task;
 
 /* Message related services */
-static void aocc_send_cmd_msg(aoc_service *service_id, enum aoc_cmd_code code,
+static int aocc_send_cmd_msg(aoc_service *service_id, enum aoc_cmd_code code,
 			      int channel_to_modify);
 
 static int aocc_demux_kthread(void *data)
 {
 	ssize_t retval = 0;
+	int rc = 0;
 	struct aoc_service_dev *service = (struct aoc_service_dev *)data;
 
 	pr_info("Demux handler started!");
@@ -155,6 +162,7 @@ static int aocc_demux_kthread(void *data)
 			continue;
 		}
 
+		received_msg_count++;
 		node->msg_size = retval;
 		channel = node->channel_index;
 
@@ -181,9 +189,10 @@ static int aocc_demux_kthread(void *data)
 				if (atomic_read(&entry->pending_msg_count) >
 				    (AOCC_MAX_PENDING_MSGS - 1) &&
 				    !entry->is_channel_blocked) {
-					aocc_send_cmd_msg(service,
+					rc = aocc_send_cmd_msg(service,
 						AOCC_CMD_BLOCK_CHANNEL, channel);
-					entry->is_channel_blocked = true;
+					if (rc >= 0)
+						entry->is_channel_blocked = true;
 				}
 				write_unlock(&entry->pending_msg_lock);
 
@@ -207,7 +216,7 @@ static int aocc_demux_kthread(void *data)
 	return 0;
 }
 
-static void aocc_send_cmd_msg(aoc_service *service_id, enum aoc_cmd_code code,
+static int aocc_send_cmd_msg(aoc_service *service_id, enum aoc_cmd_code code,
 			      int channel_to_modify)
 {
 	struct aocc_channel_control_msg msg;
@@ -216,7 +225,7 @@ static void aocc_send_cmd_msg(aoc_service *service_id, enum aoc_cmd_code code,
 	msg.command_code = code;
 	msg.channel_to_modify = channel_to_modify;
 
-	aoc_service_write(service_id, (char *)&msg, sizeof(msg), true);
+	return aoc_service_write(service_id, (char *)&msg, sizeof(msg), false);
 }
 
 /* File methods */
@@ -324,6 +333,7 @@ static int aocc_open(struct inode *inode, struct file *file)
 	entry = aocc_device_entry_for_inode(inode);
 	if (!entry) {
 		rc = -ENODEV;
+		mutex_unlock(&aocc_devices_lock);
 		goto err_aocc_device_entry;
 	}
 
@@ -331,6 +341,7 @@ static int aocc_open(struct inode *inode, struct file *file)
 	if (atomic_read(&channel_index_counter) == 0) {
 		pr_err("Too many channels have been opened.");
 		rc = -EMFILE;
+		mutex_unlock(&aocc_devices_lock);
 		goto err_channel_index_counter;
 	}
 
@@ -358,14 +369,26 @@ static int aocc_open(struct inode *inode, struct file *file)
 	write_unlock(&s_open_files_lock);
 
 	/*Send a message to AOC to register a new channel. */
-	aocc_send_cmd_msg(prvdata->aocc_device_entry->service,
+	rc = aocc_send_cmd_msg(prvdata->aocc_device_entry->service,
 			  AOCC_CMD_OPEN_CHANNEL, prvdata->channel_index);
+	if (rc < 0) {
+		pr_err("send AOCC_CMD_OPEN_CHANNEL fail");
+		goto err_send_cmd_msg;
+	}
 
 	return 0;
 
+err_send_cmd_msg:
+	write_lock(&s_open_files_lock);
+	list_del(&prvdata->open_files_list);
+	write_unlock(&s_open_files_lock);
+
+	mutex_lock(&aocc_devices_lock);
+	put_device(&entry->service->dev);
+	kref_put(&entry->refcount, aocc_device_entry_release);
+	mutex_unlock(&aocc_devices_lock);
 err_channel_index_counter:
 err_aocc_device_entry:
-	mutex_unlock(&aocc_devices_lock);
 	kfree(prvdata);
 err_kmalloc:
 	return rc;
@@ -435,6 +458,7 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 	struct aoc_message_node *node = NULL;
 	ssize_t retval = 0;
 	bool aocc_device_dead;
+	int rc = 0;
 
 	mutex_lock(&aocc_devices_lock);
 	aocc_device_dead = private->aocc_device_entry->service->dead;
@@ -490,8 +514,9 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 	atomic_dec(&private->pending_msg_count);
 	if (atomic_read(&private->pending_msg_count) <
 	    (AOCC_MAX_PENDING_MSGS - 1) && private->is_channel_blocked) {
-		aocc_send_cmd_msg(private->aocc_device_entry->service,
+		rc = aocc_send_cmd_msg(private->aocc_device_entry->service,
 			AOCC_CMD_UNBLOCK_CHANNEL, private->channel_index);
+		if (rc >= 0)
 			private->is_channel_blocked = false;
 	}
 	write_unlock(&private->pending_msg_lock);
@@ -504,7 +529,6 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 			  size_t count, loff_t *off)
 {
 	struct file_prvdata *private = file->private_data;
-	bool should_block = ((file->f_flags & O_NONBLOCK) == 0);
 	char *buffer;
 	size_t leftover;
 	ssize_t retval = 0;
@@ -532,7 +556,9 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 	leftover = copy_from_user(buffer + sizeof(int), buf, count);
 	if (leftover == 0) {
 		retval = aoc_service_write(private->aocc_device_entry->service, buffer,
-					   count + sizeof(int), should_block);
+					   count + sizeof(int), false);
+		if (retval > 0)
+			sent_msg_count++;
 	} else {
 		retval = -ENOMEM;
 	}

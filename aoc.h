@@ -28,8 +28,12 @@ struct aoc_service_dev {
 
 ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 			 size_t count, bool block);
+ssize_t aoc_service_read_timeout(struct aoc_service_dev *dev, uint8_t *buffer,
+				 size_t count, long timeout);
 ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 			  size_t count, bool block);
+ssize_t aoc_service_write_timeout(struct aoc_service_dev *dev, const uint8_t *buffer,
+				  size_t count, long timeout);
 int aoc_service_can_read(struct aoc_service_dev *dev);
 int aoc_service_can_write(struct aoc_service_dev *dev);
 void aoc_service_set_read_blocked(struct aoc_service_dev *dev);
@@ -85,6 +89,11 @@ enum AOC_FIRMWARE_INFORMATION {
 	kAOCBoardID = 0x1001,
 	kAOCBoardRevision = 0x1002,
 	kAOCSRAMRepaired = 0x1003,
+	kAOCASVTableVersion = 0x1004,
+	kAOCCarveoutAddress = 0x1005,
+	kAOCCarveoutSize = 0x1006,
+	kAOCSensorDirectHeapAddress = 0x1007,
+	kAOCSensorDirectHeapSize = 0x1008,
 };
 
 #define module_aoc_driver(__aoc_driver)                                        \

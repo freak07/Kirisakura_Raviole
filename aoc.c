@@ -44,6 +44,10 @@
 #include <linux/workqueue.h>
 #include <soc/google/acpm_ipc_ctrl.h>
 
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
+#include <soc/google/exynos-itmon.h>
+#endif
+
 #include "ion_physical_heap.h"
 
 #include "aoc_firmware.h"
@@ -95,6 +99,10 @@ struct aoc_prvdata {
 
 	char firmware_name[MAX_FIRMWARE_LENGTH];
 	char *firmware_version;
+
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
+	struct notifier_block itmon_nb;
+#endif
 };
 
 /* TODO: Reduce the global variables (move into a driver structure) */
@@ -172,6 +180,24 @@ static void aoc_process_services(struct aoc_prvdata *prvdata);
 
 static irqreturn_t watchdog_int_handler(int irq, void *dev);
 static void aoc_watchdog(struct work_struct *work);
+
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
+static int aoc_itmon_notifier(struct notifier_block *nb, unsigned long action,
+			      void *nb_data)
+{
+	struct aoc_prvdata *prvdata;
+	struct itmon_notifier *itmon_info = nb_data;
+
+	prvdata = container_of(nb, struct aoc_prvdata, itmon_nb);
+	if (itmon_info->target_addr == 0) {
+		dev_err(prvdata->dev,
+			"Possible repro of b/174577569, please upload a bugreport and /data/vendor/ssrdump to that bug\n");
+		return NOTIFY_STOP;
+	}
+
+	return NOTIFY_OK;
+}
+#endif
 
 static inline void *aoc_sram_translate(u32 offset)
 {
@@ -431,10 +457,17 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	u32 board_id = dt_property(prvdata->dev->of_node, "board_id");
 	u32 board_rev = dt_property(prvdata->dev->of_node, "board_rev");
 	u32 sram_was_repaired = aoc_sram_was_repaired(prvdata);
+	u32 carveout_base = prvdata->dram_resource.start;
+	u32 carveout_size = prvdata->dram_size;
+
 	struct aoc_fw_data fw_data[] = {
 		{ .key = kAOCBoardID, .value = board_id },
 		{ .key = kAOCBoardRevision, .value = board_rev },
-		{ .key = kAOCSRAMRepaired, .value = sram_was_repaired } };
+		{ .key = kAOCSRAMRepaired, .value = sram_was_repaired },
+		{ .key = kAOCCarveoutAddress, .value = carveout_base},
+		{ .key = kAOCCarveoutSize, .value = carveout_size},
+		{ .key = kAOCSensorDirectHeapAddress, .value = carveout_base + (28 * SZ_1M)},
+		{ .key = kAOCSensorDirectHeapSize, .value = SZ_4M } };
 	const char *version;
 
 	u32 ipc_offset, bootloader_offset;
@@ -556,6 +589,76 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 }
 EXPORT_SYMBOL(aoc_service_read);
 
+ssize_t aoc_service_read_timeout(struct aoc_service_dev *dev, uint8_t *buffer,
+				 size_t count, long timeout)
+{
+	const struct device *parent;
+	struct aoc_prvdata *prvdata;
+	aoc_service *service;
+
+	size_t msg_size;
+	int service_number;
+	long ret = 1;
+
+	if (!dev || !buffer || !count)
+		return -EINVAL;
+
+	if (dev->dead)
+		return -ENODEV;
+
+	if (!aoc_online)
+		return -ENODEV;
+
+	parent = dev->dev.parent;
+	prvdata = dev_get_drvdata(parent);
+
+	service_number = dev->service_index;
+	service = service_at_index(prvdata, dev->service_index);
+
+	if (!aoc_is_valid_dram_address(prvdata, service)) {
+		WARN_ONCE(1, "aoc service %d has invalid DRAM region", service_number);
+		return -ENODEV;
+	}
+
+	if (aoc_service_message_slots(service, AOC_UP) == 0)
+		return -EBADF;
+
+	if (!aoc_service_can_read_message(service, AOC_UP)) {
+		set_bit(service_number, &read_blocked_mask);
+		ret = wait_event_interruptible_timeout(
+			metadata[service_number].read_queue,
+			!aoc_online || dev->dead ||
+				aoc_service_can_read_message(service, AOC_UP),
+			timeout);
+		clear_bit(service_number, &read_blocked_mask);
+	}
+
+	if (dev->dead)
+		return -ENODEV;
+
+	if (!aoc_online)
+		return -ENODEV;
+
+	if (ret < 0)
+		return ret;
+
+	/* AoC timed out */
+	if (ret == 0)
+		return -ETIMEDOUT;
+
+	if (!aoc_service_is_ring(service) &&
+	    count < aoc_service_current_message_size(service, prvdata->ipc_base,
+						     AOC_UP))
+		return -EFBIG;
+
+	msg_size = count;
+	aoc_service_read_message(service, prvdata->ipc_base, AOC_UP, buffer,
+				 &msg_size);
+
+	return msg_size;
+}
+EXPORT_SYMBOL(aoc_service_read_timeout);
+
 ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 			  size_t count, bool block)
 {
@@ -623,6 +726,74 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 	return count;
 }
 EXPORT_SYMBOL(aoc_service_write);
+
+ssize_t aoc_service_write_timeout(struct aoc_service_dev *dev, const uint8_t *buffer,
+				  size_t count, long timeout)
+{
+	const struct device *parent;
+	struct aoc_prvdata *prvdata;
+
+	aoc_service *service;
+	int service_number;
+	long ret = 1;
+
+	if (!dev || !buffer || !count)
+		return -EINVAL;
+
+	if (dev->dead)
+		return -ENODEV;
+
+	if (!aoc_online)
+		return -ENODEV;
+
+	parent = dev->dev.parent;
+	prvdata = dev_get_drvdata(parent);
+
+	service_number = dev->service_index;
+	service = service_at_index(prvdata, service_number);
+
+	if (!aoc_is_valid_dram_address(prvdata, service)) {
+		WARN_ONCE(1, "aoc service %d has invalid DRAM region", service_number);
+		return -ENODEV;
+	}
+
+	if (aoc_service_message_slots(service, AOC_DOWN) == 0)
+		return -EBADF;
+
+	if (count > aoc_service_message_size(service, AOC_DOWN))
+		return -EFBIG;
+
+	if (!aoc_service_can_write_message(service, AOC_DOWN)) {
+		set_bit(service_number, &write_blocked_mask);
+		ret = wait_event_interruptible_timeout(
+			metadata[service_number].write_queue,
+			!aoc_online || dev->dead ||
+				aoc_service_can_write_message(service, AOC_DOWN),
+			timeout);
+		clear_bit(service_number, &write_blocked_mask);
+	}
+
+	if (dev->dead)
+		return -ENODEV;
+
+	if (!aoc_online)
+		return -ENODEV;
+
+	if (ret < 0)
+		return ret;
+
+	if (ret == 0)
+		return -ETIMEDOUT;
+
+	ret = aoc_service_write_message(service, prvdata->ipc_base, AOC_DOWN,
+					buffer, count);
+
+	if (!aoc_service_is_ring(service) || aoc_ring_is_push(service))
+		signal_aoc(prvdata->mbox_channel);
+
+	return count;
+}
+EXPORT_SYMBOL(aoc_service_write_timeout);
 
 int aoc_service_can_read(struct aoc_service_dev *dev)
 {
@@ -1909,6 +2080,11 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to register acpm aoc reset callback\n");
 		return ret;
 	}
+
+#if IS_ENABLED(CONFIG_EXYNOS_ITMON)
+	prvdata->itmon_nb.notifier_call = aoc_itmon_notifier;
+	itmon_notifier_chain_register(&prvdata->itmon_nb);
+#endif
 
 	if (aoc_autoload_firmware) {
 		ret = start_firmware_load(dev);
