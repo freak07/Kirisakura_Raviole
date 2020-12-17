@@ -1396,14 +1396,18 @@ static void signal_aoc(struct mbox_chan *channel)
 #endif
 }
 
-static int aoc_iommu_fault_handler(struct iommu_domain *domain,
-				   struct device *dev, unsigned long iova,
-				   int flags, void *token)
+static int aoc_iommu_fault_handler(struct iommu_fault *fault, void *token)
 {
-	dev_err(dev, "iommu fault at aoc address %#010lx, flags %#010x\n", iova,
-		flags);
+	struct device *dev = token;
 
-	return 0;
+	dev_err(dev, "aoc iommu fault: fault->type = %u\n", fault->type);
+	dev_err(dev, "fault->event: reason = %u, flags = %#010x, addr = %#010llx\n",
+		fault->event.reason, fault->event.flags, fault->event.addr);
+	dev_err(dev, "fault->prm: flags = %#010x, addr = %#010llx\n",
+		fault->prm.flags, fault->prm.addr);
+
+	/* Tell the IOMMU driver that the fault is non-fatal. */
+	return -EAGAIN;
 }
 
 static void aoc_configure_sysmmu(struct aoc_prvdata *p)
@@ -1411,8 +1415,11 @@ static void aoc_configure_sysmmu(struct aoc_prvdata *p)
 #ifndef AOC_JUNO
 	struct iommu_domain *domain = p->domain;
 	struct device *dev = p->dev;
+	int rc;
 
-	iommu_set_fault_handler(domain, aoc_iommu_fault_handler, NULL);
+	rc = iommu_register_device_fault_handler(dev, aoc_iommu_fault_handler, dev);
+	if (rc)
+		dev_err(dev, "iommu_register_device_fault_handler failed: rc = %d\n", rc);
 
 	/* Map in the AoC carveout */
 	if (iommu_map(domain, 0x98000000, p->dram_resource.start, p->dram_size,
