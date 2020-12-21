@@ -459,6 +459,7 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	u32 carveout_base = prvdata->dram_resource.start;
 	u32 carveout_size = prvdata->dram_size;
 
+	u32 force_voltage_nominal = dt_property(prvdata->dev->of_node, "force-vnom");
 	struct aoc_fw_data fw_data[] = {
 		{ .key = kAOCBoardID, .value = board_id },
 		{ .key = kAOCBoardRevision, .value = board_rev },
@@ -466,7 +467,8 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		{ .key = kAOCCarveoutAddress, .value = carveout_base},
 		{ .key = kAOCCarveoutSize, .value = carveout_size},
 		{ .key = kAOCSensorDirectHeapAddress, .value = carveout_base + (28 * SZ_1M)},
-		{ .key = kAOCSensorDirectHeapSize, .value = SZ_4M } };
+		{ .key = kAOCSensorDirectHeapSize, .value = SZ_4M },
+		{ .key = kAOCForceVNOM, .value = force_voltage_nominal } };
 	const char *version;
 
 	u32 ipc_offset, bootloader_offset;
@@ -495,6 +497,11 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 
 	if (sram_was_repaired)
 		dev_err(dev, "SRAM was repaired on this device.  Stability/power will be impacted\n");
+
+	if (force_voltage_nominal)
+		dev_err(dev, "Forcing VDD_AOC to VNOM on this device. Power will be impacted\n");
+	else
+		dev_info(dev, "AoC using default DVFS on this device.\n");
 
 	if (!_aoc_fw_is_compatible(fw)) {
 		dev_err(dev, "firmware and drivers are incompatible\n");
