@@ -351,6 +351,34 @@ static int mic_dc_blocker_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int voice_call_mic_source_get(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = chip->voice_call_mic_source;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int voice_call_mic_source_set(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	chip->voice_call_mic_source = ucontrol->value.integer.value[0];
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static int voice_call_mic_mute_get(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
@@ -714,6 +742,12 @@ static SOC_ENUM_SINGLE_DECL(sink_3_state_enum, 1, 3,
 static SOC_ENUM_SINGLE_DECL(sink_4_state_enum, 1, 4,
 			    sink_processing_state_texts);
 
+/* Voice call mic source */
+static const char *voice_call_mic_source_texts[] = { "Default", "Builtin_MIC",
+						     "USB_MIC", "BT_MIC" };
+static SOC_ENUM_SINGLE_DECL(voice_call_mic_source_enum, 1, 0,
+			    voice_call_mic_source_texts);
+
 static struct snd_kcontrol_new snd_aoc_ctl[] = {
 	{
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
@@ -828,6 +862,8 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 	SOC_SINGLE_EXT("AoC USB Sink Channel Bitmap", SND_SOC_NOPM, 4, 0x00ffff,
 		       0, aoc_sink_channel_bitmap_ctl_get, NULL),
 
+	SOC_ENUM_EXT("Voice Call Mic Source", voice_call_mic_source_enum,
+		     voice_call_mic_source_get, voice_call_mic_source_set),
 	SOC_SINGLE_EXT("Voice Call Mic Mute", SND_SOC_NOPM, 0, 1, 0,
 		       voice_call_mic_mute_get, voice_call_mic_mute_set),
 	SOC_SINGLE_EXT("Voice Call Audio Enable", SND_SOC_NOPM, 0, 1, 0,

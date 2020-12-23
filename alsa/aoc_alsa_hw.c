@@ -1052,9 +1052,9 @@ static int aoc_audio_modem_mic_input(struct aoc_chip *chip,
 int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst)
 {
 	int err;
-	int mic_input_source;
+	int mic_input_source = 0;
 
-	pr_info("Open phone call path - src:%d, dst:%d\n",  src, dst);
+	pr_info("Open phone call path - src:%d, dst:%d\n", src, dst);
 
 	if (!chip->voice_call_audio_enable) {
 		pr_info("phone call audio NOT enabled\n");
@@ -1072,19 +1072,40 @@ int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst)
 	}
 
 	/* Audio capture enabled for modem input */
-	switch (dst) {
-	case ASNK_SPEAKER:
-		mic_input_source = MODEM_MIC_INPUT_INDEX;
-		break;
-	case ASNK_BT:
-		mic_input_source = MODEM_BT_INPUT_INDEX;
-		break;
-	case ASNK_USB:
-		mic_input_source =  MODEM_USB_INPUT_INDEX;
-		break;
-	default:
-		mic_input_source = 0;
+	if (chip->voice_call_mic_source == DEFAULT_MIC) {
+		/* Use default mic for voice call based on the playback sink */
+		switch (dst) {
+		case ASNK_SPEAKER:
+			mic_input_source = MODEM_MIC_INPUT_INDEX;
+			break;
+		case ASNK_BT:
+			mic_input_source = MODEM_BT_INPUT_INDEX;
+			break;
+		case ASNK_USB:
+			mic_input_source = MODEM_USB_INPUT_INDEX;
+			break;
+		default:
+			pr_err("ERR in mic input source for voice call, dst=%d\n", dst);
+		}
+	} else {
+		/* Use user-specified mic for voice call independently of the playback sink */
+		switch (chip->voice_call_mic_source) {
+		case BUILTIN_MIC:
+			mic_input_source = MODEM_MIC_INPUT_INDEX;
+			break;
+		case USB_MIC:
+			mic_input_source = MODEM_USB_INPUT_INDEX;
+			break;
+		case BT_MIC:
+			mic_input_source = MODEM_BT_INPUT_INDEX;
+			break;
+		default:
+			pr_err("ERR in mic input source for voice call, mic source=%d\n",
+			       chip->voice_call_mic_source);
+		}
 	}
+
+	pr_info("voice call mic input source: %d\n", mic_input_source);
 	err = aoc_audio_modem_mic_input(chip, START, mic_input_source);
 	if (err < 0)
 		pr_err("ERR:%d modem input start fail\n", err);

@@ -104,6 +104,7 @@ enum {
 enum { ULL = 0, LL0, LL1, LL2, LL3, DEEP_BUFFER, OFF_LOAD, HAPTICS = 10 };
 enum { BUILTIN_MIC0 = 0, BUILTIN_MIC1, BUILTIN_MIC2, BUILTIN_MIC3 };
 enum { MIC_LOW_POWER_GAIN = 0, MIC_HIGH_POWER_GAIN, MIC_CURRENT_GAIN };
+enum { DEFAULT_MIC = 0, BUILTIN_MIC, USB_MIC, BT_MIC };
 
 enum { NONBLOCKING = 0, BLOCKING = 1 };
 enum { STOP = 0, START };
@@ -128,6 +129,7 @@ struct aoc_chip {
 	int volume;
 	int old_volume; /* Store the volume value while muted */
 	int mute;
+	int voice_call_mic_source;
 	int voice_call_mic_mute;
 	int default_mic_hw_gain;
 	int voice_call_audio_enable;
