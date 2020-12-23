@@ -94,6 +94,7 @@ enum AOC_FIRMWARE_INFORMATION {
 	kAOCCarveoutSize = 0x1006,
 	kAOCSensorDirectHeapAddress = 0x1007,
 	kAOCSensorDirectHeapSize = 0x1008,
+	kAOCForceVNOM = 0x1009,
 };
 
 #define module_aoc_driver(__aoc_driver)                                        \

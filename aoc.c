@@ -460,6 +460,7 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	u32 carveout_base = prvdata->dram_resource.start;
 	u32 carveout_size = prvdata->dram_size;
 
+	u32 force_voltage_nominal = dt_property(prvdata->dev->of_node, "force-vnom");
 	struct aoc_fw_data fw_data[] = {
 		{ .key = kAOCBoardID, .value = board_id },
 		{ .key = kAOCBoardRevision, .value = board_rev },
@@ -467,7 +468,8 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		{ .key = kAOCCarveoutAddress, .value = carveout_base},
 		{ .key = kAOCCarveoutSize, .value = carveout_size},
 		{ .key = kAOCSensorDirectHeapAddress, .value = carveout_base + (28 * SZ_1M)},
-		{ .key = kAOCSensorDirectHeapSize, .value = SZ_4M } };
+		{ .key = kAOCSensorDirectHeapSize, .value = SZ_4M },
+		{ .key = kAOCForceVNOM, .value = force_voltage_nominal } };
 	const char *version;
 
 	u32 ipc_offset, bootloader_offset;
@@ -496,6 +498,11 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 
 	if (sram_was_repaired)
 		dev_err(dev, "SRAM was repaired on this device.  Stability/power will be impacted\n");
+
+	if (force_voltage_nominal)
+		dev_err(dev, "Forcing VDD_AOC to VNOM on this device. Power will be impacted\n");
+	else
+		dev_info(dev, "AoC using default DVFS on this device.\n");
 
 	if (!_aoc_fw_is_compatible(fw)) {
 		dev_err(dev, "firmware and drivers are incompatible\n");
@@ -1397,14 +1404,18 @@ static void signal_aoc(struct mbox_chan *channel)
 #endif
 }
 
-static int aoc_iommu_fault_handler(struct iommu_domain *domain,
-				   struct device *dev, unsigned long iova,
-				   int flags, void *token)
+static int aoc_iommu_fault_handler(struct iommu_fault *fault, void *token)
 {
-	dev_err(dev, "iommu fault at aoc address %#010lx, flags %#010x\n", iova,
-		flags);
+	struct device *dev = token;
 
-	return 0;
+	dev_err(dev, "aoc iommu fault: fault->type = %u\n", fault->type);
+	dev_err(dev, "fault->event: reason = %u, flags = %#010x, addr = %#010llx\n",
+		fault->event.reason, fault->event.flags, fault->event.addr);
+	dev_err(dev, "fault->prm: flags = %#010x, addr = %#010llx\n",
+		fault->prm.flags, fault->prm.addr);
+
+	/* Tell the IOMMU driver that the fault is non-fatal. */
+	return -EAGAIN;
 }
 
 static void aoc_configure_sysmmu(struct aoc_prvdata *p)
@@ -1412,8 +1423,11 @@ static void aoc_configure_sysmmu(struct aoc_prvdata *p)
 #ifndef AOC_JUNO
 	struct iommu_domain *domain = p->domain;
 	struct device *dev = p->dev;
+	int rc;
 
-	iommu_set_fault_handler(domain, aoc_iommu_fault_handler, NULL);
+	rc = iommu_register_device_fault_handler(dev, aoc_iommu_fault_handler, dev);
+	if (rc)
+		dev_err(dev, "iommu_register_device_fault_handler failed: rc = %d\n", rc);
 
 	/* Map in the AoC carveout */
 	if (iommu_map(domain, 0x98000000, p->dram_resource.start, p->dram_size,
