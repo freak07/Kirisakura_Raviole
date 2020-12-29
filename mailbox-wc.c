@@ -131,26 +131,34 @@ static irqreturn_t wc_int_handler(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
-static int wc_mbox_send_data(struct mbox_chan *chan, void *data)
+static int wc_mbox_channel_index(struct mbox_chan *chan)
 {
 	struct mbox_controller *mbox = chan->mbox;
+        int i = 0;
+
+	for (i = 0; i < MBOX_WC_INTERRUPTS; i++) {
+		if (chan == &mbox->chans[i])
+			return i;
+	}
+
+        return -1;
+}
+
+static int wc_mbox_send_data(struct mbox_chan *chan, void *data)
+{
 	struct wc_mbox_prvdata *prvdata = dev_get_drvdata(chan->mbox->dev);
 	u32 *regs = data;
 	u32 status;
 	int i, index;
 
-	for (index = 0; index < MBOX_WC_INTERRUPTS; index++) {
-		if (chan == &mbox->chans[index])
-			break;
-	}
-
-	if (index == MBOX_WC_INTERRUPTS)
+        index = wc_mbox_channel_index(chan);
+	if (index == -1)
 		return -EINVAL;
 
 	/* Wait if the remote has not finished processing the last message */
 	if (data) {
 		status = ioread32(prvdata->base + MB_INTSR0);
-		if (status != 0) {
+		if ((status & (1 << index)) != 0) {
 			pr_debug("Busy with status %x\n", status);
 			return -EBUSY;
 		}
@@ -164,6 +172,7 @@ static int wc_mbox_send_data(struct mbox_chan *chan, void *data)
 	return 0;
 }
 
+/* TODO: Enable / disable interrupts per channel */
 static int wc_mbox_startup(struct mbox_chan *chan)
 {
 	struct wc_mbox_prvdata *prvdata = dev_get_drvdata(chan->mbox->dev);
@@ -194,11 +203,17 @@ static bool wc_mbox_last_tx_done(struct mbox_chan *chan)
 
 static bool wc_mbox_peek_data(struct mbox_chan *chan)
 {
-	struct wc_mbox_prvdata *prvdata = dev_get_drvdata(chan->mbox->dev);
+	struct mbox_controller *mbox = chan->mbox;
+	struct wc_mbox_prvdata *prvdata = dev_get_drvdata(mbox->dev);
 	u32 status;
+	int index;
+
+        index = wc_mbox_channel_index(chan);
+	if (index == -1)
+		return false;
 
 	status = ioread32(prvdata->base + MB_INTSR1);
-	return status != 0;
+	return (status & (1 << index)) != 0;
 }
 
 static int wc_mbox_probe(struct platform_device *pdev)
