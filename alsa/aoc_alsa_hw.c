@@ -686,6 +686,8 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 			cmd.pdm_mask = cmd.pdm_mask | (1 << iMic);
 		} else {
 			pr_err("ERR: wrong mic id -1\n");
+			err = -EINVAL;
+			goto exit;
 		}
 	}
 
