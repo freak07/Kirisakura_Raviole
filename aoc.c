@@ -1622,7 +1622,7 @@ static void aoc_pheap_alloc_cb(struct ion_buffer *buffer, void *ctx)
 	size = sg->sgl[0].length;
 
 	if (prvdata->map_handler) {
-		prvdata->map_handler((u32)buffer->priv_virt, phys, size, true,
+		prvdata->map_handler((u64)buffer->priv_virt, phys, size, true,
 				     prvdata->map_handler_ctx);
 	}
 }
@@ -1646,7 +1646,7 @@ static void aoc_pheap_free_cb(struct ion_buffer *buffer, void *ctx)
 	size = sg->sgl[0].length;
 
 	if (prvdata->map_handler) {
-		prvdata->map_handler((u32)buffer->priv_virt, phys, size, false,
+		prvdata->map_handler((u64)buffer->priv_virt, phys, size, false,
 				     prvdata->map_handler_ctx);
 	}
 }
@@ -1845,7 +1845,7 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lon
 			}
 
 			ionbuf = dmabuf->priv;
-			handle.handle = (u32)ionbuf->priv_virt;
+			handle.handle = (u64)ionbuf->priv_virt;
 
 			dma_buf_put(dmabuf);
 
