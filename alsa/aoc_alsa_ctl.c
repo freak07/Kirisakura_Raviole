@@ -440,6 +440,34 @@ static int voice_call_audio_enable_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int mic_spatial_module_enable_get(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = chip->mic_spatial_module_enable;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int mic_spatial_module_enable_set(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	chip->mic_spatial_module_enable = ucontrol->value.integer.value[0];
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static const char *dsp_state_texts[] = { "Idle", "Playback", "Telephony" };
 
 static int aoc_dsp_state_ctl_info(struct snd_kcontrol *kcontrol,
@@ -485,6 +513,22 @@ static int aoc_asp_mode_ctl_set(struct snd_kcontrol *kcontrol,
 			 ucontrol->value.enumerated.item[0]);
 	pr_debug("asp mode set: block %d component %d - %d\n", block, component,
 		 ucontrol->value.enumerated.item[0]);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int
+aoc_builtin_mic_process_mode_ctl_get(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.enumerated.item[0] =
+		aoc_get_builtin_mic_process_mode(chip);
 
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
@@ -710,6 +754,12 @@ static int a2dp_encoder_parameters_get(struct snd_kcontrol *kcontrol,
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
 }
+
+/* TODO: this has to be consistent to enum APMicProcessIndex in aoc-interface.h */
+static const char *builtin_mic_process_mode_texts[] = { "Raw", "Spatial" };
+static SOC_ENUM_SINGLE_DECL(builtin_mic_process_mode_enum, 1, 0,
+			    builtin_mic_process_mode_texts);
+
 /* TODO: this has to be consistent to BT/USB Mode enum in aoc_alsa.h */
 static const char *bt_mode_texts[] = { "Unconfigured", "SCO",
 				       "ESCO",	       "A2DP_RAW",
@@ -817,6 +867,9 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 	SOC_ENUM_EXT("AoC Modem Downlink ASRC Mode", block_19_15_1_state_enum,
 		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
 
+	SOC_ENUM_EXT("BUILTIN MIC Process Mode", builtin_mic_process_mode_enum,
+		     aoc_builtin_mic_process_mode_ctl_get, NULL),
+
 	SOC_ENUM_EXT("BT Mode", bt_mode_enum, aoc_sink_mode_ctl_get,
 		     aoc_sink_mode_ctl_set),
 
@@ -869,6 +922,9 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 	SOC_SINGLE_EXT("Voice Call Audio Enable", SND_SOC_NOPM, 0, 1, 0,
 		       voice_call_audio_enable_get,
 		       voice_call_audio_enable_set),
+	SOC_SINGLE_EXT("Mic Spatial Module Enable", SND_SOC_NOPM, 0, 1, 0,
+		       mic_spatial_module_enable_get,
+		       mic_spatial_module_enable_set),
 
 	SOC_SINGLE_EXT("MIC0", SND_SOC_NOPM, BUILTIN_MIC0, 1, 0,
 		       mic_power_ctl_get, mic_power_ctl_set),

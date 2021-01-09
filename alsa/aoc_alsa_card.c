@@ -1800,6 +1800,7 @@ static int snd_aoc_init(struct aoc_chip *chip)
 	chip->voice_call_mic_source = 0;
 	chip->voice_call_mic_mute = 0;
 	chip->voice_call_audio_enable = 1;
+	chip->mic_spatial_module_enable = 0;
 
 	mutex_init(&chip->audio_mutex);
 	spin_lock_init(&chip->audio_lock);
