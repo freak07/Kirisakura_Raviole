@@ -1466,22 +1466,22 @@ static void aoc_configure_sysmmu(struct aoc_prvdata *p)
 
 	/* Use a 1MB mapping instead of individual mailboxes for now */
 	/* TODO: Turn the mailbox address ranges into dtb entries */
-	if (iommu_map(domain, 0x9A000000, 0x17600000, SZ_1M,
+	if (iommu_map(domain, 0x9E000000, 0x17600000, SZ_1M,
 		      IOMMU_READ | IOMMU_WRITE))
 		dev_err(dev, "mapping mailboxes failed\n");
 
 	/* Map in GSA mailbox */
-	if (iommu_map(domain, 0x9A100000, 0x17C00000, SZ_1M,
+	if (iommu_map(domain, 0x9E100000, 0x17C00000, SZ_1M,
 		      IOMMU_READ | IOMMU_WRITE))
 		dev_err(dev, "mapping gsa mailbox failed\n");
 
 	/* Map in USB for low power audio */
-	if (iommu_map(domain, 0x9A200000, 0x11100000, SZ_1M,
+	if (iommu_map(domain, 0x9E200000, 0x11100000, SZ_1M,
 		      IOMMU_READ | IOMMU_WRITE))
 		dev_err(dev, "mapping usb failed\n");
 
 	/* Map in modem registers */
-	if (iommu_map(domain, 0x9A300000, 0x40000000, SZ_1M,
+	if (iommu_map(domain, 0x9E300000, 0x40000000, SZ_1M,
 		      IOMMU_READ | IOMMU_WRITE))
 		dev_err(dev, "mapping modem failed\n");
 #endif
@@ -1496,10 +1496,10 @@ static void aoc_clear_sysmmu(struct aoc_prvdata *p)
 	iommu_unmap(domain, 0x98000000, p->dram_size);
 
 	/* Device registers */
-	iommu_unmap(domain, 0x9A000000, SZ_1M);
-	iommu_unmap(domain, 0x9A100000, SZ_1M);
-	iommu_unmap(domain, 0x9A200000, SZ_1M);
-	iommu_unmap(domain, 0x9A300000, SZ_1M);
+	iommu_unmap(domain, 0x9E000000, SZ_1M);
+	iommu_unmap(domain, 0x9E100000, SZ_1M);
+	iommu_unmap(domain, 0x9E200000, SZ_1M);
+	iommu_unmap(domain, 0x9E300000, SZ_1M);
 #endif
 }
 
