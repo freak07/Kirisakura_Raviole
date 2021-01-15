@@ -54,6 +54,8 @@
 #define DEFAULT_AUDIO_SINK_ID 0
 #define MAX_NUM_OF_SINKS_PER_STREAM 2
 
+#define N_MIC_IN_SPATIAL_MODULE 3
+
 /* TODO: the exact number has to be determined based on hardware platform*/
 #define MAX_NUM_OF_SUBSTREAMS 12
 #define MAX_NUM_OF_SINKS 5
@@ -130,6 +132,7 @@ struct aoc_chip {
 	int volume;
 	int old_volume; /* Store the volume value while muted */
 	int mute;
+	int audio_capture_mic_source;
 	int voice_call_mic_source;
 	int voice_call_mic_mute;
 	int default_mic_hw_gain;

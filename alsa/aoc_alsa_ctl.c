@@ -386,6 +386,36 @@ static int compr_offload_volume_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int audio_capture_mic_source_get(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = chip->audio_capture_mic_source;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int audio_capture_mic_source_set(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	chip->audio_capture_mic_source = ucontrol->value.integer.value[0];
+	if (chip->audio_capture_mic_source == DEFAULT_MIC)
+		chip->audio_capture_mic_source = BUILTIN_MIC;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static int voice_call_mic_source_get(struct snd_kcontrol *kcontrol,
 				     struct snd_ctl_elem_value *ucontrol)
 {
@@ -827,6 +857,11 @@ static SOC_ENUM_SINGLE_DECL(sink_3_state_enum, 1, 3,
 static SOC_ENUM_SINGLE_DECL(sink_4_state_enum, 1, 4,
 			    sink_processing_state_texts);
 
+/* audio capture mic source */
+static const char *audio_capture_mic_source_texts[] = { "Default", "Builtin_MIC", "USB_MIC",
+						       "BT_MIC" };
+static SOC_ENUM_SINGLE_DECL(audio_capture_mic_source_enum, 1, 0, audio_capture_mic_source_texts);
+
 /* Voice call mic source */
 static const char *voice_call_mic_source_texts[] = { "Default", "Builtin_MIC",
 						     "USB_MIC", "BT_MIC" };
@@ -949,6 +984,9 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		       0x00ffff, 0, aoc_sink_channel_bitmap_ctl_get, NULL),
 	SOC_SINGLE_EXT("AoC USB Sink Channel Bitmap", SND_SOC_NOPM, 4, 0x00ffff,
 		       0, aoc_sink_channel_bitmap_ctl_get, NULL),
+
+	SOC_ENUM_EXT("Audio Capture Mic Source", audio_capture_mic_source_enum,
+		     audio_capture_mic_source_get, audio_capture_mic_source_set),
 
 	SOC_ENUM_EXT("Voice Call Mic Source", voice_call_mic_source_enum,
 		     voice_call_mic_source_get, voice_call_mic_source_set),
