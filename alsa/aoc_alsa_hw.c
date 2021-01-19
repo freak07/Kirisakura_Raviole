@@ -1341,9 +1341,10 @@ int aoc_audio_close(struct aoc_alsa_stream *alsa_stream)
 {
 	int err = 0;
 	struct aoc_chip *chip = alsa_stream->chip;
+	struct snd_pcm_substream *substream = alsa_stream->substream;
 
 	/* To deal with recording with spatial module enabled */
-	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_CAPTURE &&
+	if (substream && substream->stream == SNDRV_PCM_STREAM_CAPTURE &&
 	    chip->mic_spatial_module_enable) {
 		err = aoc_audio_capture_spatial_module_trigger(chip, STOP);
 		if (err < 0)
