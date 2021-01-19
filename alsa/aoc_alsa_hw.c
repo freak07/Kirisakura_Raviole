@@ -1276,7 +1276,7 @@ int aoc_compr_offload_get_io_samples(struct aoc_alsa_stream *alsa_stream)
 	int err;
 	struct CMD_AUDIO_OUTPUT_GET_EP_SAMPLES cmd;
 
-	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_EP_CUR_SAMPLES_ID,
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_EP_TOT_SAMPLES_ID,
 		     sizeof(cmd));
 	cmd.source = alsa_stream->entry_point_idx;
 
