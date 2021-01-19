@@ -16,3 +16,6 @@ struct aoc_ion_handle {
 };
 
 #define AOC_IOCTL_ION_FD_TO_HANDLE _IOWR(AOC_IOCTL_MAGIC, 204, struct aoc_ion_handle)
+#define AOC_IOCTL_DISABLE_MM _IOW(AOC_IOCTL_MAGIC, 205, __u32)
+#define AOC_IOCTL_FORCE_VNOM _IOW(AOC_IOCTL_MAGIC, 206, __u32)
+#define AOC_IOCTL_ENABLE_UART_TX _IOW(AOC_IOCTL_MAGIC, 207, __u32)

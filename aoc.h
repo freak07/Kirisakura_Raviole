@@ -97,6 +97,8 @@ enum AOC_FIRMWARE_INFORMATION {
 	kAOCSensorDirectHeapAddress = 0x1007,
 	kAOCSensorDirectHeapSize = 0x1008,
 	kAOCForceVNOM = 0x1009,
+	kAOCDisableMM = 0x100A,
+	kAOCEnableUART = 0x100B,
 };
 
 #define module_aoc_driver(__aoc_driver)                                        \
