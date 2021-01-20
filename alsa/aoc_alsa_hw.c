@@ -333,6 +333,22 @@ int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute)
 	return 0;
 }
 
+int aoc_get_builtin_mic_process_mode(struct aoc_chip *chip)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_GET_AP_MIC_INDEX cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_GET_AP_MIC_INDEX_ID,
+		     sizeof(cmd));
+
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd,
+				sizeof(cmd), (uint8_t *)&cmd, chip);
+	if (err < 0)
+		pr_err("Error in get builtin_mic_process_mode!\n");
+
+	return err < 0 ? err : cmd.mic_process_index;
+}
+
 int aoc_get_dsp_state(struct aoc_chip *chip)
 {
 	int err;
@@ -668,11 +684,15 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 {
 	int i, iMic, err = 0;
 	struct CMD_AUDIO_INPUT_MIC_RECORD_AP_SET_PARAMS cmd;
+	struct aoc_chip *chip = alsa_stream->chip;
+
 
 	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_MIC_RECORD_AP_SET_PARAMS_ID,
 		     sizeof(cmd));
 
-	if (channels < 1 || channels > NUM_OF_BUILTIN_MIC) {
+	/* TODO: the output of spatial module is stereo */
+	if (channels < 1 || channels > NUM_OF_BUILTIN_MIC ||
+	    (channels != 2 && chip->mic_spatial_module_enable)) {
 		pr_err("ERR: wrong channel number %u for capture\n", channels);
 		err = -EINVAL;
 		goto exit;
@@ -681,7 +701,7 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 	/* TODO: more checks on mic id */
 	cmd.pdm_mask = 0; /* in case it is not initialized as zero */
 	for (i = 0; i < channels; i++) {
-		iMic = alsa_stream->chip->buildin_mic_id_list[i];
+		iMic = chip->buildin_mic_id_list[i];
 		if (iMic != -1) {
 			cmd.pdm_mask = cmd.pdm_mask | (1 << iMic);
 		} else {
@@ -690,6 +710,10 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 			goto exit;
 		}
 	}
+
+	/* TODO: need to double check */
+	if(chip->mic_spatial_module_enable)
+		cmd.pdm_mask = 0b0111;
 
 	cmd.period_ms = 10; /*TODO: how to make it configuratable*/
 	cmd.num_periods = 4; /*TODO: how to make it configuratable*/
@@ -735,8 +759,13 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 
 	cmd.requested_format.chan = channels;
 
+	if (chip->mic_spatial_module_enable)
+		cmd.mic_process_index = AP_MIC_PROCESS_SPATIAL;
+	else
+		cmd.mic_process_index = AP_MIC_PROCESS_RAW;
+
 	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-				NULL, alsa_stream->chip);
+				NULL, chip);
 	if (err < 0) {
 		pr_err("ERR:%d in capture parameter setup\n", err);
 		goto exit;
@@ -752,13 +781,34 @@ exit:
 	return err;
 }
 
+static int aoc_audio_capture_spatial_module_trigger(struct aoc_chip *chip,
+						    int record_cmd)
+{
+	int err = 0;
+	struct CMD_HDR cmd;
+	pr_info("%s: %d", __func__, record_cmd);
+	AocCmdHdrSet(&cmd,
+		     (record_cmd == START) ? CMD_AUDIO_INPUT_SPATIAL_START_ID :
+						   CMD_AUDIO_INPUT_SPATIAL_STOP_ID,
+		     sizeof(cmd));
+
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
+				NULL, chip);
+	if (err < 0)
+		pr_err("ERR:%d in spatial module trigger\n", err);
+
+	return err;
+}
+
 /* Start or stop the stream */
 static int aoc_audio_capture_trigger(struct aoc_alsa_stream *alsa_stream,
 				     int record_cmd)
 {
-	int err;
+	int err = 0;
 	struct CMD_HDR cmd;
+	struct aoc_chip *chip = alsa_stream->chip;
 
+	pr_info("%s: %d", __func__, record_cmd);
 	AocCmdHdrSet(&cmd,
 		     (record_cmd == START) ?
 				   CMD_AUDIO_INPUT_MIC_RECORD_AP_START_ID :
@@ -766,7 +816,7 @@ static int aoc_audio_capture_trigger(struct aoc_alsa_stream *alsa_stream,
 		     sizeof(cmd));
 
 	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd),
-				NULL, alsa_stream->chip);
+				NULL, chip);
 	if (err < 0)
 		pr_err("ERR:%d in capture trigger\n", err);
 
@@ -984,20 +1034,30 @@ int aoc_audio_set_ctls(struct aoc_chip *chip)
 }
 
 int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
-			 uint32_t samplerate, uint32_t bps, bool pcm_float_fmt, int source_mode)
+			 uint32_t samplerate, uint32_t bps, bool pcm_float_fmt,
+			 int source_mode)
 {
 	int err = 0;
+	struct aoc_chip *chip = alsa_stream->chip;
 
 	pr_debug("setting channels(%u), samplerate(%u), bits-per-sample(%u)\n",
 		 channels, samplerate, bps);
 
 	if (alsa_stream->cstream ||
 	    alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		err = aoc_audio_playback_set_params(
-			alsa_stream, channels, samplerate, bps, pcm_float_fmt, source_mode);
+		err = aoc_audio_playback_set_params(alsa_stream, channels,
+						    samplerate, bps,
+						    pcm_float_fmt, source_mode);
 	} else {
 		err = aoc_audio_capture_set_params(
 			alsa_stream, channels, samplerate, bps, pcm_float_fmt);
+
+		/* To deal with recording with spatial module enabled */
+		if (chip->mic_spatial_module_enable) {
+			err = aoc_audio_capture_spatial_module_trigger(chip, START);
+			if (err < 0)
+				pr_err("ERR:%d mic proc spatial module failed to start!\n", err);
+		}
 	}
 
 	if (err < 0)
@@ -1006,7 +1066,7 @@ int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 	/* Resend volume ctls-alsa_stream may not be open when first send */
 	if (alsa_stream->cstream ||
 	    alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		err = aoc_audio_set_ctls_chan(alsa_stream, alsa_stream->chip);
+		err = aoc_audio_set_ctls_chan(alsa_stream, chip);
 		if (err != 0) {
 			pr_debug(
 				"alsa controls in setting params not supported\n");
@@ -1279,6 +1339,18 @@ int aoc_audio_open(struct aoc_alsa_stream *alsa_stream)
 
 int aoc_audio_close(struct aoc_alsa_stream *alsa_stream)
 {
+	int err = 0;
+	struct aoc_chip *chip = alsa_stream->chip;
+	struct snd_pcm_substream *substream = alsa_stream->substream;
+
+	/* To deal with recording with spatial module enabled */
+	if (substream && substream->stream == SNDRV_PCM_STREAM_CAPTURE &&
+	    chip->mic_spatial_module_enable) {
+		err = aoc_audio_capture_spatial_module_trigger(chip, STOP);
+		if (err < 0)
+			pr_err("ERR:%d mic proc spatial module failed to stop!\n", err);
+	}
+
 	return 0;
 }
 

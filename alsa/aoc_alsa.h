@@ -134,6 +134,7 @@ struct aoc_chip {
 	int default_mic_hw_gain;
 	int voice_call_audio_enable;
 
+	int mic_spatial_module_enable;
 	int mic_loopback_enabled;
 	unsigned int opened;
 	struct mutex audio_mutex;
@@ -208,6 +209,8 @@ int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute);
 int aoc_get_dsp_state(struct aoc_chip *chip);
 int aoc_get_asp_mode(struct aoc_chip *chip, int block, int component, int key);
 int aoc_set_asp_mode(struct aoc_chip *chip, int block, int component, int key, int val);
+
+int aoc_get_builtin_mic_process_mode(struct aoc_chip *chip);
 
 int aoc_get_sink_state(struct aoc_chip *chip, int sink);
 int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int sink);
