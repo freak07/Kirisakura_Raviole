@@ -171,7 +171,7 @@ static int aoc_compr_playback_open(struct snd_compr_stream *cstream)
 	alsa_stream->entry_point_idx = idx;
 
 	/* TODO: temporary compr offload volume set to protect speaker*/
-	aoc_audio_volume_set(chip, 50, idx, 0);
+	aoc_audio_volume_set(chip, chip->compr_offload_volume, idx, 0);
 
 	mutex_unlock(&chip->audio_mutex);
 

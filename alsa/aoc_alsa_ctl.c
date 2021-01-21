@@ -351,6 +351,41 @@ static int mic_dc_blocker_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int compr_offload_volume_get(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if(chip->compr_offload_volume<0 || chip->compr_offload_volume>1000)
+		return -EINVAL;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = chip->compr_offload_volume;
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int compr_offload_volume_set(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	chip->compr_offload_volume = ucontrol->value.integer.value[0];
+
+	/* temporary solution */
+	aoc_audio_volume_set(chip, chip->compr_offload_volume, OFF_LOAD, ASNK_SPEAKER);
+	aoc_audio_volume_set(chip, chip->compr_offload_volume, OFF_LOAD, ASNK_USB);
+	aoc_audio_volume_set(chip, chip->compr_offload_volume, OFF_LOAD, ASNK_BT);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static int voice_call_mic_source_get(struct snd_kcontrol *kcontrol,
 				     struct snd_ctl_elem_value *ucontrol)
 {
@@ -957,8 +992,8 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 
 	SOC_SINGLE_EXT("MIC Recording Gain (dB)", SND_SOC_NOPM, 0, 100, 0, NULL,
 		       NULL),
-	SOC_SINGLE_EXT("Compress Offload Volume", SND_SOC_NOPM, 0, 100, 0, NULL,
-		       NULL),
+	SOC_SINGLE_EXT("Compress Offload Volume", SND_SOC_NOPM, 0, 100, 0, compr_offload_volume_get,
+		       compr_offload_volume_set),
 	SOC_SINGLE_EXT("Voice Call Rx Volume", SND_SOC_NOPM, 0, 100, 0, NULL,
 		       NULL),
 	SOC_SINGLE_EXT("VOIP Rx Volume", SND_SOC_NOPM, 0, 100, 0, NULL, NULL),
