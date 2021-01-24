@@ -839,6 +839,9 @@ int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest)
 	if ((src == 3 && dest == -1) || src == 4)
 		return aoc_phonecall_path_open(chip, src, dest);
 
+	if (src == IDX_VOIP)
+		return aoc_voipcall_path_open(chip, src, dest);
+
 	return aoc_audio_path_bind(src, dest, START, chip);
 }
 
@@ -847,6 +850,9 @@ int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest)
 	/* voice call capture or playback */
 	if ((src == 3 && dest == -1) || src == 4)
 		return aoc_phonecall_path_close(chip, src, dest);
+
+	if (src == IDX_VOIP)
+		return aoc_voipcall_path_close(chip, src, dest);
 
 	return aoc_audio_path_bind(src, dest, STOP, chip);
 }
@@ -1363,6 +1369,16 @@ int aoc_audio_incall_stop(struct aoc_alsa_stream *alsa_stream)
 	return err;
 }
 
+int aoc_audio_voip_start(struct aoc_alsa_stream *alsa_stream)
+{
+	return 0;
+}
+
+int aoc_audio_voip_stop(struct aoc_alsa_stream *alsa_stream)
+{
+	return 0;
+}
+
 /* TODO: this function is modified to deal with the issue where ALSA appl_ptr
  * and the reader pointer in AoC ringer buffer are out-of-sync due to overflow
  */
@@ -1664,6 +1680,100 @@ exit:
 	return err;
 }
 
+int aoc_voipcall_path_open(struct aoc_chip *chip, int src, int dst)
+{
+	int err;
+	int mic_input_source = 0;
+
+	pr_info("Open voip call path - src:%d, dst:%d\n", src, dst);
+
+	if (!chip->voice_call_audio_enable) {
+		pr_info("phone call audio NOT enabled\n");
+		return 0;
+	}
+
+	if (dst >= 0) {
+		/* Audio playback enabled for momdem output */
+		err = aoc_audio_path_bind(8, dst, START, chip);
+		if (err < 0) {
+			pr_err("ERR:%d Telephony Downlink bind fail\n", err);
+			goto exit;
+		}
+	}
+	/* Audio capture enabled for modem input */
+	if (chip->voice_call_mic_source == DEFAULT_MIC) {
+		/* Use default mic for voice call based on the playback sink */
+		switch (dst) {
+		case ASNK_SPEAKER:
+			mic_input_source = MODEM_MIC_INPUT_INDEX;
+			break;
+		case ASNK_BT:
+			mic_input_source = MODEM_BT_INPUT_INDEX;
+			break;
+		case ASNK_USB:
+			mic_input_source = MODEM_USB_INPUT_INDEX;
+			break;
+		default:
+			pr_err("ERR in mic input source for voice call, dst=%d\n", dst);
+		}
+	} else {
+		/* Use user-specified mic for voice call independently of the playback sink */
+		switch (chip->voice_call_mic_source) {
+		case BUILTIN_MIC:
+			mic_input_source = MODEM_MIC_INPUT_INDEX;
+			break;
+		case USB_MIC:
+			mic_input_source = MODEM_USB_INPUT_INDEX;
+			break;
+		case BT_MIC:
+			mic_input_source = MODEM_BT_INPUT_INDEX;
+			break;
+		case IN_CALL_MUSIC: /* TODO: do we have this option for voip */
+			mic_input_source = MODEM_INCALL_INPUT_INDEX;
+			break;
+		default:
+			pr_err("ERR in mic input source for voice call, mic source=%d\n",
+			       chip->voice_call_mic_source);
+		}
+	}
+
+	pr_info("voice call mic input source: %d\n", mic_input_source);
+	err = aoc_audio_modem_mic_input(chip, START, mic_input_source);
+	if (err < 0)
+		pr_err("ERR:%d modem input start fail\n", err);
+exit:
+	return err;
+}
+
+int aoc_voipcall_path_close(struct aoc_chip *chip, int src, int dst)
+{
+	int err;
+
+	pr_info("close phone call path - src:%d, dst:%d\n", src, dst);
+
+	if (!chip->voice_call_audio_enable) {
+		pr_info("phone call audio NOT enabled\n");
+		return 0;
+	}
+
+	if (dst >= 0) {
+		/* Audio playback disabled for modem ouput */
+		err = aoc_audio_path_bind(8, dst, STOP, chip);
+		if (err < 0) {
+			pr_err("ERR:%d Telephony Downlink unbind fail\n", err);
+			goto exit;
+		}
+	}
+
+	/* Audio capture disabled for modem input */
+	err = aoc_audio_modem_mic_input(chip, STOP, 0);
+	if (err < 0)
+		pr_err("ERR:%d modem input stop fail\n", err);
+
+exit:
+	return err;
+}
+
 /* TODO: entry point idx and sink id should be specified  in the alsa_stream */
 int prepare_phonecall(struct aoc_alsa_stream *alsa_stream)
 {
@@ -1704,6 +1814,72 @@ int teardown_phonecall(struct aoc_alsa_stream *alsa_stream)
 	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 3, 3);
 	if (err < 0)
 		pr_err("ERR:%d Telephony Uplink unbind fail\n", err);
+
+	return err;
+}
+
+int prepare_voipcall(struct aoc_alsa_stream *alsa_stream)
+{
+	int err;
+	struct aoc_chip *chip = alsa_stream->chip;
+
+	/* TODO: check ptrs */
+	if (!chip->voice_call_audio_enable) {
+		pr_info("voip call audio NOT enabled\n");
+		return 0;
+	}
+
+	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+		chip->voip_tx_prepared = 1;
+		if (chip->voip_rx_prepared)
+			return 0;
+	} else {
+		chip->voip_rx_prepared = 1;
+		if (chip->voip_tx_prepared)
+			return 0;
+	}
+
+	pr_debug("prepare voip call - dev %d\n", alsa_stream->entry_point_idx);
+
+	/* Set modem mode to voip call */
+	/* Need mixer control for voip sampling rate or source mode */
+	aoc_set_sink_mode(chip, 3, 1);
+
+	/* Binding modem to start audio flow */
+	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 3, 3);
+	if (err < 0)
+		pr_err("ERR:%d Telephony Uplink bind fail\n", err);
+
+	return err;
+}
+
+int teardown_voipcall(struct aoc_alsa_stream *alsa_stream)
+{
+	int err = 0;
+	struct aoc_chip *chip = alsa_stream->chip;
+
+	if (!chip->voice_call_audio_enable)
+		return 0;
+
+	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+		chip->voip_tx_prepared = 0;
+		if (chip->voip_rx_prepared)
+			return 0;
+	} else {
+		chip->voip_rx_prepared = 0;
+		if (chip->voip_tx_prepared)
+			return 0;
+	}
+
+	pr_info("stop voip call - dev %d\n", alsa_stream->entry_point_idx);
+
+	/* Unbinding modem to stop audio flow */
+	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 3, 3);
+	if (err < 0)
+		pr_err("ERR:%d Telephony Uplink unbind fail\n", err);
+
+	/* TODO: further changes needed */
+	aoc_set_sink_mode(chip, 3, 0);
 
 	return err;
 }

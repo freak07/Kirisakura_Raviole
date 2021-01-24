@@ -980,6 +980,7 @@ const struct snd_kcontrol_new i2s_0_rx_ctrl[] = {
 	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
 	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
 	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
+	SOC_SINGLE_EXT("VOIP", SND_SOC_NOPM, IDX_VOIP_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
 	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, i2s_0_rx_get, i2s_0_rx_put),
 };
 
@@ -1012,6 +1013,7 @@ const struct snd_kcontrol_new i2s_1_rx_ctrl[] = {
 	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
 	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
 	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
+	SOC_SINGLE_EXT("VOIP", SND_SOC_NOPM, IDX_VOIP_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
 	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, i2s_1_rx_get, i2s_1_rx_put),
 };
 
@@ -1044,6 +1046,7 @@ const struct snd_kcontrol_new i2s_2_rx_ctrl[] = {
 	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
 	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
 	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
+	SOC_SINGLE_EXT("VOIP", SND_SOC_NOPM, IDX_VOIP_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
 	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, i2s_2_rx_get, i2s_2_rx_put),
 };
 
@@ -1077,6 +1080,7 @@ const struct snd_kcontrol_new tdm_0_rx_ctrl[] = {
 	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
 	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
 	SOC_SINGLE_EXT("EP8", SND_SOC_NOPM, IDX_EP8_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
+	SOC_SINGLE_EXT("VOIP", SND_SOC_NOPM, IDX_VOIP_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
 	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, tdm_0_rx_get, tdm_0_rx_put),
 };
 
@@ -1109,6 +1113,7 @@ const struct snd_kcontrol_new tdm_1_rx_ctrl[] = {
 	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, tdm_1_rx_get, tdm_1_rx_put),
 	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, tdm_1_rx_get, tdm_1_rx_put),
 	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, tdm_1_rx_get, tdm_1_rx_put),
+	SOC_SINGLE_EXT("VOIP", SND_SOC_NOPM, IDX_VOIP_RX, 1, 0, tdm_1_rx_get, tdm_1_rx_put),
 	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0,
 		tdm_1_rx_get, tdm_1_rx_put),
 };
@@ -1142,6 +1147,7 @@ const struct snd_kcontrol_new bt_rx_ctrl[] = {
 	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, bt_rx_get, bt_rx_put),
 	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, bt_rx_get, bt_rx_put),
 	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, bt_rx_get, bt_rx_put),
+	SOC_SINGLE_EXT("VOIP", SND_SOC_NOPM, IDX_VOIP_RX, 1, 0, bt_rx_get, bt_rx_put),
 	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, bt_rx_get, bt_rx_put),
 };
 
@@ -1174,6 +1180,7 @@ const struct snd_kcontrol_new usb_rx_ctrl[] = {
 	SOC_SINGLE_EXT("EP5", SND_SOC_NOPM, IDX_EP5_RX, 1, 0, usb_rx_get, usb_rx_put),
 	SOC_SINGLE_EXT("EP6", SND_SOC_NOPM, IDX_EP6_RX, 1, 0, usb_rx_get, usb_rx_put),
 	SOC_SINGLE_EXT("EP7", SND_SOC_NOPM, IDX_EP7_RX, 1, 0, usb_rx_get, usb_rx_put),
+	SOC_SINGLE_EXT("VOIP", SND_SOC_NOPM, IDX_VOIP_RX, 1, 0, usb_rx_get, usb_rx_put),
 	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, usb_rx_get, usb_rx_put),
 };
 
@@ -1413,6 +1420,38 @@ const struct snd_kcontrol_new ep6_tx_ctrl[] = {
 	SOC_SINGLE_EXT("INCALL_TX", SND_SOC_NOPM, INCALL_TX, 1, 0, ep6_tx_get, ep6_tx_put),
 };
 
+static int voip_tx_put(struct snd_kcontrol *kcontrol,
+		      struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 hw_idx = mc->shift;
+
+	return aoc_path_put(IDX_VOIP_TX, hw_idx, kcontrol, ucontrol);
+}
+
+static int voip_tx_get(struct snd_kcontrol *kcontrol,
+		      struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 hw_idx = mc->shift;
+
+	return aoc_path_get(IDX_VOIP_TX, hw_idx, kcontrol, ucontrol);
+}
+
+const struct snd_kcontrol_new voip_tx_ctrl[] = {
+	SOC_SINGLE_EXT("I2S_0_TX", SND_SOC_NOPM, I2S_0_TX, 1, 0, voip_tx_get, voip_tx_put),
+	SOC_SINGLE_EXT("I2S_1_TX", SND_SOC_NOPM, I2S_1_TX, 1, 0, voip_tx_get, voip_tx_put),
+	SOC_SINGLE_EXT("I2S_2_TX", SND_SOC_NOPM, I2S_2_TX, 1, 0, voip_tx_get, voip_tx_put),
+	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, voip_tx_get, voip_tx_put),
+	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, voip_tx_get, voip_tx_put),
+	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
+		voip_tx_get, voip_tx_put),
+	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, voip_tx_get, voip_tx_put),
+	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, voip_tx_get, voip_tx_put),
+};
+
 static int nohost1_tx_put(struct snd_kcontrol *kcontrol,
 		      struct snd_ctl_elem_value *ucontrol)
 {
@@ -1458,6 +1497,7 @@ const struct snd_soc_dapm_widget aoc_widget[] = {
 	SND_SOC_DAPM_AIF_IN("EP6_RX", "EP6 Playback", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("EP7_RX", "EP7 Playback", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("EP8_RX", "EP8 Playback", 0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_IN("VOIP_RX", "audio_voip_rx", 0, SND_SOC_NOPM, 0, 0),
 
 	/* Audio record */
 	SND_SOC_DAPM_AIF_OUT("EP1_TX", "EP1 Capture", 0, SND_SOC_NOPM, 0, 0),
@@ -1466,6 +1506,7 @@ const struct snd_soc_dapm_widget aoc_widget[] = {
 	SND_SOC_DAPM_AIF_OUT("EP4_TX", "EP4 Capture", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("EP5_TX", "EP5 Capture", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("EP6_TX", "EP6 Capture", 0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("VOIP_TX", "audio_voip_tx", 0, SND_SOC_NOPM, 0, 0),
 
 	/* NoHost FE */
 	/* RX */
@@ -1543,6 +1584,10 @@ const struct snd_soc_dapm_widget aoc_widget[] = {
 			   ARRAY_SIZE(ep6_tx_ctrl)),
 
 	/* NoHost TX path */
+	SND_SOC_DAPM_MIXER("VOIP TX Mixer", SND_SOC_NOPM, 0, 0,
+		voip_tx_ctrl, ARRAY_SIZE(voip_tx_ctrl)),
+
+	/* NoHost TX path */
 	SND_SOC_DAPM_MIXER("NoHost1 TX Mixer", SND_SOC_NOPM, 0, 0,
 		nohost1_tx_ctrl, ARRAY_SIZE(nohost1_tx_ctrl)),
 };
@@ -1555,6 +1600,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "I2S_0_RX Mixer", "EP5", "EP5_RX" },
 	{ "I2S_0_RX Mixer", "EP6", "EP6_RX" },
 	{ "I2S_0_RX Mixer", "EP7", "EP7_RX" },
+	{ "I2S_0_RX Mixer", "VOIP", "VOIP_RX" },
 	{ "I2S_0_RX Mixer", "NoHost1", "NoHost1_RX" },
 	{ "I2S_0_RX", NULL, "I2S_0_RX Mixer" },
 	{ "HW_SINK", NULL, "I2S_0_RX" },
@@ -1566,6 +1612,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "I2S_1_RX Mixer", "EP5", "EP5_RX" },
 	{ "I2S_1_RX Mixer", "EP6", "EP6_RX" },
 	{ "I2S_1_RX Mixer", "EP7", "EP7_RX" },
+	{ "I2S_1_RX Mixer", "VOIP", "VOIP_RX" },
 	{ "I2S_1_RX Mixer", "NoHost1", "NoHost1_RX" },
 	{ "I2S_1_RX", NULL, "I2S_1_RX Mixer" },
 	{ "HW_SINK", NULL, "I2S_1_RX" },
@@ -1577,6 +1624,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "I2S_2_RX Mixer", "EP5", "EP5_RX" },
 	{ "I2S_2_RX Mixer", "EP6", "EP6_RX" },
 	{ "I2S_2_RX Mixer", "EP7", "EP7_RX" },
+	{ "I2S_2_RX Mixer", "VOIP", "VOIP_RX" },
 	{ "I2S_2_RX Mixer", "NoHost1", "NoHost1_RX" },
 	{ "I2S_2_RX", NULL, "I2S_2_RX Mixer" },
 	{ "HW_SINK", NULL, "I2S_2_RX" },
@@ -1589,6 +1637,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "TDM_0_RX Mixer", "EP6", "EP6_RX" },
 	{ "TDM_0_RX Mixer", "EP7", "EP7_RX" },
 	{ "TDM_0_RX Mixer", "EP8", "EP8_RX" },
+	{ "TDM_0_RX Mixer", "VOIP", "VOIP_RX" }, //why we have EP8 here?
 	{ "TDM_0_RX Mixer", "NoHost1", "NoHost1_RX" },
 	{ "TDM_0_RX", NULL, "TDM_0_RX Mixer" },
 	{ "HW_SINK", NULL, "TDM_0_RX" },
@@ -1600,6 +1649,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "TDM_1_RX Mixer", "EP5", "EP5_RX" },
 	{ "TDM_1_RX Mixer", "EP6", "EP6_RX" },
 	{ "TDM_1_RX Mixer", "EP7", "EP7_RX" },
+	{ "TDM_1_RX Mixer", "VOIP", "VOIP_RX" },
 	{ "TDM_1_RX Mixer", "NoHost1", "NoHost1_RX" },
 	{ "TDM_1_RX", NULL, "TDM_1_RX Mixer" },
 	{ "HW_SINK", NULL, "TDM_1_RX" },
@@ -1611,6 +1661,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "BT_RX Mixer", "EP5", "EP5_RX" },
 	{ "BT_RX Mixer", "EP6", "EP6_RX" },
 	{ "BT_RX Mixer", "EP7", "EP7_RX" },
+	{ "BT_RX Mixer", "VOIP", "VOIP_RX" },
 	{ "BT_RX Mixer", "NoHost1", "NoHost1_RX" },
 	{ "BT_RX", NULL, "BT_RX Mixer" },
 	{ "HW_SINK", NULL, "BT_RX" },
@@ -1622,6 +1673,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "USB_RX Mixer", "EP5", "EP5_RX" },
 	{ "USB_RX Mixer", "EP6", "EP6_RX" },
 	{ "USB_RX Mixer", "EP7", "EP7_RX" },
+	{ "USB_RX Mixer", "VOIP", "VOIP_RX" },
 	{ "USB_RX Mixer", "NoHost1", "NoHost1_RX" },
 	{ "USB_RX", NULL, "USB_RX Mixer" },
 	{ "HW_SINK", NULL, "USB_RX" },
@@ -1702,6 +1754,16 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "EP6 TX Mixer", "BT_TX", "BT_TX" },
 	{ "EP6 TX Mixer", "USB_TX", "USB_TX" },
 	{ "EP6 TX Mixer", "INCALL_TX", "INCALL_TX" },
+
+	{ "VOIP_TX", NULL, "VOIP TX Mixer" },
+	{ "VOIP TX Mixer", "I2S_0_TX", "I2S_0_TX" },
+	{ "VOIP TX Mixer", "I2S_1_TX", "I2S_1_TX" },
+	{ "VOIP TX Mixer", "I2S_2_TX", "I2S_2_TX" },
+	{ "VOIP TX Mixer", "TDM_0_TX", "TDM_0_TX" },
+	{ "VOIP TX Mixer", "TDM_1_TX", "TDM_1_TX" },
+	{ "VOIP TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "VOIP TX Mixer", "BT_TX", "BT_TX" },
+	{ "VOIP TX Mixer", "USB_TX", "USB_TX" },
 
 	{ "NoHost1_TX", NULL, "NoHost1 TX Mixer" },
 	{ "NoHost1 TX Mixer", "I2S_0_TX", "I2S_0_TX" },

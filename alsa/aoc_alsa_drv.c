@@ -246,6 +246,12 @@ static int snd_aoc_alsa_probe(void)
 		goto out;
 	}
 
+	err = aoc_voip_init();
+	if (err) {
+		pr_err("ERR: fail to init aoc voip driver\n");
+		goto out;
+	}
+
 	return 0;
 
 out:
@@ -254,6 +260,7 @@ out:
 
 static int snd_aoc_alsa_remove(void)
 {
+	aoc_voip_exit();
 	aoc_incall_exit();
 	aoc_nohost_exit();
 	aoc_path_exit();

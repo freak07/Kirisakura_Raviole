@@ -16,37 +16,6 @@
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
 
-/* Timer interrupt to read the ring buffer reader/writer positions */
-void aoc_timer_start(struct aoc_alsa_stream *alsa_stream)
-{
-	ktime_t interval = ktime_set(0, alsa_stream->timer_interval_ns);
-	hrtimer_start(&(alsa_stream->hr_timer), interval, HRTIMER_MODE_REL);
-}
-
-void aoc_timer_restart(struct aoc_alsa_stream *alsa_stream)
-{
-	ktime_t currtime;
-	ktime_t interval = ktime_set(0, alsa_stream->timer_interval_ns);
-	currtime = ktime_get();
-	hrtimer_forward(&(alsa_stream->hr_timer), currtime, interval);
-}
-
-void aoc_timer_stop(struct aoc_alsa_stream *alsa_stream)
-{
-	int ret;
-	ret = hrtimer_cancel(&(alsa_stream->hr_timer));
-	if (ret)
-		pr_notice("The hr_timer was still in use...\n");
-}
-
-void aoc_timer_stop_sync(struct aoc_alsa_stream *alsa_stream)
-{
-	int ret;
-	ret = hrtimer_cancel(&(alsa_stream->hr_timer));
-	if (ret)
-		pr_notice("The hr_timer was still in use...\n");
-}
-
 /* Hardware definition
  * TODO: different pcm may have different hardware setup,
  * considering deep buffer and compressed offload buffer
@@ -237,6 +206,12 @@ static int snd_aoc_pcm_close(struct snd_soc_component *component,
 		return -EINTR;
 	}
 
+	/* Stop voip call (Refactor needed) */
+	pr_notice("Stop voip call\n");
+	err = teardown_voipcall(alsa_stream);
+	if (err < 0)
+		pr_err("ERR: fail in voip call tearing down\n");
+
 	runtime = substream->runtime;
 	alsa_stream = runtime->private_data;
 
@@ -247,7 +222,7 @@ static int snd_aoc_pcm_close(struct snd_soc_component *component,
 	* is force killed and we don't get a stop trigger.
 	*/
 	if (alsa_stream->running) {
-		err = aoc_audio_stop(alsa_stream);
+		err = aoc_audio_voip_stop(alsa_stream);
 		alsa_stream->running = 0;
 		if (err != 0)
 			dev_err(component->dev, "ERR: fail to stop alsa stream\n");
@@ -317,7 +292,7 @@ static int snd_aoc_pcm_prepare(struct snd_soc_component *component,
 	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
 	struct aoc_service_dev *dev = alsa_stream->dev;
 	struct aoc_chip *chip = alsa_stream->chip;
-	int channels, source_mode, err;
+	int channels, err;
 
 	aoc_timer_stop_sync(alsa_stream);
 
@@ -326,35 +301,9 @@ static int snd_aoc_pcm_prepare(struct snd_soc_component *component,
 
 	channels = alsa_stream->channels;
 
-	/* source_mode only used by playback */
-	if (alsa_stream->entry_point_idx == HAPTICS) {
-		source_mode = HAPTICS_MODE;
-	} else if (alsa_stream->cstream)
-		source_mode = OFFLOAD_MODE;
-	else
-		source_mode = PLAYBACK_MODE;
-
-	/* Reset the writer pointer of the DRAM buffer */
-	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		if (!aoc_ring_reset_write_pointer(alsa_stream->dev->service, AOC_DOWN)) {
-			err = -EIO;
-			pr_err("ERR in resetting the DRAM ring buffer writer pointer\n");
-			goto out;
-		}
-	}
-
-	/* Set the audio formats and flush the DRAM buffer */
-	err = aoc_audio_set_params(alsa_stream, channels, alsa_stream->params_rate,
-				   alsa_stream->pcm_format_width, alsa_stream->pcm_float_fmt,
-				   source_mode);
-	if (err < 0) {
-		pr_err("ERR:%d in setting pcm hw params\n", err);
-		goto out;
-	}
-
-	pr_debug("channels = %d, rate = %d, bits = %d, float-fmt = %d\n", channels,
-		 alsa_stream->params_rate, alsa_stream->pcm_format_width,
-		 alsa_stream->pcm_float_fmt);
+	pr_debug("channels = %d, rate = %d, bits = %d, float-fmt = %d\n",
+		 channels, alsa_stream->params_rate,
+		 alsa_stream->pcm_format_width, alsa_stream->pcm_float_fmt);
 
 	aoc_audio_setup(alsa_stream);
 
@@ -369,13 +318,17 @@ static int snd_aoc_pcm_prepare(struct snd_soc_component *component,
 	alsa_stream->prev_consumed = alsa_stream->hw_ptr_base;
 	alsa_stream->n_overflow = 0;
 
+	pr_notice("Start voip call\n");
+	err = prepare_voipcall(alsa_stream);
+	if (err < 0)
+		dev_err(component->dev, "ERR:%d in preparing voip call\n", err);
+
 	dev_dbg(component->dev, "pcm prepare: hw_ptr_base = %lu\n", alsa_stream->hw_ptr_base);
 
 	dev_dbg(component->dev, "buffer_size=%d, period_size=%d pos=%d frame_bits=%d\n",
 		alsa_stream->buffer_size, alsa_stream->period_size, alsa_stream->pos,
 		runtime->frame_bits);
 
-out:
 	mutex_unlock(&chip->audio_mutex);
 	return err;
 }
@@ -396,7 +349,7 @@ static int snd_aoc_pcm_trigger(struct snd_soc_component *component,
 			/* start timer first to avoid underrun/overrun */
 			aoc_timer_start(alsa_stream);
 
-			err = aoc_audio_start(alsa_stream);
+			err = aoc_audio_voip_start(alsa_stream);
 			if (err == 0) {
 				alsa_stream->running = 1;
 				alsa_stream->draining = 1;
@@ -417,7 +370,7 @@ static int snd_aoc_pcm_trigger(struct snd_soc_component *component,
 			alsa_stream->draining = 0;
 		}
 		if (alsa_stream->running) {
-			err = aoc_audio_stop(alsa_stream);
+			err = aoc_audio_voip_stop(alsa_stream);
 			if (err != 0)
 				dev_err(component->dev, "ERR:%d fail to STOP stream\n", err);
 			alsa_stream->running = 0;
@@ -495,68 +448,6 @@ static snd_pcm_uframes_t snd_aoc_pcm_pointer(struct snd_soc_component *component
 	return pointer;
 }
 
-static int snd_aoc_pcm_mmap(struct snd_soc_component *component,
-			    struct snd_pcm_substream *substream, struct vm_area_struct *vma)
-{
-	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
-	size_t ring_size;
-	int err;
-
-	phys_addr_t aoc_ring_base =
-		aoc_service_ring_base_phys_addr(alsa_stream->dev, AOC_DOWN, &ring_size);
-
-	alsa_stream->vma = vma;
-
-	err = remap_pfn_range(vma, vma->vm_start, aoc_ring_base >> PAGE_SHIFT,
-			      vma->vm_end - vma->vm_start, pgprot_writecombine(vma->vm_page_prot));
-
-	pr_debug("mmap ring base physical addr: %pa, size = %zu, vm_start=%lx:%lu\n",
-		 &aoc_ring_base, ring_size, vma->vm_start, vma->vm_end - vma->vm_start);
-
-	return err;
-}
-
-static int snd_aoc_pcm_ack(struct snd_pcm_substream *substream)
-{
-	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
-	struct aoc_service_dev *dev = alsa_stream->dev;
-	unsigned long old_appl_ptr, appl_ptr;
-
-	/* mmap only for ULL. TODO: extend to more entry points */
-	if (alsa_stream->entry_point_idx != ULL)
-		return 0;
-
-	appl_ptr = frames_to_bytes(runtime, runtime->control->appl_ptr);
-
-	/* Update write/read pointer depending on the stream type */
-	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		old_appl_ptr =
-			aoc_ring_bytes_written(dev->service, AOC_DOWN) - alsa_stream->hw_ptr_base;
-
-		pr_debug_ratelimited("ack(): old_ptr=%lu(hw_ptr=%lu), new_ptr=%lu, written:%lu\n",
-				     old_appl_ptr, alsa_stream->hw_ptr_base, appl_ptr,
-				     appl_ptr - old_appl_ptr);
-
-		if (!aoc_service_advance_write_index(dev->service, AOC_DOWN,
-						     appl_ptr - old_appl_ptr))
-			return -EINVAL;
-
-	} else {
-		old_appl_ptr = aoc_ring_bytes_read(dev->service, AOC_UP) - alsa_stream->hw_ptr_base;
-
-		pr_debug_ratelimited("ack(): old_ptr=%lu(hw_ptr=%lu), new_ptr=%lu, written:%lu\n",
-				     old_appl_ptr, alsa_stream->hw_ptr_base, appl_ptr,
-				     appl_ptr - old_appl_ptr);
-
-		if (!aoc_service_advance_read_index(dev->service, AOC_UP, appl_ptr - old_appl_ptr))
-			return -EINVAL;
-	}
-
-	return 0;
-}
-
 static int snd_aoc_pcm_lib_ioctl(struct snd_soc_component *component,
 				 struct snd_pcm_substream *substream, unsigned int cmd, void *arg)
 {
@@ -587,11 +478,6 @@ static int aoc_pcm_new(struct snd_soc_component *component, struct snd_soc_pcm_r
 					      snd_aoc_playback_hw.buffer_bytes_max);
 	}
 
-	/* For pcm mmap, 5.9 removed ack() in snd_soc_component */
-	if (!rtd->ops.ack) {
-		rtd->ops.ack = snd_aoc_pcm_ack;
-	}
-
 	return 0;
 }
 
@@ -606,7 +492,6 @@ static const struct snd_soc_component_driver aoc_pcm_component = {
 	.prepare = snd_aoc_pcm_prepare,
 	.trigger = snd_aoc_pcm_trigger,
 	.pointer = snd_aoc_pcm_pointer,
-	.mmap = snd_aoc_pcm_mmap,
 	.pcm_construct = aoc_pcm_new,
 };
 
@@ -627,24 +512,24 @@ static int aoc_pcm_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct of_device_id aoc_pcm_of_match[] = {
+static const struct of_device_id aoc_voip_of_match[] = {
 	{
-		.compatible = "google-aoc-snd-pcm",
+		.compatible = "google-aoc-snd-voip",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, aoc_pcm_of_match);
+MODULE_DEVICE_TABLE(of, aoc_voip_of_match);
 
 static struct platform_driver aoc_pcm_drv = {
     .driver =
         {
-            .name = "google-aoc-snd-pcm",
-            .of_match_table = aoc_pcm_of_match,
+            .name = "google-aoc-snd-voip",
+            .of_match_table = aoc_voip_of_match,
         },
     .probe = aoc_pcm_probe,
 };
 
-int aoc_pcm_init(void)
+int aoc_voip_init(void)
 {
 	int err;
 
@@ -657,7 +542,7 @@ int aoc_pcm_init(void)
 	return 0;
 }
 
-void aoc_pcm_exit(void)
+void aoc_voip_exit(void)
 {
 	platform_driver_unregister(&aoc_pcm_drv);
 }

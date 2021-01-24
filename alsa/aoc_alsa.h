@@ -96,6 +96,16 @@ enum bluetooth_mode {
 	AHS_BT_MODE_A2DP_ENC_AAC,
 };
 
+enum TelephonyModes {
+	AHS_TELE_MODE_MODEM,
+	AHS_TELE_MODE_VOIP_48,
+	AHS_TELE_MODE_VOIP_44,
+	AHS_TELE_MODE_VOIP_32,
+	AHS_TELE_MODE_VOIP_24,
+	AHS_TELE_MODE_VOIP_16,
+	AHS_TELE_MODE_VOIP_8,
+};
+
 /* AoC USB Config parameters */
 enum {
 	USB_DEV_ID,
@@ -157,6 +167,9 @@ struct aoc_chip {
 	int voice_call_audio_enable;
 	int incall_capture_state[MAX_NUM_OF_INCALL_CAPTURE_STREAM];
 
+	int voip_rx_prepared;
+	int voip_tx_prepared;
+
 	int compr_offload_volume;
 	int mic_spatial_module_enable;
 	int sidetone_enable;
@@ -215,14 +228,21 @@ int aoc_audio_open(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_close(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 			 uint32_t samplerate, uint32_t bps, bool pcm_float_fmt, int source_mode);
+
 int aoc_audio_start(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_incall_start(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_incall_stop(struct aoc_alsa_stream *alsa_stream);
+int aoc_audio_voip_start(struct aoc_alsa_stream *alsa_stream);
+int aoc_audio_voip_stop(struct aoc_alsa_stream *alsa_stream);
+
 int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest);
 int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest);
 int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst);
 int aoc_phonecall_path_close(struct aoc_chip *chip, int src, int dst);
+int aoc_voipcall_path_open(struct aoc_chip *chip, int src, int dst);
+int aoc_voipcall_path_close(struct aoc_chip *chip, int src, int dst);
+
 int aoc_audio_set_ctls(struct aoc_chip *chip);
 
 int aoc_a2dp_get_enc_param_size(void);
@@ -277,6 +297,9 @@ int aoc_audio_volume_set(struct aoc_chip *chip, uint32_t volume,
 int prepare_phonecall(struct aoc_alsa_stream *alsa_stream);
 int teardown_phonecall(struct aoc_alsa_stream *alsa_stream);
 
+int prepare_voipcall(struct aoc_alsa_stream *alsa_stream);
+int teardown_voipcall(struct aoc_alsa_stream *alsa_stream);
+
 int aoc_compr_offload_setup(struct aoc_alsa_stream *alsa_stream, int type);
 int aoc_compr_offload_get_io_samples(struct aoc_alsa_stream *alsa_stream);
 int aoc_compr_offload_flush_buffer(struct aoc_alsa_stream *alsa_stream);
@@ -297,4 +320,6 @@ int aoc_nohost_init(void);
 void aoc_nohost_exit(void);
 int aoc_incall_init(void);
 void aoc_incall_exit(void);
+int aoc_voip_init(void);
+void aoc_voip_exit(void);
 #endif
