@@ -134,6 +134,8 @@ struct aoc_chip {
 	int default_mic_hw_gain;
 	int voice_call_audio_enable;
 
+	int compr_offload_volume;
+
 	int mic_spatial_module_enable;
 	int mic_loopback_enabled;
 	unsigned int opened;
