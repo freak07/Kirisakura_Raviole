@@ -917,4 +917,14 @@ config ANON_VMA_NAME
 
 source "mm/damon/Kconfig"
 
+# the multi-gen LRU {
+config LRU_GEN
+	bool "Multi-Gen LRU"
+	depends on MMU
+	# the following options can use up the spare bits in page flags
+	depends on !MAXSMP && (64BIT || !SPARSEMEM || SPARSEMEM_VMEMMAP)
+	help
+	  A high performance LRU implementation for memory overcommit.
+# }
+
 endmenu
