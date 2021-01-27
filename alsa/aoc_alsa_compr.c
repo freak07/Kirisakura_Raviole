@@ -88,6 +88,36 @@ static enum hrtimer_restart aoc_compr_hrtimer_irq_handler(struct hrtimer *timer)
 	return HRTIMER_RESTART;
 }
 
+static int aoc_compr_prepare(struct aoc_alsa_stream *alsa_stream)
+{
+	int err;
+	struct snd_compr_stream *cstream = alsa_stream->cstream;
+	struct aoc_service_dev *dev = alsa_stream->dev;
+
+	/* No prepare() for compress offload, so do buffer flushing here */
+	err = aoc_compr_offload_flush_buffer(alsa_stream);
+	if (err != 0) {
+		pr_err("ERR: fail to flush compress offload buffer\n");
+		return -EFAULT;
+	}
+
+	alsa_stream->compr_pcm_io_sample_base = aoc_compr_offload_get_io_samples(alsa_stream);
+	if (alsa_stream->compr_pcm_io_sample_base < 0) {
+		pr_err("ERR: fail to get audio playback samples\n");
+		return -EFAULT;
+	}
+
+	alsa_stream->hw_ptr_base = (cstream->direction == SND_COMPRESS_PLAYBACK) ?
+						 aoc_ring_bytes_read(dev->service, AOC_DOWN) :
+						 aoc_ring_bytes_written(dev->service, AOC_UP);
+	alsa_stream->prev_consumed = alsa_stream->hw_ptr_base;
+	alsa_stream->n_overflow = 0;
+
+	pr_debug("compress offload hw_ptr_base =%lu\n", alsa_stream->hw_ptr_base);
+
+	return 0;
+}
+
 static int aoc_compr_playback_open(struct snd_compr_stream *cstream)
 {
 	struct snd_soc_pcm_runtime *rtd =
@@ -134,24 +164,6 @@ static int aoc_compr_playback_open(struct snd_compr_stream *cstream)
 	alsa_stream->dev = dev;
 	alsa_stream->idx = idx;
 
-	/* No prepare() for compress offload, so do buffer flushing here */
-	err = aoc_compr_offload_flush_buffer(alsa_stream);
-	if (err != 0) {
-		pr_err("fail to flush compress offload buffer: %s",
-		       rtd->dai_link->name);
-		goto out;
-	}
-
-	alsa_stream->hw_ptr_base =
-		(cstream->direction == SND_COMPRESS_PLAYBACK) ?
-			      aoc_ring_bytes_read(dev->service, AOC_DOWN) :
-			      aoc_ring_bytes_written(dev->service, AOC_UP);
-	pr_debug("compress offload hw_ptr_base =%lu\n",
-		 alsa_stream->hw_ptr_base);
-
-	alsa_stream->prev_consumed = alsa_stream->hw_ptr_base;
-	alsa_stream->n_overflow = 0;
-
 	err = aoc_audio_open(alsa_stream);
 	if (err != 0) {
 		pr_err("fail to audio open for %s", rtd->dai_link->name);
@@ -170,6 +182,13 @@ static int aoc_compr_playback_open(struct snd_compr_stream *cstream)
 
 	alsa_stream->entry_point_idx = idx;
 
+	/* No prepare() for compress offload, so do buffer flushing here */
+	err = aoc_compr_prepare(alsa_stream);
+	if (err != 0) {
+		pr_err("fail to prepare compress offload buffer: %s", rtd->dai_link->name);
+		goto out;
+	}
+
 	/* TODO: temporary compr offload volume set to protect speaker*/
 	aoc_audio_volume_set(chip, chip->compr_offload_volume, idx, 0);
 
@@ -184,7 +203,7 @@ out:
 	}
 	mutex_unlock(&chip->audio_mutex);
 
-	pr_debug("pcm open err=%d\n", err);
+	pr_err("pcm open err=%d\n", err);
 	return err;
 }
 
@@ -256,30 +275,6 @@ static int aoc_compr_free(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream)
 	return ret;
 }
 
-static int aoc_compr_prepare(struct snd_compr_stream *cstream)
-{
-	int err;
-	struct snd_compr_runtime *runtime = cstream->runtime;
-	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
-	struct aoc_service_dev *dev = alsa_stream->dev;
-
-	/* No prepare() for compress offload, so do buffer flushing here */
-	err = aoc_compr_offload_flush_buffer(alsa_stream);
-	if (err != 0) {
-		pr_err("ERR: fail to flush compress offload buffer\n");
-		return -EFAULT;
-	}
-
-	alsa_stream->hw_ptr_base =
-		(cstream->direction == SND_COMPRESS_PLAYBACK) ?
-			      aoc_ring_bytes_read(dev->service, AOC_DOWN) :
-			      aoc_ring_bytes_written(dev->service, AOC_UP);
-	pr_debug("compress offload hw_ptr_base =%lu\n",
-		 alsa_stream->hw_ptr_base);
-
-	return 0;
-}
-
 static int aoc_compr_trigger(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream, int cmd)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
@@ -322,7 +317,8 @@ static int aoc_compr_trigger(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstrea
 			alsa_stream->running = 0;
 		}
 
-		aoc_compr_prepare(cstream);
+		aoc_timer_stop(alsa_stream);
+		aoc_compr_prepare(alsa_stream);
 		break;
 
 	case SND_COMPR_TRIGGER_DRAIN:
@@ -373,17 +369,18 @@ static int aoc_compr_pointer(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstrea
 	pr_debug("%s, %pK, %pK\n", __func__, runtime, arg);
 
 	arg->byte_offset = alsa_stream->pos;
-	arg->copied_total =
-		alsa_stream->prev_consumed - alsa_stream->hw_ptr_base;
+	arg->copied_total = alsa_stream->prev_consumed - alsa_stream->hw_ptr_base;
 
-	arg->pcm_io_frames = aoc_compr_offload_get_io_samples(alsa_stream);
+	/* TODO: overflow in samples, HAL only uses pcm_io_samples for timestamps */
 	arg->sampling_rate = alsa_stream->params_rate;
+	arg->pcm_io_frames = (aoc_compr_offload_get_io_samples(alsa_stream) -
+			      alsa_stream->compr_pcm_io_sample_base) *
+			     (long)arg->sampling_rate / AOC_COMPR_OFFLOAD_DEFAULT_SR;
 
-	pr_debug(
-		"aoc compr pointer - total bytes avail: %llu  copied: %u  diff: %llu, iosampes=%u\n",
-		runtime->total_bytes_available, arg->copied_total,
-		runtime->total_bytes_available - arg->copied_total,
-		arg->pcm_io_frames);
+	pr_debug("compr ptr -total bytes: %llu copied: %u diff:%llu,sampes=%u,fs=%d,base=%ld\n",
+		 runtime->total_bytes_available, arg->copied_total,
+		 runtime->total_bytes_available - arg->copied_total, arg->pcm_io_frames,
+		 arg->sampling_rate, alsa_stream->compr_pcm_io_sample_base);
 
 	return 0;
 }

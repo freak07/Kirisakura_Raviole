@@ -60,6 +60,7 @@
 #define AVAIL_SUBSTREAMS_MASK 0x0fff
 
 #define AOC_AUDIO_SINK_BLOCK_ID_BASE 16
+#define AOC_COMPR_OFFLOAD_DEFAULT_SR 48000
 
 /* TODO: may not needed*/
 #define PLAYBACK_WATERMARK_DEFAULT 48000
@@ -150,6 +151,7 @@ struct aoc_alsa_stream {
 	struct aoc_chip *chip;
 	struct snd_pcm_substream *substream;
 	struct snd_compr_stream *cstream; /* compress offload stream */
+	long compr_pcm_io_sample_base;
 	struct timer_list timer; /* For advancing the hw ptr */
 	struct hrtimer hr_timer; /* For advancing the hw ptr */
 	unsigned long timer_interval_ns;
