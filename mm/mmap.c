@@ -2265,7 +2265,7 @@ static void unmap_region(struct mm_struct *mm, struct maple_tree *mt,
 	unmap_vmas(&tlb, mt, vma, start, end);
 	free_pgtables(&tlb, mt, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
 				 next ? next->vm_start : USER_PGTABLES_CEILING);
-	tlb_finish_mmu(&tlb, start, end);
+	tlb_finish_mmu(&tlb);
 }
 
 /*
@@ -3188,7 +3188,7 @@ void exit_mmap(struct mm_struct *mm)
 	mmap_write_lock(mm);
 	free_pgtables(&tlb, &mm->mm_mt, vma, FIRST_USER_ADDRESS,
 		      USER_PGTABLES_CEILING);
-	tlb_finish_mmu(&tlb, 0, -1);
+	tlb_finish_mmu(&tlb);
 
 	/*
 	 * Walk the list again, actually closing and freeing it, with preemption

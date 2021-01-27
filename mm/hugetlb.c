@@ -4305,7 +4305,7 @@ void unmap_hugepage_range(struct vm_area_struct *vma, unsigned long start,
 
 	tlb_gather_mmu(&tlb, mm, tlb_start, tlb_end);
 	__unmap_hugepage_range(&tlb, vma, start, end, ref_page);
-	tlb_finish_mmu(&tlb, tlb_start, tlb_end);
+	tlb_finish_mmu(&tlb);
 }
 
 /*
