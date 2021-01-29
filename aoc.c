@@ -62,11 +62,9 @@
 #define AOC_PCU_RESET_CONTROL 0x0
 #define AOC_PCU_RESET_CONTROL_RESET_VALUE 0x0
 
-static struct platform_device *aoc_platform_device;
-static struct device *aoc_device;
-static struct class *aoc_class;
+#define AOC_MAX_MINOR (1U)
 
-static int aoc_major_dev;
+static struct platform_device *aoc_platform_device;
 static bool aoc_online;
 
 struct aoc_prvdata {
@@ -99,6 +97,15 @@ struct aoc_prvdata {
 
 	char firmware_name[MAX_FIRMWARE_LENGTH];
 	char *firmware_version;
+
+	struct cdev cdev;
+	dev_t aoc_devt;
+	struct class *_class;
+	struct device *_device;
+
+	u32 disable_monitor_mode;
+	u32 enable_uart_tx;
+	u32 force_voltage_nominal;
 
 #if IS_ENABLED(CONFIG_EXYNOS_ITMON)
 	struct notifier_block itmon_nb;
@@ -459,8 +466,11 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	u32 sram_was_repaired = aoc_sram_was_repaired(prvdata);
 	u32 carveout_base = prvdata->dram_resource.start;
 	u32 carveout_size = prvdata->dram_size;
+	u32 dt_force_vnom = dt_property(prvdata->dev->of_node, "force-vnom");
+	u32 force_vnom = ((dt_force_vnom != 0) || (prvdata->force_voltage_nominal != 0)) ? 1 : 0;
+	u32 disable_mm = prvdata->disable_monitor_mode;
+	u32 enable_uart = prvdata->enable_uart_tx;
 
-	u32 force_voltage_nominal = dt_property(prvdata->dev->of_node, "force-vnom");
 	struct aoc_fw_data fw_data[] = {
 		{ .key = kAOCBoardID, .value = board_id },
 		{ .key = kAOCBoardRevision, .value = board_rev },
@@ -469,9 +479,11 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		{ .key = kAOCCarveoutSize, .value = carveout_size},
 		{ .key = kAOCSensorDirectHeapAddress, .value = carveout_base + (28 * SZ_1M)},
 		{ .key = kAOCSensorDirectHeapSize, .value = SZ_4M },
-		{ .key = kAOCForceVNOM, .value = force_voltage_nominal } };
+		{ .key = kAOCForceVNOM, .value = force_vnom },
+		{ .key = kAOCDisableMM, .value = disable_mm },
+		{ .key = kAOCEnableUART, .value = enable_uart }
+	};
 	const char *version;
-
 	u32 ipc_offset, bootloader_offset;
 
 	aoc_req_assert(prvdata, true);
@@ -499,7 +511,13 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	if (sram_was_repaired)
 		dev_err(dev, "SRAM was repaired on this device.  Stability/power will be impacted\n");
 
-	if (force_voltage_nominal)
+	if (prvdata->disable_monitor_mode)
+		dev_err(dev, "Monitor Mode will be disabled.  Power will be impacted\n");
+
+	if (prvdata->enable_uart_tx)
+		dev_err(dev, "Enabling logging on UART. This will affect system timing\n");
+
+	if (prvdata->force_voltage_nominal)
 		dev_err(dev, "Forcing VDD_AOC to VNOM on this device. Power will be impacted\n");
 	else
 		dev_info(dev, "AoC using default DVFS on this device.\n");
@@ -1849,6 +1867,10 @@ static bool aoc_create_ion_heap(struct aoc_prvdata *prvdata)
 
 static int aoc_open(struct inode *inode, struct file *file)
 {
+	struct aoc_prvdata *prvdata = container_of(inode->i_cdev,
+					struct aoc_prvdata, cdev);
+
+	file->private_data = prvdata;
 	return 0;
 }
 
@@ -1858,39 +1880,98 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lon
 	struct ion_buffer *ionbuf;
 	long ret = -EINVAL;
 
+	struct aoc_prvdata *prvdata = file->private_data;
+
 	switch (cmd) {
 	case AOC_IOCTL_ION_FD_TO_HANDLE:
-		{
-			struct aoc_ion_handle handle;
+	{
+		struct aoc_ion_handle handle;
 
-			if (copy_from_user(&handle, (struct aoc_ion_handle *)arg, _IOC_SIZE(cmd))) {
-				ret = -EFAULT;
-				break;
-			}
+		BUILD_BUG_ON(sizeof(struct aoc_ion_handle) !=
+			     _IOC_SIZE(AOC_IOCTL_ION_FD_TO_HANDLE));
 
-			dmabuf = dma_buf_get(handle.fd);
-			if (IS_ERR(dmabuf)) {
-				pr_err("fd is not an ion buffer\n");
-				ret = PTR_ERR(dmabuf);
-				break;
-			}
-
-			ionbuf = dmabuf->priv;
-			handle.handle = (u64)ionbuf->priv_virt;
-
-			dma_buf_put(dmabuf);
-
-			if (copy_to_user((struct aoc_ion_handle *)arg, &handle, _IOC_SIZE(cmd)))
-				ret = -EFAULT;
-			else
-				ret = 0;
+		if (copy_from_user(&handle, (struct aoc_ion_handle *)arg, _IOC_SIZE(cmd))) {
+			ret = -EFAULT;
+			break;
 		}
-		break;
+
+		dmabuf = dma_buf_get(handle.fd);
+		if (IS_ERR(dmabuf)) {
+			pr_err("fd is not an ion buffer\n");
+			ret = PTR_ERR(dmabuf);
+			break;
+		}
+
+		ionbuf = dmabuf->priv;
+		handle.handle = (u64)ionbuf->priv_virt;
+
+		dma_buf_put(dmabuf);
+
+		if (copy_to_user((struct aoc_ion_handle *)arg, &handle, _IOC_SIZE(cmd)))
+			ret = -EFAULT;
+		else
+			ret = 0;
+	}
+	break;
+	case AOC_IOCTL_DISABLE_MM:
+	{
+		u32 disable_mm;
+
+		BUILD_BUG_ON(sizeof(disable_mm) != _IOC_SIZE(AOC_IOCTL_DISABLE_MM));
+
+		if (copy_from_user(&disable_mm, (u32 *)arg, _IOC_SIZE(cmd))) {
+			ret = -EFAULT;
+			break;
+		}
+
+		prvdata->disable_monitor_mode = disable_mm;
+		if (prvdata->disable_monitor_mode != 0)
+			pr_info("AoC Monitor Mode disabled\n");
+		ret = 0;
+	}
+	break;
+
+	case AOC_IOCTL_FORCE_VNOM:
+	{
+		u32 force_vnom;
+
+		BUILD_BUG_ON(sizeof(force_vnom) != _IOC_SIZE(AOC_IOCTL_FORCE_VNOM));
+
+		if (copy_from_user(&force_vnom, (u32 *)arg, _IOC_SIZE(cmd))) {
+			ret = -EFAULT;
+			break;
+		}
+
+		prvdata->force_voltage_nominal = force_vnom;
+		if (prvdata->force_voltage_nominal != 0)
+			pr_info("AoC Force Nominal Voltage enabled\n");
+		ret = 0;
+	}
+	break;
+
+	case AOC_IOCTL_ENABLE_UART_TX:
+	{
+		u32 enable_uart;
+
+		BUILD_BUG_ON(sizeof(enable_uart) != _IOC_SIZE(AOC_IOCTL_ENABLE_UART_TX));
+
+		if (copy_from_user(&enable_uart, (u32 *)arg, _IOC_SIZE(cmd))) {
+			ret = -EFAULT;
+			break;
+		}
+
+		prvdata->enable_uart_tx = enable_uart;
+		if (prvdata->enable_uart_tx != 0)
+			pr_info("AoC UART Logging Enabled\n");
+		ret = 0;
+	}
+	break;
 
 	default:
 		/* ioctl(2) The specified request does not apply to the kind of object
 		 * that the file descriptor fd references
 		 */
+		pr_err("Received IOCTL with invalid ID (%d) returning ENOTTY", cmd);
 		ret = -ENOTTY;
 		break;
 	}
@@ -1903,7 +1984,7 @@ static int aoc_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static const struct file_operations fops = {
+static const struct file_operations aoc_fops = {
 	.open = aoc_open,
 	.release = aoc_release,
 	.unlocked_ioctl = aoc_unlocked_ioctl,
@@ -1922,28 +2003,68 @@ static char *aoc_devnode(struct device *dev, umode_t *mode)
 	return kasprintf(GFP_KERNEL, "%s", dev_name(dev));
 }
 
-static int aoc_create_chrdev(struct platform_device *pdev)
+static int init_chardev(struct aoc_prvdata *prvdata)
 {
-	aoc_major = register_chrdev(0, AOC_CHARDEV_NAME, &fops);
-	aoc_major_dev = MKDEV(aoc_major, 0);
+	int rc;
 
-	aoc_class = class_create(THIS_MODULE, AOC_CHARDEV_NAME);
-	if (!aoc_class) {
+	cdev_init(&prvdata->cdev, &aoc_fops);
+	prvdata->cdev.owner = THIS_MODULE;
+	rc = alloc_chrdev_region(&prvdata->aoc_devt, 0, AOC_MAX_MINOR, AOC_CHARDEV_NAME);
+	if (rc != 0) {
+		pr_err("Failed to alloc chrdev region\n");
+		goto err;
+	}
+
+	rc = cdev_add(&prvdata->cdev, prvdata->aoc_devt, AOC_MAX_MINOR);
+	if (rc) {
+		pr_err("Failed to register chrdev\n");
+		goto err_cdev_add;
+	}
+
+	aoc_major = MAJOR(prvdata->aoc_devt);
+
+	prvdata->_class = class_create(THIS_MODULE, AOC_CHARDEV_NAME);
+	if (!prvdata->_class) {
 		pr_err("failed to create aoc_class\n");
-		return -ENXIO;
+		rc = -ENXIO;
+		goto err_class_create;
 	}
 
-	aoc_class->devnode = aoc_devnode;
+	prvdata->_class->devnode = aoc_devnode;
 
-	aoc_device = device_create(aoc_class, NULL, aoc_major_dev, NULL,
-				   AOC_CHARDEV_NAME);
-	if (!aoc_device) {
+	prvdata->_device = device_create(prvdata->_class, NULL,
+					 MKDEV(aoc_major, 0),
+					 NULL, AOC_CHARDEV_NAME);
+	if (!prvdata->_device) {
 		pr_err("failed to create aoc_device\n");
-		return -ENXIO;
+		rc = -ENXIO;
+		goto err_device_create;
 	}
 
-	return 0;
+	return rc;
+
+err_device_create:
+	class_destroy(prvdata->_class);
+err_class_create:
+	cdev_del(&prvdata->cdev);
+err_cdev_add:
+	unregister_chrdev_region(prvdata->aoc_devt, 1);
+err:
+	return rc;
 }
+
+static void deinit_chardev(struct aoc_prvdata *prvdata)
+{
+	if (!prvdata)
+		return;
+
+	device_destroy(prvdata->_class, prvdata->aoc_devt);
+	class_destroy(prvdata->_class);
+	cdev_del(&prvdata->cdev);
+
+	unregister_chrdev_region(prvdata->aoc_devt, AOC_MAX_MINOR);
+}
+
 static void aoc_cleanup_resources(struct platform_device *pdev)
 {
 	struct aoc_prvdata *prvdata = platform_get_drvdata(pdev);
@@ -1964,15 +2085,6 @@ static void aoc_cleanup_resources(struct platform_device *pdev)
 #endif
 	}
 
-	/*
-	 * SRAM and DRAM were mapped with the device managed API, so they will
-	 * be automatically detached
-	 */
-
-	if (aoc_major) {
-		unregister_chrdev(aoc_major, AOC_CHARDEV_NAME);
-		aoc_major = 0;
-	}
 }
 
 static int aoc_platform_probe(struct platform_device *pdev)
@@ -1983,26 +2095,41 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	struct resource *rsrc;
 	unsigned int acpm_async_size;
 	int ret;
+	int rc;
 
 	if (aoc_platform_device != NULL) {
 		dev_err(dev,
 			"already matched the AoC to another platform device");
-		return -EEXIST;
+		rc = -EEXIST;
+		goto err_platform_not_null;
 	}
 
 	aoc_node = dev->of_node;
 	mem_node = of_parse_phandle(aoc_node, "memory-region", 0);
 
 	prvdata = devm_kzalloc(dev, sizeof(*prvdata), GFP_KERNEL);
-	if (!prvdata)
-		return -ENOMEM;
+	if (!prvdata) {
+		rc = -ENOMEM;
+		goto err_failed_prvdata_alloc;
+	}
 
 	prvdata->dev = dev;
+	prvdata->disable_monitor_mode = 0;
+	prvdata->enable_uart_tx = 0;
+	prvdata->force_voltage_nominal = 0;
+
+	ret = init_chardev(prvdata);
+	if (ret) {
+		dev_err(dev, "Failed to initialize chardev: %d\n", ret);
+		rc = -ENOMEM;
+		goto err_chardev;
+	}
 
 	if (!mem_node) {
 		dev_err(dev,
 			"failed to find reserve-memory in the device tree\n");
-		return -EINVAL;
+		rc = -EINVAL;
+		goto err_memnode;
 	}
 
 	aoc_sram_resource =
@@ -2015,16 +2142,16 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		dev_err(dev,
 			"failed to get memory resources for device sram %pR dram %pR\n",
 			aoc_sram_resource, &prvdata->dram_resource);
-		aoc_cleanup_resources(pdev);
-
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto err_mem_resources;
 	}
 
 #ifdef AOC_JUNO
 	aoc_irq = platform_get_irq(pdev, 0);
 	if (aoc_irq < 1) {
 		dev_err(dev, "failed to configure aoc interrupt\n");
-		return aoc_irq;
+		rc = aoc_irq;
+		goto err_get_irq;
 	}
 #else
 	prvdata->mbox_client.dev = dev;
@@ -2046,7 +2173,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to find mailbox interface : %ld\n",
 			PTR_ERR(prvdata->mbox_channel));
 		prvdata->mbox_channel = NULL;
-		return -EIO;
+		rc = -EIO;
+		goto err_mbox_req;
 	}
 
 	init_waitqueue_head(&prvdata->aoc_reset_wait_queue);
@@ -2055,7 +2183,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	prvdata->watchdog_irq = platform_get_irq_byname(pdev, "watchdog");
 	if (prvdata->watchdog_irq < 0) {
 		dev_err(dev, "failed to find watchdog irq\n");
-		return -EIO;
+		rc = -EIO;
+		goto err_watchdog_irq_get;
 	}
 
 	ret = devm_request_irq(dev, prvdata->watchdog_irq, watchdog_int_handler,
@@ -2063,11 +2192,10 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	if (ret != 0) {
 		dev_err(dev, "failed to register watchdog irq handler: %d\n",
 			ret);
-		return -EIO;
+		rc = -EIO;
+		goto err_watchdog_irq_req;
 	}
 #endif
-
-	aoc_create_chrdev(pdev);
 
 	pr_notice("found aoc with interrupt:%d sram:%pR dram:%pR\n", aoc_irq,
 		  aoc_sram_resource, &prvdata->dram_resource);
@@ -2100,8 +2228,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	prvdata->dram_size = resource_size(&prvdata->dram_resource);
 
 	if (IS_ERR(aoc_sram_virt_mapping) || IS_ERR(aoc_dram_virt_mapping)) {
-		aoc_cleanup_resources(pdev);
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto err_sram_dram_map;
 	}
 
 #ifndef AOC_JUNO
@@ -2109,8 +2237,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	if (IS_ERR(prvdata->aoc_s2mpu_virt)) {
 		dev_err(dev, "failed to map aoc_s2mpu: rc = %ld\n",
 			PTR_ERR(prvdata->aoc_s2mpu_virt));
-		aoc_cleanup_resources(pdev);
-		return PTR_ERR(prvdata->aoc_s2mpu_virt);
+		rc = PTR_ERR(prvdata->aoc_s2mpu_virt);
+		goto err_s2mpu_map;
 	}
 	prvdata->aoc_s2mpu_saved_value = ioread32(prvdata->aoc_s2mpu_virt + AOC_S2MPU_CTRL0);
 
@@ -2123,7 +2251,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	prvdata->domain = iommu_get_domain_for_dev(dev);
 	if (!prvdata->domain) {
 		pr_err("failed to find iommu domain\n");
-		return -EIO;
+		rc = -EIO;
+		goto err_find_iommu;
 	}
 
 	aoc_configure_ssmt(pdev);
@@ -2142,12 +2271,12 @@ static int aoc_platform_probe(struct platform_device *pdev)
 
 #ifdef AOC_JUNO
 	ret = request_irq(aoc_irq, aoc_int_handler, IRQF_TRIGGER_HIGH, "aoc",
-			  aoc_device);
+			  prvdata->_device);
 	if (ret != 0) {
 		pr_err("failed to register interrupt handler : %d\n", ret);
-		aoc_cleanup_resources(pdev);
 
-		return -ENXIO;
+		rc = -ENXIO;
+		goto err_aoc_irq_req;
 	}
 #endif
 
@@ -2155,7 +2284,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 				       &prvdata->acpm_async_id, &acpm_async_size);
 	if (ret < 0) {
 		dev_err(dev, "failed to register acpm aoc reset callback\n");
-		return ret;
+		rc = -EIO;
+		goto err_acmp_reset;
 	}
 
 #if IS_ENABLED(CONFIG_EXYNOS_ITMON)
@@ -2174,6 +2304,33 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	pr_debug("platform_probe matched\n");
 
 	return 0;
+
+err_acmp_reset:
+#ifdef AOC_JUNO
+err_aoc_irq_req:
+#endif
+#ifndef AOC_JUNO
+err_find_iommu:
+err_s2mpu_map:
+#endif
+err_sram_dram_map:
+
+#ifndef AOC_JUNO
+err_watchdog_irq_req:
+err_watchdog_irq_get:
+err_mbox_req:
+#else
+err_get_irq:
+#endif
+err_mem_resources:
+	aoc_cleanup_resources(pdev);
+err_memnode:
+	deinit_chardev(prvdata);
+err_chardev:
+	kfree(prvdata);
+err_failed_prvdata_alloc:
+err_platform_not_null:
+	return rc;
 }
 
 static int aoc_platform_remove(struct platform_device *pdev)
@@ -2187,6 +2344,8 @@ static int aoc_platform_remove(struct platform_device *pdev)
 	sysfs_remove_groups(&pdev->dev.kobj, aoc_groups);
 
 	aoc_cleanup_resources(pdev);
+	deinit_chardev(prvdata);
+	platform_set_drvdata(pdev, NULL);
 	aoc_platform_device = NULL;
 
 	return 0;

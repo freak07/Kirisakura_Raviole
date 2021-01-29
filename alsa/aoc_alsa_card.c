@@ -1797,6 +1797,7 @@ static int snd_aoc_init(struct aoc_chip *chip)
 		chip->sink_id_list[i] = -1;
 	}
 
+	chip->audio_capture_mic_source = BUILTIN_MIC;
 	chip->voice_call_mic_source = 0;
 	chip->voice_call_mic_mute = 0;
 	chip->compr_offload_volume = 15;
