@@ -318,6 +318,134 @@ int aoc_mic_dc_blocker_set(struct aoc_chip *chip, int enable)
 	return err;
 }
 
+int aoc_sidetone_cfg_get(struct aoc_chip *chip, int param, long *val)
+{
+	int err = 0;
+	struct CMD_AUDIO_OUTPUT_GET_SIDETONE cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_SIDETONE_ID, sizeof(cmd));
+
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in get mic dc blocker state\n", err);
+		return err;
+	}
+
+	pr_info("%s, sidetone- vol:%d, Eq num stage: %d, mic:%d\n", __func__, cmd.volume,
+		cmd.eq_num_stages, cmd.mic_select);
+
+	chip->sidetone_cfg = cmd;
+
+	if (val) {
+		switch (param) {
+		case SIDETONE_CFG_VOL:
+			*val = cmd.volume;
+			break;
+		case SIDETONE_CFG_STAGE_NUM:
+			*val = cmd.eq_num_stages;
+			break;
+		case SIDETONE_CFG_MIC_ID:
+			*val = cmd.mic_select;
+			break;
+		default:
+			err = -EINVAL;
+			pr_err("ERR:%d invalid param for sidetone cfg\n", err);
+		}
+	}
+
+	return err;
+}
+
+int aoc_sidetone_cfg_set(struct aoc_chip *chip, int param, long val)
+{
+	int err = 0;
+	struct CMD_AUDIO_OUTPUT_SET_SIDETONE cmd;
+
+	aoc_sidetone_cfg_get(chip, 0, NULL); //get the updated data from AoC before setting
+	cmd.eq_num_stages = chip->sidetone_cfg.eq_num_stages;
+	cmd.mic_select = chip->sidetone_cfg.mic_select;
+	cmd.volume = chip->sidetone_cfg.volume;
+
+	switch (param) {
+	case SIDETONE_CFG_VOL:
+		cmd.volume = val;
+		break;
+	case SIDETONE_CFG_STAGE_NUM:
+		cmd.eq_num_stages = val;
+		break;
+	case SIDETONE_CFG_MIC_ID:
+		cmd.mic_select = val;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	pr_info("%s, side tone- vol:%d, Eq num stage: %d, mic:%d\n", __func__, cmd.volume,
+		cmd.eq_num_stages, cmd.mic_select);
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SET_SIDETONE_ID, sizeof(cmd));
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in set sidetone params\n", err);
+		return err;
+	}
+
+	return err;
+}
+
+int aoc_sidetone_eq_get(struct aoc_chip *chip, int biquad_idx, long *val)
+{
+	int i, err = 0;
+	struct CMD_AUDIO_OUTPUT_GET_SIDETONE_EQ cmd;
+	int n_params = ARRAY_SIZE(cmd.coeffs);
+
+	pr_info("%s: sidetone eq %d - %d params\n", __func__, biquad_idx, n_params);
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_SIDETONE_EQ_ID, sizeof(cmd));
+
+	cmd.stage_num = biquad_idx;
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in get sidetone eq param\n", err);
+		return err;
+	}
+
+	if (val) {
+		for (i = 0; i < n_params; i++)
+			val[i] = *(uint32_t *)&cmd.coeffs[i];
+	}
+
+	return 0;
+}
+
+int aoc_sidetone_eq_set(struct aoc_chip *chip, int biquad_idx, long *val)
+{
+	int i, err = 0;
+	uint32_t tmp;
+	struct CMD_AUDIO_OUTPUT_SET_SIDETONE_EQ cmd;
+	int n_params = ARRAY_SIZE(cmd.coeffs);
+
+	pr_info("%s: sidetone eq %d - %d params\n", __func__, biquad_idx, n_params);
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SET_SIDETONE_EQ_ID, sizeof(cmd));
+	cmd.stage_num = biquad_idx;
+	for (i = 0; i < n_params; i++) {
+		tmp = (uint32_t)val[i];
+		cmd.coeffs[i] = *(float *)(&tmp);
+	}
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in set sidetone eq param\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
 /* TODO: temporary solution for mic muting, has to be revised using DSP modules instead of mixer */
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute)
 {
@@ -533,6 +661,34 @@ aoc_audio_playback_trigger_source(struct aoc_alsa_stream *alsa_stream, int cmd,
 
 	pr_debug("Source %d %s !\n", alsa_stream->idx,
 		 cmd == START ? "on" : "off");
+
+	return err;
+}
+
+static int aoc_audio_playback_source_on(struct aoc_chip *chip, int cmd, int src)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_SOURCE source;
+
+	AocCmdHdrSet(&(source.parent), CMD_AUDIO_OUTPUT_SOURCE_ID, sizeof(source));
+
+	/* source on/off */
+	source.source = src;
+	switch (cmd) {
+	case START:
+		source.on = 1;
+		break;
+	case STOP:
+		source.on = 0;
+		break;
+	default:
+		pr_err("Invalid source operation (only On/Off allowed)\n");
+		return -EINVAL;
+	}
+
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&source, sizeof(source), NULL, chip);
+
+	pr_debug("Source %d %s !\n", src, cmd == START ? "on" : "off");
 
 	return err;
 }
@@ -868,6 +1024,35 @@ exit:
 	if (err < 0)
 		pr_err("ERR:%d in capture trigger\n", err);
 
+	return err;
+}
+
+int aoc_sidetone_enable(struct aoc_chip *chip, int enable)
+{
+	int err = 0;
+	int cmd = (enable) ? START : STOP;
+	int src, dest;
+
+	src = SIDETONE;
+	dest = ASNK_SPEAKER;
+
+	pr_info("sidetone: %s \n", (enable) ? "Enabled" : "Disabled");
+
+	/* Source on/off */
+	err = aoc_audio_playback_source_on(chip, cmd, src);
+	if (err < 0) {
+		pr_err("ERR=%d, sidetone %s fail in source(%d) on/off\n", err,
+		       (enable) ? "START" : "STOP", src);
+		goto exit;
+	}
+
+	/* Bind/ubind - source 11 and sink 0 */
+	err = aoc_audio_path_bind(src, dest, cmd, chip);
+	if (err < 0)
+		pr_err("ERR=%d, sidestone %s fail in binding src:%d - dest:%d\n", err,
+		       (enable) ? "START" : "STOP", src, dest);
+
+exit:
 	return err;
 }
 
