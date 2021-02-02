@@ -575,6 +575,30 @@ phys_addr_t aoc_service_ring_base_phys_addr(struct aoc_service_dev *dev, aoc_dir
 }
 EXPORT_SYMBOL(aoc_service_ring_base_phys_addr);
 
+bool aoc_service_flush_read_data(struct aoc_service_dev *dev)
+{
+	const struct device *parent;
+	struct aoc_prvdata *prvdata;
+	aoc_service *service;
+	size_t slots;
+
+	if (!dev)
+		return false;
+
+	parent = dev->dev.parent;
+	prvdata = dev_get_drvdata(parent);
+
+	service = service_at_index(prvdata, dev->service_index);
+
+	slots = aoc_service_slots_available_to_read(service, AOC_UP);
+	if (slots == 0)
+		return false;
+
+	aoc_service_advance_read_index(service, AOC_UP, slots);
+	return true;
+}
+EXPORT_SYMBOL(aoc_service_flush_read_data);
+
 ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 			 size_t count, bool block)
 {
