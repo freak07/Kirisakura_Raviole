@@ -777,10 +777,14 @@ static int aoc_audio_playback_source_on(struct aoc_chip *chip, int cmd, int src)
 	}
 
 	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&source, sizeof(source), NULL, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in playback source %s\n", err, (cmd == START) ? "on" : "off");
+		return err;
+	}
 
 	pr_debug("Source %d %s !\n", src, cmd == START ? "on" : "off");
 
-	return err;
+	return 0;
 }
 
 static int aoc_audio_playback_trigger_bind(struct aoc_alsa_stream *alsa_stream,
