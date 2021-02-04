@@ -43,6 +43,7 @@ struct aocc_device_entry {
 
 static LIST_HEAD(aocc_devices_list);
 static DEFINE_MUTEX(aocc_devices_lock);
+static DEFINE_MUTEX(aocc_write_lock);
 
 #define AOCC_MAX_MSG_SIZE 1024
 #define AOCC_MAX_PENDING_MSGS 32
@@ -220,12 +221,16 @@ static int aocc_send_cmd_msg(aoc_service *service_id, enum aoc_cmd_code code,
 			      int channel_to_modify)
 {
 	struct aocc_channel_control_msg msg;
+        int ret;
 
 	msg.channel_index = 0;
 	msg.command_code = code;
 	msg.channel_to_modify = channel_to_modify;
 
-	return aoc_service_write(service_id, (char *)&msg, sizeof(msg), false);
+	mutex_lock(&aocc_write_lock);
+	ret = aoc_service_write(service_id, (char *)&msg, sizeof(msg), false);
+	mutex_unlock(&aocc_write_lock);
+	return ret;
 }
 
 /* File methods */
@@ -555,8 +560,10 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 
 	leftover = copy_from_user(buffer + sizeof(int), buf, count);
 	if (leftover == 0) {
+		mutex_lock(&aocc_write_lock);
 		retval = aoc_service_write(private->aocc_device_entry->service, buffer,
 					   count + sizeof(int), false);
+		mutex_unlock(&aocc_write_lock);
 		if (retval > 0)
 			sent_msg_count++;
 	} else {

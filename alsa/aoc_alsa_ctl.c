@@ -20,22 +20,18 @@
  * In orginal definition, xmin can be a negative value,  but the min control
  * value is always zero.
  */
-#define SOC_SINGLE_RANGE_EXT_TLV_modified(xname, xreg, xshift, xmin, xmax,     \
-					  xinvert, xhandler_get, xhandler_put, \
-					  tlv_array)                           \
-	{                                                                      \
-		.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname),          \
-		.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ |                     \
-			  SNDRV_CTL_ELEM_ACCESS_READWRITE,                     \
-		.tlv.p = (tlv_array),                                          \
-		.info = snd_soc_info_volsw_range_modified,                     \
-		.get = xhandler_get, .put = xhandler_put,                      \
-		.private_value = (uintptr_t)&(struct soc_mixer_control)    \
-		{                                                              \
-			.reg = xreg, .rreg = xreg, .shift = xshift,            \
-			.rshift = xshift, .min = xmin, .max = xmax,            \
-			.platform_max = xmax, .invert = xinvert                \
-		}                                                              \
+#define SOC_SINGLE_RANGE_EXT_TLV_modified(xname, xreg, xshift, xmin, xmax, count, xhandler_get,    \
+					  xhandler_put, tlv_array)                                 \
+	{                                                                                          \
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname),                              \
+		.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ | SNDRV_CTL_ELEM_ACCESS_READWRITE,        \
+		.tlv.p = (tlv_array), .info = snd_soc_info_volsw_range_modified,                   \
+		.get = xhandler_get, .put = xhandler_put,                                          \
+		.private_value = (uintptr_t) & (struct soc_mixer_control)                          \
+		{                                                                                  \
+			.reg = xreg, .rreg = xreg, .shift = xshift, .rshift = count, .min = xmin,  \
+			.max = xmax, .platform_max = xmax, .invert = 0                             \
+		}                                                                                  \
 	}
 
 static int snd_soc_info_volsw_range_modified(struct snd_kcontrol *kcontrol,
@@ -45,7 +41,7 @@ static int snd_soc_info_volsw_range_modified(struct snd_kcontrol *kcontrol,
 		(struct soc_mixer_control *)kcontrol->private_value;
 
 	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
-	uinfo->count = 1;
+	uinfo->count = (mc->rshift <= 1) ? 1 : mc->rshift;
 	uinfo->value.integer.min = mc->min;
 	uinfo->value.integer.max = mc->max;
 
@@ -321,6 +317,115 @@ static int mic_hw_gain_set(struct snd_kcontrol *kcontrol,
 
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
+}
+
+static int sidetone_enable_ctl_get(struct snd_kcontrol *kcontrol,
+				   struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = chip->sidetone_enable;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int sidetone_enable_ctl_set(struct snd_kcontrol *kcontrol,
+				   struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	chip->sidetone_enable = ucontrol->value.integer.value[0];
+	err = aoc_sidetone_enable(chip, chip->sidetone_enable);
+	if (err < 0)
+		pr_err("ERR:%d sidetone %s fail\n", err,
+		       (chip->sidetone_enable) ? "Enable" : "Disable");
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
+static int aoc_sidetone_cfg_ctl_get(struct snd_kcontrol *kcontrol,
+				    struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc = (struct soc_mixer_control *)kcontrol->private_value;
+	u32 param = (u32)mc->shift;
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_sidetone_cfg_get(chip, param, &ucontrol->value.integer.value[0]);
+	if (err < 0)
+		pr_err("ERR:%d sidetone config fail to get param %d\n", err, param);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
+static int aoc_sidetone_cfg_ctl_set(struct snd_kcontrol *kcontrol,
+				    struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc = (struct soc_mixer_control *)kcontrol->private_value;
+	u32 param = (u32)mc->shift;
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_sidetone_cfg_set(chip, param, ucontrol->value.integer.value[0]);
+	if (err < 0)
+		pr_err("ERR:%d sidetone config fail to set param %d\n", err, param);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
+static int aoc_sidetone_eq_ctl_get(struct snd_kcontrol *kcontrol,
+				   struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc = (struct soc_mixer_control *)kcontrol->private_value;
+	u32 biquad_idx = (u32)mc->shift;
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_sidetone_eq_get(chip, biquad_idx, ucontrol->value.integer.value);
+	if (err < 0)
+		pr_err("ERR:%d sidetone EQ biquad %d fail to get parameter\n", err, biquad_idx);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
+static int aoc_sidetone_eq_ctl_set(struct snd_kcontrol *kcontrol,
+				   struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc = (struct soc_mixer_control *)kcontrol->private_value;
+	u32 biquad_idx = (u32)mc->shift;
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_sidetone_eq_set(chip, biquad_idx, ucontrol->value.integer.value);
+	if (err < 0)
+		pr_err("ERR:%d sidetone EQ biquad %d fail to set parameter\n", err, biquad_idx);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
 }
 
 static int mic_dc_blocker_get(struct snd_kcontrol *kcontrol,
@@ -1027,6 +1132,43 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		"MIC HW Gain (cB)", SND_SOC_NOPM, MIC_CURRENT_GAIN,
 		MIC_HW_GAIN_IN_CB_MIN, MIC_HW_GAIN_IN_CB_MAX, 0,
 		mic_hw_gain_get, NULL, NULL),
+
+	/* Sidetone switch and tuning parameters */
+	SOC_SINGLE_EXT("Sidetone Enable", SND_SOC_NOPM, 0, 1, 0,
+		       sidetone_enable_ctl_get, sidetone_enable_ctl_set),
+
+	SOC_SINGLE_RANGE_EXT_TLV_modified("Sidetone Volume", SND_SOC_NOPM, SIDETONE_CFG_VOL,
+					  SIDETONE_VOL_MIN, SIDETONE_VOL_MAX, 0,
+					  aoc_sidetone_cfg_ctl_get, aoc_sidetone_cfg_ctl_set, NULL),
+	SOC_SINGLE_RANGE_EXT_TLV_modified(
+		"Sidetone Selected Mic", SND_SOC_NOPM, SIDETONE_CFG_MIC_ID, SIDETONE_MIC_ID_MIN,
+		SIDETONE_MIC_ID_MAX, 0, aoc_sidetone_cfg_ctl_get, aoc_sidetone_cfg_ctl_set, NULL),
+
+	SOC_SINGLE_RANGE_EXT_TLV_modified("Sidetone EQ Stage Number", SND_SOC_NOPM,
+					  SIDETONE_CFG_STAGE_NUM, SIDETONE_EQ_STAGE_NUM_MIN,
+					  SIDETONE_EQ_STAGE_NUM_MAX, 0, aoc_sidetone_cfg_ctl_get,
+					  aoc_sidetone_cfg_ctl_set, NULL),
+
+	SOC_SINGLE_RANGE_EXT_TLV_modified("Sidetone Biquad0", SND_SOC_NOPM, BIQUAD0,
+					  SIDETONE_BIQUAD_PARAM_MIN, SIDETONE_BIQUAD_PARAM_MAX,
+					  SIDETONE_BIQUAD_PARAM_NUM, aoc_sidetone_eq_ctl_get,
+					  aoc_sidetone_eq_ctl_set, NULL),
+	SOC_SINGLE_RANGE_EXT_TLV_modified("Sidetone Biquad1", SND_SOC_NOPM, BIQUAD1,
+					  SIDETONE_BIQUAD_PARAM_MIN, SIDETONE_BIQUAD_PARAM_MAX,
+					  SIDETONE_BIQUAD_PARAM_NUM, aoc_sidetone_eq_ctl_get,
+					  aoc_sidetone_eq_ctl_set, NULL),
+	SOC_SINGLE_RANGE_EXT_TLV_modified("Sidetone Biquad2", SND_SOC_NOPM, BIQUAD2,
+					  SIDETONE_BIQUAD_PARAM_MIN, SIDETONE_BIQUAD_PARAM_MAX,
+					  SIDETONE_BIQUAD_PARAM_NUM, aoc_sidetone_eq_ctl_get,
+					  aoc_sidetone_eq_ctl_set, NULL),
+	SOC_SINGLE_RANGE_EXT_TLV_modified("Sidetone Biquad3", SND_SOC_NOPM, BIQUAD3,
+					  SIDETONE_BIQUAD_PARAM_MIN, SIDETONE_BIQUAD_PARAM_MAX,
+					  SIDETONE_BIQUAD_PARAM_NUM, aoc_sidetone_eq_ctl_get,
+					  aoc_sidetone_eq_ctl_set, NULL),
+	SOC_SINGLE_RANGE_EXT_TLV_modified("Sidetone Biquad4", SND_SOC_NOPM, BIQUAD4,
+					  SIDETONE_BIQUAD_PARAM_MIN, SIDETONE_BIQUAD_PARAM_MAX,
+					  SIDETONE_BIQUAD_PARAM_NUM, aoc_sidetone_eq_ctl_get,
+					  aoc_sidetone_eq_ctl_set, NULL),
 
 	SOC_SINGLE_EXT("MIC Recording Gain (dB)", SND_SOC_NOPM, 0, 100, 0, NULL,
 		       NULL),

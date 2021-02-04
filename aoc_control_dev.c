@@ -52,6 +52,9 @@ static ssize_t read_attribute(struct stats_prvdata *prvdata, void *in_cmd,
 	if (ret != 0)
 		return ret;
 
+	if (aoc_service_flush_read_data(service))
+		pr_err("Previous response left in channel\n");
+
 	ret = aoc_service_write_timeout(service, in_cmd, in_size, prvdata->service_timeout);
 	if (ret < 0)
 		goto out;

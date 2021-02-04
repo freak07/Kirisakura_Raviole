@@ -70,6 +70,16 @@
 #define  MIC_HW_GAIN_IN_CB_MIN -720
 #define  MIC_HW_GAIN_IN_CB_MAX  240
 
+#define SIDETONE_EQ_STAGE_NUM_MIN 1
+#define SIDETONE_EQ_STAGE_NUM_MAX 5
+#define SIDETONE_VOL_MIN -96
+#define SIDETONE_VOL_MAX 0
+#define SIDETONE_MIC_ID_MIN 0
+#define SIDETONE_MIC_ID_MAX 3
+#define SIDETONE_BIQUAD_PARAM_NUM 6
+#define SIDETONE_BIQUAD_PARAM_MIN 0x7fffffff
+#define SIDETONE_BIQUAD_PARAM_MAX 0x80000000
+
 #define alsa2chip(vol) (vol) /* Convert alsa to chip volume */
 #define chip2alsa(vol) (vol) /* Convert chip to alsa volume */
 
@@ -96,6 +106,10 @@ enum {
 	USB_RX_BW
 };
 
+/* AoC sidetone EQ */
+enum { BIQUAD0 = 0, BIQUAD1, BIQUAD2, BIQUAD3, BIQUAD4, SIDETONE_EQ_BIQUAD_NUM };
+enum { SIDETONE_CFG_VOL, SIDETONE_CFG_STAGE_NUM, SIDETONE_CFG_MIC_ID };
+
 enum { CTRL_VOL_MUTE, CTRL_VOL_UNMUTE };
 enum {
 	PCM_PLAYBACK_VOLUME,
@@ -104,7 +118,7 @@ enum {
 	BUILDIN_MIC_CAPTURE_LIST,
 	A2DP_ENCODER_PARAMETERS,
 };
-enum { ULL = 0, LL0, LL1, LL2, LL3, DEEP_BUFFER, OFF_LOAD, HAPTICS = 10 };
+enum { ULL = 0, LL0, LL1, LL2, LL3, DEEP_BUFFER, OFF_LOAD, HAPTICS = 10, SIDETONE = 11 };
 enum { BUILTIN_MIC0 = 0, BUILTIN_MIC1, BUILTIN_MIC2, BUILTIN_MIC3 };
 enum { MIC_LOW_POWER_GAIN = 0, MIC_HIGH_POWER_GAIN, MIC_CURRENT_GAIN };
 enum { DEFAULT_MIC = 0, BUILTIN_MIC, USB_MIC, BT_MIC };
@@ -141,6 +155,7 @@ struct aoc_chip {
 	int compr_offload_volume;
 
 	int mic_spatial_module_enable;
+	int sidetone_enable;
 	int mic_loopback_enabled;
 	unsigned int opened;
 	struct mutex audio_mutex;
@@ -148,6 +163,7 @@ struct aoc_chip {
 
 	struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG a2dp_encoder_cfg;
 	struct CMD_AUDIO_OUTPUT_USB_CONFIG usb_sink_cfg;
+	struct CMD_AUDIO_OUTPUT_GET_SIDETONE sidetone_cfg;
 };
 
 struct aoc_alsa_stream {
@@ -213,6 +229,12 @@ int aoc_mic_dc_blocker_get(struct aoc_chip *chip);
 int aoc_mic_dc_blocker_set(struct aoc_chip *chip, int enable);
 
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute);
+
+int aoc_sidetone_enable(struct aoc_chip *chip, int enable);
+int aoc_sidetone_cfg_get(struct aoc_chip *chip, int param, long *val);
+int aoc_sidetone_cfg_set(struct aoc_chip *chip, int param, long val);
+int aoc_sidetone_eq_get(struct aoc_chip *chip, int biquad_idx, long *val);
+int aoc_sidetone_eq_set(struct aoc_chip *chip, int biquad_idx, long *val);
 
 int aoc_get_dsp_state(struct aoc_chip *chip);
 int aoc_get_asp_mode(struct aoc_chip *chip, int block, int component, int key);

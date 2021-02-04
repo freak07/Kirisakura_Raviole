@@ -163,6 +163,10 @@ static void xhci_reset_work(struct work_struct *ws)
 		goto fail;
 	}
 
+	/* Setup USB root hub as a wakeup source */
+	device_set_wakeup_enable(&xhci->main_hcd->self.root_hub->dev, 1);
+	device_set_wakeup_enable(&xhci->shared_hcd->self.root_hub->dev, 1);
+
 	xhci_dbg(xhci, "xhci reset for usb audio offload was done\n");
 
 fail:
