@@ -115,6 +115,9 @@ static int uwb_pdrv_pin_init(struct platform_device *pdev)
 
 static int aoc_uwb_pdrv_probe(struct platform_device *pdev)
 {
+	if (!aoc_uwb_service_ready())
+		return -EPROBE_DEFER;
+
 	return uwb_pdrv_pin_init(pdev);
 }
 

@@ -72,6 +72,12 @@ out:
 }
 EXPORT_SYMBOL_GPL(aoc_uwb_service_send);
 
+bool aoc_uwb_service_ready(void)
+{
+	return (aoc_uwb_service != NULL);
+}
+EXPORT_SYMBOL_GPL(aoc_uwb_service_ready);
+
 module_init(aoc_uwb_service_init);
 module_exit(aoc_uwb_service_exit);
 
