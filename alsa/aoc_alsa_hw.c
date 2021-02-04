@@ -446,6 +446,51 @@ int aoc_sidetone_eq_set(struct aoc_chip *chip, int biquad_idx, long *val)
 	return 0;
 }
 
+int aoc_incall_capture_enable_get(struct aoc_chip *chip, int stream, long *val)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_TELE_CAPT cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_TELE_CAPT_ID, sizeof(cmd));
+
+	cmd.ring = stream;
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in get voice capture stream %d state\n", err, stream);
+		return err;
+	}
+
+	if (val)
+		*val = cmd.mode;
+
+	pr_info("%s: get voice call capture stream %d state %d\n", __func__, stream, cmd.mode);
+
+	return 0;
+}
+
+int aoc_incall_capture_enable_set(struct aoc_chip *chip, int stream, long val)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_TELE_CAPT cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SET_TELE_CAPT_ID, sizeof(cmd));
+	cmd.ring = stream;
+	cmd.mode = val;
+
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in set incall capture stream %d state as %d\n", err, stream,
+		       cmd.mode);
+		return err;
+	}
+
+	pr_info("%s: set incall capture stream %d state as %d\n", __func__, stream, cmd.mode);
+
+	return 0;
+}
+
 /* TODO: temporary solution for mic muting, has to be revised using DSP modules instead of mixer */
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute)
 {

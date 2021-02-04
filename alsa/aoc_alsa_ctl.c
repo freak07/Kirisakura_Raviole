@@ -231,6 +231,44 @@ snd_aoc_buildin_mic_capture_list_ctl_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int incall_capture_enable_ctl_get(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_enum *mc = (struct soc_enum *)kcontrol->private_value;
+	int stream = mc->shift_l;
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_incall_capture_enable_get(chip, stream, &ucontrol->value.integer.value[0]);
+	if (err < 0)
+		pr_err("ERR:%d get incall capture stream %d fail\n", err, stream);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
+static int incall_capture_enable_ctl_set(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_enum *mc = (struct soc_enum *)kcontrol->private_value;
+	int stream = mc->shift_l;
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_incall_capture_enable_set(chip, stream, ucontrol->value.integer.value[0]);
+	if (err < 0)
+		pr_err("ERR:%d set voice call capture stream %d fail\n", err, stream);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
 static int mic_power_ctl_get(struct snd_kcontrol *kcontrol,
 			     struct snd_ctl_elem_value *ucontrol)
 {
@@ -962,6 +1000,12 @@ static SOC_ENUM_SINGLE_DECL(sink_3_state_enum, 1, 3,
 static SOC_ENUM_SINGLE_DECL(sink_4_state_enum, 1, 4,
 			    sink_processing_state_texts);
 
+/* incall capture stream state */
+static const char *incall_capture_stream_texts[] = { "Off", "UL", "DL", "UL_DL" };
+static SOC_ENUM_SINGLE_DECL(incall_capture_stream0_enum, 1, 0, incall_capture_stream_texts);
+static SOC_ENUM_SINGLE_DECL(incall_capture_stream1_enum, 1, 1, incall_capture_stream_texts);
+static SOC_ENUM_SINGLE_DECL(incall_capture_stream2_enum, 1, 2, incall_capture_stream_texts);
+
 /* audio capture mic source */
 static const char *audio_capture_mic_source_texts[] = { "Default", "Builtin_MIC", "USB_MIC",
 						       "BT_MIC" };
@@ -1103,6 +1147,13 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 	SOC_SINGLE_EXT("Mic Spatial Module Enable", SND_SOC_NOPM, 0, 1, 0,
 		       mic_spatial_module_enable_get,
 		       mic_spatial_module_enable_set),
+
+	SOC_ENUM_EXT("Incall Capture Stream0", incall_capture_stream0_enum,
+		     incall_capture_enable_ctl_get, incall_capture_enable_ctl_set),
+	SOC_ENUM_EXT("Incall Capture Stream1", incall_capture_stream1_enum,
+		     incall_capture_enable_ctl_get, incall_capture_enable_ctl_set),
+	SOC_ENUM_EXT("Incall Capture Stream2", incall_capture_stream2_enum,
+		     incall_capture_enable_ctl_get, incall_capture_enable_ctl_set),
 
 	SOC_SINGLE_EXT("MIC0", SND_SOC_NOPM, BUILTIN_MIC0, 1, 0,
 		       mic_power_ctl_get, mic_power_ctl_set),
