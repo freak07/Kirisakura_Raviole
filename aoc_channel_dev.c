@@ -100,7 +100,7 @@ struct file_prvdata {
 	wait_queue_head_t read_queue;
 	struct list_head open_files_list;
 	struct list_head pending_aoc_messages;
-	rwlock_t pending_msg_lock;
+	struct mutex pending_msg_lock;
 	atomic_t pending_msg_count;
 	bool is_channel_blocked;
 };
@@ -183,7 +183,7 @@ static int aocc_demux_kthread(void *data)
 				}
 
 				/* append message to the list of messages. */
-				write_lock(&entry->pending_msg_lock);
+				mutex_lock(&entry->pending_msg_lock);
 				list_add_tail(&node->msg_list,
 					      &entry->pending_aoc_messages);
 				atomic_inc(&entry->pending_msg_count);
@@ -195,7 +195,7 @@ static int aocc_demux_kthread(void *data)
 					if (rc >= 0)
 						entry->is_channel_blocked = true;
 				}
-				write_unlock(&entry->pending_msg_lock);
+				mutex_unlock(&entry->pending_msg_lock);
 
 				/* wake up anyone blocked on reading */
 				wake_up(&entry->read_queue);
@@ -333,6 +333,7 @@ static int aocc_open(struct inode *inode, struct file *file)
 		rc = -ENOMEM;
 		goto err_kmalloc;
 	}
+	mutex_init(&prvdata->pending_msg_lock);
 
 	mutex_lock(&aocc_devices_lock);
 	entry = aocc_device_entry_for_inode(inode);
@@ -362,7 +363,6 @@ static int aocc_open(struct inode *inode, struct file *file)
 
 	/* Start a new empty message list for this channel's message queue. */
 	INIT_LIST_HEAD(&prvdata->pending_aoc_messages);
-	rwlock_init(&prvdata->pending_msg_lock);
 	atomic_set(&prvdata->pending_msg_count, 0);
 
 	init_waitqueue_head(&prvdata->read_queue);
@@ -377,7 +377,7 @@ static int aocc_open(struct inode *inode, struct file *file)
 	rc = aocc_send_cmd_msg(prvdata->aocc_device_entry->service,
 			  AOCC_CMD_OPEN_CHANNEL, prvdata->channel_index);
 	if (rc < 0) {
-		pr_err("send AOCC_CMD_OPEN_CHANNEL fail");
+		pr_err("send AOCC_CMD_OPEN_CHANNEL fail %d", rc);
 		goto err_send_cmd_msg;
 	}
 
@@ -420,14 +420,14 @@ static int aocc_release(struct inode *inode, struct file *file)
 	write_unlock(&s_open_files_lock);
 
 	/*Clear all pending messages. */
-	write_lock(&private->pending_msg_lock);
+	mutex_lock(&private->pending_msg_lock);
 	list_for_each_entry_safe(entry, temp, &private->pending_aoc_messages,
 				 msg_list) {
 		kfree(entry);
 		scrapped++;
 		atomic_dec(&private->pending_msg_count);
 	}
-	write_unlock(&private->pending_msg_lock);
+	mutex_unlock(&private->pending_msg_lock);
 
 	if (!aocc_device_dead) {
 		/*Send a message to AOC to close the channel. */
@@ -444,6 +444,7 @@ static int aocc_release(struct inode *inode, struct file *file)
 
 	put_device(&private->aocc_device_entry->service->dev);
 	kref_put(&private->aocc_device_entry->refcount, aocc_device_entry_release);
+	mutex_destroy(&private->pending_msg_lock);
 	kfree(private);
 	file->private_data = NULL;
 
@@ -491,10 +492,10 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 	}
 
 	/* pop pending message from the list. */
-	read_lock(&private->pending_msg_lock);
+	mutex_lock(&private->pending_msg_lock);
 	node = list_first_entry_or_null(&private->pending_aoc_messages,
 					struct aoc_message_node, msg_list);
-	read_unlock(&private->pending_msg_lock);
+	mutex_unlock(&private->pending_msg_lock);
 
 	if (!node) {
 		pr_err("No messages available.");
@@ -514,17 +515,18 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 	/* copy_to_user returns bytes that couldn't be copied */
 	retval = node->msg_size - retval;
 
-	write_lock(&private->pending_msg_lock);
+	mutex_lock(&private->pending_msg_lock);
 	list_del(&node->msg_list);
 	atomic_dec(&private->pending_msg_count);
 	if (atomic_read(&private->pending_msg_count) <
 	    (AOCC_MAX_PENDING_MSGS - 1) && private->is_channel_blocked) {
 		rc = aocc_send_cmd_msg(private->aocc_device_entry->service,
-			AOCC_CMD_UNBLOCK_CHANNEL, private->channel_index);
+				       AOCC_CMD_UNBLOCK_CHANNEL, private->channel_index);
 		if (rc >= 0)
 			private->is_channel_blocked = false;
 	}
-	write_unlock(&private->pending_msg_lock);
+	mutex_unlock(&private->pending_msg_lock);
+
 	kfree(node);
 
 	return retval;
