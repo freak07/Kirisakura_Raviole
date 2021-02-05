@@ -77,8 +77,8 @@
 #define SIDETONE_MIC_ID_MIN 0
 #define SIDETONE_MIC_ID_MAX 3
 #define SIDETONE_BIQUAD_PARAM_NUM 6
-#define SIDETONE_BIQUAD_PARAM_MIN 0x7fffffff
-#define SIDETONE_BIQUAD_PARAM_MAX 0x80000000
+#define SIDETONE_BIQUAD_PARAM_MIN S32_MIN
+#define SIDETONE_BIQUAD_PARAM_MAX S32_MAX
 
 #define alsa2chip(vol) (vol) /* Convert alsa to chip volume */
 #define chip2alsa(vol) (vol) /* Convert chip to alsa volume */
