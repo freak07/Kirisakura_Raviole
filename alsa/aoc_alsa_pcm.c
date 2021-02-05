@@ -502,9 +502,14 @@ static int snd_aoc_pcm_mmap(struct snd_soc_component *component,
 	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
 	size_t ring_size;
 	int err;
+	phys_addr_t aoc_ring_base;
 
-	phys_addr_t aoc_ring_base =
-		aoc_service_ring_base_phys_addr(alsa_stream->dev, AOC_DOWN, &ring_size);
+	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		aoc_ring_base =
+			aoc_service_ring_base_phys_addr(alsa_stream->dev, AOC_DOWN, &ring_size);
+	else
+		aoc_ring_base =
+			aoc_service_ring_base_phys_addr(alsa_stream->dev, AOC_UP, &ring_size);
 
 	alsa_stream->vma = vma;
 
