@@ -121,7 +121,7 @@ enum {
 enum { ULL = 0, LL0, LL1, LL2, LL3, DEEP_BUFFER, OFF_LOAD, HAPTICS = 10, SIDETONE = 11 };
 enum { BUILTIN_MIC0 = 0, BUILTIN_MIC1, BUILTIN_MIC2, BUILTIN_MIC3 };
 enum { MIC_LOW_POWER_GAIN = 0, MIC_HIGH_POWER_GAIN, MIC_CURRENT_GAIN };
-enum { DEFAULT_MIC = 0, BUILTIN_MIC, USB_MIC, BT_MIC };
+enum { DEFAULT_MIC = 0, BUILTIN_MIC, USB_MIC, BT_MIC, IN_CALL_MUSIC };
 enum { INCALL_CAPTURE_OFF = 0, INCALL_CAPTURE_UL, INCALL_CAPTURE_DL, INCALL_CAPTURE_UL_DL };
 enum { NONBLOCKING = 0, BLOCKING = 1 };
 enum { STOP = 0, START };
@@ -231,6 +231,8 @@ int aoc_mic_dc_blocker_set(struct aoc_chip *chip, int enable);
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute);
 int aoc_incall_capture_enable_get(struct aoc_chip *chip, int stream, long *val);
 int aoc_incall_capture_enable_set(struct aoc_chip *chip, int stream, long val);
+int aoc_incall_playback_enable_get(struct aoc_chip *chip, int stream, long *val);
+int aoc_incall_playback_enable_set(struct aoc_chip *chip, int stream, long val);
 
 int aoc_sidetone_enable(struct aoc_chip *chip, int enable);
 int aoc_sidetone_cfg_get(struct aoc_chip *chip, int param, long *val);

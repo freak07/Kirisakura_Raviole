@@ -269,6 +269,46 @@ static int incall_capture_enable_ctl_set(struct snd_kcontrol *kcontrol,
 	return err;
 }
 
+static int incall_playback_enable_ctl_get(struct snd_kcontrol *kcontrol,
+					  struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc = (struct soc_mixer_control *)kcontrol->private_value;
+	int playback_stream = mc->shift;
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_incall_playback_enable_get(chip, playback_stream,
+					     &ucontrol->value.integer.value[0]);
+	if (err < 0)
+		pr_err("ERR:%d get incall playback stream %d fail\n", err, playback_stream);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
+static int incall_playback_enable_ctl_set(struct snd_kcontrol *kcontrol,
+					  struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc = (struct soc_mixer_control *)kcontrol->private_value;
+	int playback_stream = mc->shift;
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_incall_playback_enable_set(chip, playback_stream,
+					     ucontrol->value.integer.value[0]);
+	if (err < 0)
+		pr_err("ERR:%d set voice call playback stream %d fail\n", err, playback_stream);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
 static int mic_power_ctl_get(struct snd_kcontrol *kcontrol,
 			     struct snd_ctl_elem_value *ucontrol)
 {
@@ -1012,8 +1052,8 @@ static const char *audio_capture_mic_source_texts[] = { "Default", "Builtin_MIC"
 static SOC_ENUM_SINGLE_DECL(audio_capture_mic_source_enum, 1, 0, audio_capture_mic_source_texts);
 
 /* Voice call mic source */
-static const char *voice_call_mic_source_texts[] = { "Default", "Builtin_MIC",
-						     "USB_MIC", "BT_MIC" };
+static const char *voice_call_mic_source_texts[] = { "Default", "Builtin_MIC", "USB_MIC", "BT_MIC",
+						     "IN_CALL_MUSIC" };
 static SOC_ENUM_SINGLE_DECL(voice_call_mic_source_enum, 1, 0,
 			    voice_call_mic_source_texts);
 
@@ -1154,6 +1194,11 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		     incall_capture_enable_ctl_get, incall_capture_enable_ctl_set),
 	SOC_ENUM_EXT("Incall Capture Stream2", incall_capture_stream2_enum,
 		     incall_capture_enable_ctl_get, incall_capture_enable_ctl_set),
+
+	SOC_SINGLE_EXT("Incall Playback Stream0", SND_SOC_NOPM, 0, 1, 0,
+		       incall_playback_enable_ctl_get, incall_playback_enable_ctl_set),
+	SOC_SINGLE_EXT("Incall Playback Stream1", SND_SOC_NOPM, 1, 1, 0,
+		       incall_playback_enable_ctl_get, incall_playback_enable_ctl_set),
 
 	SOC_SINGLE_EXT("MIC0", SND_SOC_NOPM, BUILTIN_MIC0, 1, 0,
 		       mic_power_ctl_get, mic_power_ctl_set),
