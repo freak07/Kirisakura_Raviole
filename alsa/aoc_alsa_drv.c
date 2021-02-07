@@ -44,6 +44,13 @@ static const char *const audio_service_names[] = {
 	"audio_capture1",
 	"audio_capture2",
 	"audio_capture3",
+	"audio_voip_rx",
+	"audio_voip_tx",
+	"audio_incall_pb_0",
+	"audio_incall_pb_1",
+	"audio_incall_cap_0",
+	"audio_incall_cap_1",
+	"audio_incall_cap_2",
 	NULL,
 };
 
