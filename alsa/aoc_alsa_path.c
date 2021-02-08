@@ -218,6 +218,54 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 	},
 
 	{
+		.playback = {
+			.stream_name = "audio_voip_rx",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S24_3LE |
+					SNDRV_PCM_FMTBIT_FLOAT_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 2,
+		},
+		.name = "audio_voip_rx",
+		.id = IDX_VOIP_RX,
+	},
+
+	{
+		.playback = {
+			.stream_name = "audio_incall_pb_0",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S24_3LE |
+					SNDRV_PCM_FMTBIT_FLOAT_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 2,
+		},
+		.name = "audio_incall_pb_0",
+		.id = IDX_INCALL_PB0_RX,
+	},
+
+	{
+		.playback = {
+			.stream_name = "audio_incall_pb_1",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S24_3LE |
+					SNDRV_PCM_FMTBIT_FLOAT_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 2,
+		},
+		.name = "audio_incall_pb_1",
+		.id = IDX_INCALL_PB1_RX,
+	},
+
+	{
 		.capture = {
 			.stream_name = "EP1 Capture",
 			.rates = SNDRV_PCM_RATE_8000_48000,
@@ -313,6 +361,62 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 		},
 		.name = "NoHost1 CAP",
 		.id = IDX_NOHOST1_TX,
+	},
+
+	{
+		.capture = {
+			.stream_name = "audio_voip_tx",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.name = "audio_voip_tx",
+		.id = IDX_VOIP_TX,
+	},
+
+	{
+		.capture = {
+			.stream_name = "audio_incall_cap_0",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.name = "audio_incall_cap_0",
+		.id = IDX_INCALL_CAP0_TX,
+	},
+
+	{
+		.capture = {
+			.stream_name = "audio_incall_cap_1",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.name = "audio_incall_cap_1",
+		.id = IDX_INCALL_CAP1_TX,
+	},
+
+	{
+		.capture = {
+			.stream_name = "audio_incall_cap_2",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.name = "audio_incall_cap_2",
+		.id = IDX_INCALL_CAP2_TX,
 	},
 
 	/* BE dai */
@@ -541,7 +645,6 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 		.id = USB_TX,
 	},
 };
-
 
 static int aoc_compress_new(struct snd_soc_pcm_runtime *rtd, int num)
 {
