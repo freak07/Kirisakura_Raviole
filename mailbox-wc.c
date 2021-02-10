@@ -97,6 +97,34 @@ static int wc_mbox_int_clear(void *base, u8 i)
 	return 0;
 }
 
+static int wc_mbox_enable_interrupt(void *base, u16 index)
+{
+	u32 mask;
+
+	if (index > MBOX_WC_INTERRUPTS)
+		return -1;
+
+	mask = ioread32(base + MB_INTMR1);
+	mask &= ~(1 << index);
+	iowrite32(mask, base + MB_INTMR1);
+
+	return 0;
+}
+
+static int wc_mbox_disable_interrupt(void *base, u16 index)
+{
+	u32 mask;
+
+	if (index > MBOX_WC_INTERRUPTS)
+		return -1;
+
+	mask = ioread32(base + MB_INTMR1);
+	mask |= (1 << index);
+	iowrite32(mask, base + MB_INTMR1);
+
+	return 0;
+}
+
 static int wc_mbox_set_interrupt_mask(void *base, u16 mask)
 {
 	u32 value = mask;
@@ -134,14 +162,14 @@ static irqreturn_t wc_int_handler(int irq, void *dev)
 static int wc_mbox_channel_index(struct mbox_chan *chan)
 {
 	struct mbox_controller *mbox = chan->mbox;
-        int i = 0;
+	int i;
 
 	for (i = 0; i < MBOX_WC_INTERRUPTS; i++) {
 		if (chan == &mbox->chans[i])
 			return i;
 	}
 
-        return -1;
+	return -1;
 }
 
 static int wc_mbox_send_data(struct mbox_chan *chan, void *data)
@@ -151,7 +179,7 @@ static int wc_mbox_send_data(struct mbox_chan *chan, void *data)
 	u32 status;
 	int i, index;
 
-        index = wc_mbox_channel_index(chan);
+	index = wc_mbox_channel_index(chan);
 	if (index == -1)
 		return -EINVAL;
 
@@ -172,21 +200,27 @@ static int wc_mbox_send_data(struct mbox_chan *chan, void *data)
 	return 0;
 }
 
-/* TODO: Enable / disable interrupts per channel */
 static int wc_mbox_startup(struct mbox_chan *chan)
 {
 	struct wc_mbox_prvdata *prvdata = dev_get_drvdata(chan->mbox->dev);
+	int index = wc_mbox_channel_index(chan);
 
-	wc_mbox_set_interrupt_mask(prvdata->base, 0x0000);
+	if (index < 0)
+		return -EINVAL;
 
+	wc_mbox_enable_interrupt(prvdata->base, index);
 	return 0;
 }
 
 static void wc_mbox_shutdown(struct mbox_chan *chan)
 {
 	struct wc_mbox_prvdata *prvdata = dev_get_drvdata(chan->mbox->dev);
+	int index = wc_mbox_channel_index(chan);
 
-	wc_mbox_set_interrupt_mask(prvdata->base, 0xffff);
+	if (index < 0)
+		return;
+
+	wc_mbox_disable_interrupt(prvdata->base, index);
 }
 
 static bool wc_mbox_last_tx_done(struct mbox_chan *chan)
@@ -208,7 +242,7 @@ static bool wc_mbox_peek_data(struct mbox_chan *chan)
 	u32 status;
 	int index;
 
-        index = wc_mbox_channel_index(chan);
+	index = wc_mbox_channel_index(chan);
 	if (index == -1)
 		return false;
 
