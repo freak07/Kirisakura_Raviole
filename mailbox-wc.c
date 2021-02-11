@@ -109,7 +109,7 @@ static irqreturn_t wc_int_handler(int irq, void *dev)
 {
 	struct wc_mbox_prvdata *prvdata = dev_get_drvdata(dev);
 	struct mbox_controller *mbox = prvdata->mbox;
-	struct mbox_chan *chan = &mbox->chans[0];
+	struct mbox_chan *chans = mbox->chans;
 	u32 data[8];
 	u32 status;
 	int i;
@@ -121,8 +121,8 @@ static irqreturn_t wc_int_handler(int irq, void *dev)
 
 	for (i = 0; i < MBOX_WC_INTERRUPTS; i++) {
 		if ((status & (1 << i)) != 0) {
-			if (chan->cl != NULL)
-				mbox_chan_received_data(chan, &data);
+			if (chans[i].cl != NULL)
+				mbox_chan_received_data(&chans[i], &data);
 
 			wc_mbox_int_clear(prvdata->base, i);
 		}
@@ -131,17 +131,34 @@ static irqreturn_t wc_int_handler(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
+static int wc_mbox_channel_index(struct mbox_chan *chan)
+{
+	struct mbox_controller *mbox = chan->mbox;
+        int i = 0;
+
+	for (i = 0; i < MBOX_WC_INTERRUPTS; i++) {
+		if (chan == &mbox->chans[i])
+			return i;
+	}
+
+        return -1;
+}
+
 static int wc_mbox_send_data(struct mbox_chan *chan, void *data)
 {
-	struct wc_mbox_prvdata *prvdata = chan->con_priv;
+	struct wc_mbox_prvdata *prvdata = dev_get_drvdata(chan->mbox->dev);
 	u32 *regs = data;
 	u32 status;
-	int i;
+	int i, index;
+
+        index = wc_mbox_channel_index(chan);
+	if (index == -1)
+		return -EINVAL;
 
 	/* Wait if the remote has not finished processing the last message */
 	if (data) {
 		status = ioread32(prvdata->base + MB_INTSR0);
-		if (status != 0) {
+		if ((status & (1 << index)) != 0) {
 			pr_debug("Busy with status %x\n", status);
 			return -EBUSY;
 		}
@@ -150,34 +167,31 @@ static int wc_mbox_send_data(struct mbox_chan *chan, void *data)
 			iowrite32(regs[i], prvdata->base + MB_SHARED(i));
 	}
 
-	wc_mbox_int_generate(prvdata->base, 0);
+	wc_mbox_int_generate(prvdata->base, index);
 
 	return 0;
 }
 
+/* TODO: Enable / disable interrupts per channel */
 static int wc_mbox_startup(struct mbox_chan *chan)
 {
-	struct wc_mbox_prvdata *prvdata = chan->con_priv;
+	struct wc_mbox_prvdata *prvdata = dev_get_drvdata(chan->mbox->dev);
 
 	wc_mbox_set_interrupt_mask(prvdata->base, 0x0000);
-
-	pr_debug("startup for mbox_chan %p\n", chan);
 
 	return 0;
 }
 
 static void wc_mbox_shutdown(struct mbox_chan *chan)
 {
-	struct wc_mbox_prvdata *prvdata = chan->con_priv;
+	struct wc_mbox_prvdata *prvdata = dev_get_drvdata(chan->mbox->dev);
 
 	wc_mbox_set_interrupt_mask(prvdata->base, 0xffff);
-
-	pr_debug("shutdown for mbox_chan %p\n", chan);
 }
 
 static bool wc_mbox_last_tx_done(struct mbox_chan *chan)
 {
-	struct wc_mbox_prvdata *prvdata = chan->con_priv;
+	struct wc_mbox_prvdata *prvdata = dev_get_drvdata(chan->mbox->dev);
 	u32 status;
 
 	status = ioread32(prvdata->base + MB_INTSR0);
@@ -189,11 +203,17 @@ static bool wc_mbox_last_tx_done(struct mbox_chan *chan)
 
 static bool wc_mbox_peek_data(struct mbox_chan *chan)
 {
-	struct wc_mbox_prvdata *prvdata = chan->con_priv;
+	struct mbox_controller *mbox = chan->mbox;
+	struct wc_mbox_prvdata *prvdata = dev_get_drvdata(mbox->dev);
 	u32 status;
+	int index;
+
+        index = wc_mbox_channel_index(chan);
+	if (index == -1)
+		return false;
 
 	status = ioread32(prvdata->base + MB_INTSR1);
-	return status != 0;
+	return (status & (1 << index)) != 0;
 }
 
 static int wc_mbox_probe(struct platform_device *pdev)
@@ -207,6 +227,7 @@ static int wc_mbox_probe(struct platform_device *pdev)
 	size_t region_size;
 	int interrupt;
 	int ret;
+	int i;
 
 	/* Check for device tree properties */
 	interrupt = platform_get_irq(pdev, 0);
@@ -222,7 +243,7 @@ static int wc_mbox_probe(struct platform_device *pdev)
 	}
 
 	mbox = devm_kzalloc(dev, sizeof(*mbox), GFP_KERNEL);
-	channels = devm_kzalloc(dev, sizeof(struct mbox_chan), GFP_KERNEL);
+	channels = devm_kcalloc(dev, MBOX_WC_INTERRUPTS, sizeof(struct mbox_chan), GFP_KERNEL);
 	prvdata = devm_kzalloc(dev, sizeof(*prvdata), GFP_KERNEL);
 
 	if (!mbox || !channels || !prvdata)
@@ -234,14 +255,15 @@ static int wc_mbox_probe(struct platform_device *pdev)
 	prvdata->shared_registers = 8;
 	prvdata->mbox = mbox;
 
-	mbox->num_chans = 1;
+	mbox->num_chans = MBOX_WC_INTERRUPTS;
 	mbox->txpoll_period = 2;
 	mbox->txdone_poll = true;
 	mbox->dev = dev;
 	mbox->ops = &wc_mbox_chan_ops;
 
-	channels[0].mbox = mbox;
-	channels[0].con_priv = prvdata;
+	for (i = 0; i < MBOX_WC_INTERRUPTS; i++)
+		channels[i].mbox = mbox;
+
 	mbox->chans = channels;
 
 	platform_set_drvdata(pdev, prvdata);

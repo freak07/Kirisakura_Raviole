@@ -292,8 +292,8 @@ static int aoc_compr_trigger(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstrea
 		pr_debug("%s: start timer\n", __func__);
 		aoc_timer_start(alsa_stream);
 
-		/* Decoder type, MP3 or AAC, hardcoded as MP3 for now */
-		err = aoc_compr_offload_setup(alsa_stream, 1);
+		/* Decoder type: SND_AUDIOCODEC_MP3 or SND_AUDIOCODEC_AAC */
+		err = aoc_compr_offload_setup(alsa_stream, alsa_stream->compr_offload_codec);
 		if (err < 0) {
 			pr_err("ERR:%d decoder setup fail\n", err);
 			goto out;
@@ -501,6 +501,9 @@ static int aoc_compr_set_params(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cst
 	alsa_stream->period_size = params->buffer.fragment_size;
 	alsa_stream->params_rate = params->codec.sample_rate;
 
+	/* TODO: need to double check on the AoC decoder requirements */
+	alsa_stream->channels  =  params->codec.ch_out;
+	alsa_stream->compr_offload_codec = params->codec.id;
 	/* TODO: send the codec info to AoC ? */
 
 	return 0;

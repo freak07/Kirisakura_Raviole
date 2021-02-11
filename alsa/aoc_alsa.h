@@ -77,8 +77,8 @@
 #define SIDETONE_MIC_ID_MIN 0
 #define SIDETONE_MIC_ID_MAX 3
 #define SIDETONE_BIQUAD_PARAM_NUM 6
-#define SIDETONE_BIQUAD_PARAM_MIN 0x7fffffff
-#define SIDETONE_BIQUAD_PARAM_MAX 0x80000000
+#define SIDETONE_BIQUAD_PARAM_MIN S32_MIN
+#define SIDETONE_BIQUAD_PARAM_MAX S32_MAX
 
 #define alsa2chip(vol) (vol) /* Convert alsa to chip volume */
 #define chip2alsa(vol) (vol) /* Convert chip to alsa volume */
@@ -153,7 +153,6 @@ struct aoc_chip {
 	int voice_call_audio_enable;
 
 	int compr_offload_volume;
-
 	int mic_spatial_module_enable;
 	int sidetone_enable;
 	int mic_loopback_enabled;
@@ -170,6 +169,7 @@ struct aoc_alsa_stream {
 	struct aoc_chip *chip;
 	struct snd_pcm_substream *substream;
 	struct snd_compr_stream *cstream; /* compress offload stream */
+	int compr_offload_codec;
 	long compr_pcm_io_sample_base;
 	struct timer_list timer; /* For advancing the hw ptr */
 	struct hrtimer hr_timer; /* For advancing the hw ptr */

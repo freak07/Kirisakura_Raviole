@@ -1484,18 +1484,24 @@ int teardown_phonecall(struct aoc_alsa_stream *alsa_stream)
 int aoc_compr_offload_setup(struct aoc_alsa_stream *alsa_stream, int type)
 {
 	int err;
-	struct CMD_AUDIO_OUTPUT_DECODE cmd;
+	struct CMD_AUDIO_OUTPUT_DECODER_CFG cmd;
 
 	/* TODO: refactor may be needed for passing codec info from HAL to AoC */
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_DECODER_CFG_ID, sizeof(cmd));
 
-	/* Entrypoint audio info and mode OFFLOAD_MODE set up here */
-	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_DECODE_ID, sizeof(cmd));
-	cmd.codec = type;
+	/* TODO: HAL only passes MP3 or AAC, need to consider/test other AAC options */
+	cmd.cfg.format = (type == SND_AUDIOCODEC_MP3) ? AUDIO_OUTPUT_DECODER_MP3 :
+							AUDIO_OUTPUT_DECODER_AAC_LC;
+	cmd.cfg.samplerate = alsa_stream->params_rate;
+	cmd.cfg.channels = alsa_stream->channels;
 	cmd.address = 0;
 	cmd.size = 0;
 
-	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd,
-				sizeof(cmd), NULL, alsa_stream->chip);
+	pr_info("%s type=%d format=%d sr=%d chan=%d\n", __func__, type, cmd.cfg.format,
+		cmd.cfg.samplerate, cmd.cfg.channels);
+
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL,
+				alsa_stream->chip);
 	if (err < 0) {
 		pr_err("ERR:%d in set compress offload codec\n", err);
 		return err;
