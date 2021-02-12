@@ -55,6 +55,8 @@
 #define DEFAULT_AUDIO_SINK_ID 0
 #define MAX_NUM_OF_SINKS_PER_STREAM 2
 
+#define MAX_NUM_OF_INCALL_CAPTURE_STREAM 3
+
 #define N_MIC_IN_SPATIAL_MODULE 3
 
 /* TODO: the exact number has to be determined based on hardware platform*/
@@ -152,6 +154,7 @@ struct aoc_chip {
 	int voice_call_mic_mute;
 	int default_mic_hw_gain;
 	int voice_call_audio_enable;
+	int incall_capture_state[MAX_NUM_OF_INCALL_CAPTURE_STREAM];
 
 	int compr_offload_volume;
 	int mic_spatial_module_enable;
@@ -213,6 +216,8 @@ int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 			 uint32_t samplerate, uint32_t bps, bool pcm_float_fmt, int source_mode);
 int aoc_audio_start(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream);
+int aoc_audio_incall_start(struct aoc_alsa_stream *alsa_stream);
+int aoc_audio_incall_stop(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest);
 int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest);
 int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst);
@@ -283,4 +288,6 @@ int aoc_path_init(void);
 void aoc_path_exit(void);
 int aoc_nohost_init(void);
 void aoc_nohost_exit(void);
+int aoc_incall_init(void);
+void aoc_incall_exit(void);
 #endif

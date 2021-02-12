@@ -464,6 +464,7 @@ int aoc_incall_capture_enable_get(struct aoc_chip *chip, int stream, long *val)
 	if (val)
 		*val = cmd.mode;
 
+	chip->incall_capture_state[stream] = cmd.mode;
 	pr_info("%s: get voice call capture stream %d state %d\n", __func__, stream, cmd.mode);
 
 	return 0;
@@ -486,6 +487,7 @@ int aoc_incall_capture_enable_set(struct aoc_chip *chip, int stream, long val)
 		return err;
 	}
 
+	chip->incall_capture_state[stream] = val;
 	pr_info("%s: set incall capture stream %d state as %d\n", __func__, stream, cmd.mode);
 
 	return 0;
@@ -1217,6 +1219,49 @@ int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream)
 		err = aoc_audio_capture_trigger(alsa_stream, STOP);
 		if (err < 0)
 			pr_err("ERR:%d in capture stop\n", err);
+	}
+
+	return err;
+}
+
+int aoc_audio_incall_start(struct aoc_alsa_stream *alsa_stream)
+{
+	int stream, err = 0;
+	struct aoc_chip *chip = alsa_stream->chip;
+
+	/* TODO: stream number inferred by pcm device idx, pb_0:18, cap_0:20, better way needed */
+	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		stream = alsa_stream->entry_point_idx - 18;
+		err = aoc_incall_playback_enable_set(chip, stream, 1);
+		if (err < 0)
+			pr_err("ERR:%d in incall playback start on\n", err);
+	} else {
+		stream = alsa_stream->entry_point_idx - 20;
+		err = aoc_incall_capture_enable_set(chip, stream,
+						    chip->incall_capture_state[stream]);
+		if (err < 0)
+			pr_err("ERR:%d in incall capture start on\n", err);
+	}
+
+	return err;
+}
+
+int aoc_audio_incall_stop(struct aoc_alsa_stream *alsa_stream)
+{
+	int stream, err = 0;
+	struct aoc_chip *chip = alsa_stream->chip;
+
+	/* TODO: stream number inferred by pcm device idx, pb_0:18, cap_0:20, better way needed */
+	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		stream = alsa_stream->entry_point_idx - 18;
+		err = aoc_incall_playback_enable_set(chip, stream, 0);
+		if (err < 0)
+			pr_err("ERR:%d in incall playback start on\n", err);
+	} else {
+		stream = alsa_stream->entry_point_idx - 20;
+		err = aoc_incall_capture_enable_set(chip, stream, 0);
+		if (err < 0)
+			pr_err("ERR:%d in incall capture start on\n", err);
 	}
 
 	return err;
