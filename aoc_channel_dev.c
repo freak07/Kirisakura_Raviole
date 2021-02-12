@@ -176,8 +176,8 @@ static int aocc_demux_kthread(void *data)
 				if (atomic_read(&entry->pending_msg_count) >
 				    AOCC_MAX_PENDING_MSGS) {
 					pr_err_ratelimited(
-						"Too many pending messages on channel %d",
-						channel);
+						"Too many pending messages on channel %d.  More than %d allocated",
+						channel, AOCC_MAX_PENDING_MSGS);
 					kfree(node);
 					break;
 				}
@@ -206,7 +206,7 @@ static int aocc_demux_kthread(void *data)
 
 		if (!handler_found) {
 			pr_warn_ratelimited("Could not find handler for channel %d",
-				            channel);
+					    channel);
 			/* Notifies AOC the channel is closed. */
 			aocc_send_cmd_msg(service, AOCC_CMD_CLOSE_CHANNEL, channel);
 			kfree(node);
@@ -221,7 +221,7 @@ static int aocc_send_cmd_msg(aoc_service *service_id, enum aoc_cmd_code code,
 			      int channel_to_modify)
 {
 	struct aocc_channel_control_msg msg;
-        int ret;
+	int ret;
 
 	msg.channel_index = 0;
 	msg.command_code = code;
@@ -539,6 +539,7 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 	char *buffer;
 	size_t leftover;
 	ssize_t retval = 0;
+	bool should_block = ((file->f_flags & O_NONBLOCK) == 0);
 	bool aocc_device_dead;
 
 	if (!private)
@@ -564,7 +565,7 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 	if (leftover == 0) {
 		mutex_lock(&aocc_write_lock);
 		retval = aoc_service_write(private->aocc_device_entry->service, buffer,
-					   count + sizeof(int), false);
+					   count + sizeof(int), should_block);
 		mutex_unlock(&aocc_write_lock);
 		if (retval > 0)
 			sent_msg_count++;
@@ -573,6 +574,10 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 	}
 
 err_aocc_device_dead:
+	if (retval < 0) {
+		pr_err("Write failed for channel %d with code %zd\n", private->channel_index, retval);
+	}
+
 	kfree(buffer);
 	return retval;
 }
