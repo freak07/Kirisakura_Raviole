@@ -446,6 +446,96 @@ int aoc_sidetone_eq_set(struct aoc_chip *chip, int biquad_idx, long *val)
 	return 0;
 }
 
+int aoc_incall_capture_enable_get(struct aoc_chip *chip, int stream, long *val)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_TELE_CAPT cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_TELE_CAPT_ID, sizeof(cmd));
+
+	cmd.ring = stream;
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in get voice capture stream %d state\n", err, stream);
+		return err;
+	}
+
+	if (val)
+		*val = cmd.mode;
+
+	pr_info("%s: get voice call capture stream %d state %d\n", __func__, stream, cmd.mode);
+
+	return 0;
+}
+
+int aoc_incall_capture_enable_set(struct aoc_chip *chip, int stream, long val)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_TELE_CAPT cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SET_TELE_CAPT_ID, sizeof(cmd));
+	cmd.ring = stream;
+	cmd.mode = val;
+
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in set incall capture stream %d state as %d\n", err, stream,
+		       cmd.mode);
+		return err;
+	}
+
+	pr_info("%s: set incall capture stream %d state as %d\n", __func__, stream, cmd.mode);
+
+	return 0;
+}
+
+int aoc_incall_playback_enable_get(struct aoc_chip *chip, int stream, long *val)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_INCALL_MUSIC cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_GET_INCALL_MUSIC_ID, sizeof(cmd));
+
+	cmd.ring = stream;
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in get voice playback stream %d state\n", err, stream);
+		return err;
+	}
+
+	if (val)
+		*val = cmd.enable;
+
+	pr_info("%s: get incall playback stream %d state %d\n", __func__, stream, cmd.enable);
+
+	return 0;
+}
+
+int aoc_incall_playback_enable_set(struct aoc_chip *chip, int stream, long val)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_INCALL_MUSIC cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_SET_INCALL_MUSIC_ID, sizeof(cmd));
+	cmd.ring = stream;
+	cmd.enable = val;
+
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in set incall playback stream %d state as %d\n", err, stream,
+		       cmd.enable);
+		return err;
+	}
+
+	pr_info("%s: set incall playback stream %d state as %d\n", __func__, stream, cmd.enable);
+
+	return 0;
+}
+
 /* TODO: temporary solution for mic muting, has to be revised using DSP modules instead of mixer */
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute)
 {
@@ -1391,6 +1481,9 @@ int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst)
 			break;
 		case BT_MIC:
 			mic_input_source = MODEM_BT_INPUT_INDEX;
+			break;
+		case IN_CALL_MUSIC:
+			mic_input_source = MODEM_INCALL_INPUT_INDEX;
 			break;
 		default:
 			pr_err("ERR in mic input source for voice call, mic source=%d\n",
