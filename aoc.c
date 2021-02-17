@@ -63,6 +63,7 @@
 #define AOC_PCU_RESET_CONTROL_RESET_VALUE 0x0
 
 #define AOC_MAX_MINOR (1U)
+#define AOC_MBOX_CHANNELS 16
 
 static struct platform_device *aoc_platform_device;
 static bool aoc_online;
@@ -75,7 +76,7 @@ struct aoc_prvdata {
 	aoc_map_handler map_handler;
 	void *map_handler_ctx;
 
-	struct mbox_chan *mbox_channel;
+	struct mbox_chan *mbox_channel[AOC_MBOX_CHANNELS];
 	struct device *dev;
 	struct iommu_domain *domain;
 	void *ipc_base;
@@ -747,6 +748,7 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 
 	aoc_service *service;
 	int service_number;
+	int interrupt = dev->mbox_index;
 	int ret = 0;
 
 	if (!dev || !buffer || !count)
@@ -757,6 +759,9 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 
 	if (!aoc_online)
 		return -ENODEV;
+
+	if (interrupt >= AOC_MBOX_CHANNELS)
+		return -EINVAL;
 
 	parent = dev->dev.parent;
 	prvdata = dev_get_drvdata(parent);
@@ -801,7 +806,7 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 					buffer, count);
 
 	if (!aoc_service_is_ring(service) || aoc_ring_is_push(service))
-		signal_aoc(prvdata->mbox_channel);
+		signal_aoc(prvdata->mbox_channel[interrupt]);
 
 	return count;
 }
@@ -815,6 +820,7 @@ ssize_t aoc_service_write_timeout(struct aoc_service_dev *dev, const uint8_t *bu
 
 	aoc_service *service;
 	int service_number;
+	int interrupt = dev->mbox_index;
 	long ret = 1;
 
 	if (!dev || !buffer || !count)
@@ -869,7 +875,7 @@ ssize_t aoc_service_write_timeout(struct aoc_service_dev *dev, const uint8_t *bu
 					buffer, count);
 
 	if (!aoc_service_is_ring(service) || aoc_ring_is_push(service))
-		signal_aoc(prvdata->mbox_channel);
+		signal_aoc(prvdata->mbox_channel[interrupt]);
 
 	return count;
 }
@@ -1016,8 +1022,9 @@ static bool aoc_a32_reset(void)
 
 static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 {
+	struct device *dev = prvdata->dev;
 	const int aoc_reset_timeout_ms = 1000;
-	int rc;
+	int rc, i;
 	u32 *pcu;
 
 	dev_info(prvdata->dev, "waiting for aoc reset to finish\n");
@@ -1057,13 +1064,14 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 		return rc;
 	}
 
-	prvdata->mbox_channel =
-		mbox_request_channel_byname(&prvdata->mbox_client, "aoc2ap");
-	if (IS_ERR(prvdata->mbox_channel)) {
-		rc = PTR_ERR(prvdata->mbox_channel);
-		dev_err(prvdata->dev, "failed to find mailbox interface : %d\n", rc);
-		prvdata->mbox_channel = NULL;
-		return rc;
+	for (i = 0; i < AOC_MBOX_CHANNELS; i++) {
+		prvdata->mbox_channel[i] = mbox_request_channel(&prvdata->mbox_client, i);
+		if (IS_ERR(prvdata->mbox_channel[i])) {
+			dev_err(dev, "failed to find mailbox interface : %ld\n",
+				PTR_ERR(prvdata->mbox_channel[i]));
+			prvdata->mbox_channel[i] = NULL;
+			return -EIO;
+		}
 	}
 
 	rc = start_firmware_load(prvdata->dev);
@@ -1436,6 +1444,7 @@ static struct aoc_service_dev *register_service_device(int index,
 	dev->dev.release = aoc_device_release;
 
 	dev->service_index = index;
+	dev->mbox_index = aoc_service_irq_index(s);
 	dev->service = s;
 	dev->ipc_base = prv->ipc_base;
 	dev->dead = false;
@@ -1619,11 +1628,15 @@ static void aoc_did_become_online(struct work_struct *work)
 
 static void aoc_take_offline(struct aoc_prvdata *prvdata)
 {
+	int i;
+
 	pr_notice("taking aoc offline\n");
 
-	if (prvdata->mbox_channel) {
-		mbox_free_channel(prvdata->mbox_channel);
-		prvdata->mbox_channel = NULL;
+	for (i = 0; i < AOC_MBOX_CHANNELS; i++) {
+		if (prvdata->mbox_channel[i]) {
+			mbox_free_channel(prvdata->mbox_channel[i]);
+			prvdata->mbox_channel[i] = NULL;
+		}
 	}
 
 	aoc_online = false;
@@ -1933,6 +1946,7 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lon
 			ret = 0;
 	}
 	break;
+
 	case AOC_IOCTL_DISABLE_MM:
 	{
 		u32 disable_mm;
@@ -2121,6 +2135,7 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	unsigned int acpm_async_size;
 	int ret;
 	int rc;
+	int i;
 
 	if (aoc_platform_device != NULL) {
 		dev_err(dev,
@@ -2192,14 +2207,15 @@ static int aoc_platform_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, prvdata);
 
-	prvdata->mbox_channel =
-		mbox_request_channel_byname(&prvdata->mbox_client, "aoc2ap");
-	if (IS_ERR(prvdata->mbox_channel)) {
-		dev_err(dev, "failed to find mailbox interface : %ld\n",
-			PTR_ERR(prvdata->mbox_channel));
-		prvdata->mbox_channel = NULL;
-		rc = -EIO;
-		goto err_mbox_req;
+	for (i = 0; i < AOC_MBOX_CHANNELS; i++) {
+		prvdata->mbox_channel[i] = mbox_request_channel(&prvdata->mbox_client, i);
+		if (IS_ERR(prvdata->mbox_channel[i])) {
+			dev_err(dev, "failed to find mailbox interface %d : %ld\n", i,
+				PTR_ERR(prvdata->mbox_channel[i]));
+			prvdata->mbox_channel[i] = NULL;
+			rc = -EIO;
+			goto err_mbox_req;
+		}
 	}
 
 	init_waitqueue_head(&prvdata->aoc_reset_wait_queue);
