@@ -15,7 +15,6 @@
 #include <linux/moduleparam.h>
 #include <linux/mutex.h>
 #include <linux/poll.h>
-#include <linux/rwlock_types.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
@@ -44,6 +43,7 @@ struct aocc_device_entry {
 static LIST_HEAD(aocc_devices_list);
 static DEFINE_MUTEX(aocc_devices_lock);
 static DEFINE_MUTEX(aocc_write_lock);
+static DEFINE_MUTEX(s_open_files_lock);
 
 #define AOCC_MAX_MSG_SIZE 1024
 #define AOCC_MAX_PENDING_MSGS 32
@@ -108,7 +108,6 @@ struct file_prvdata {
 /* Globals */
 /* TODO(b/141396548): Move these to drv_data. */
 static LIST_HEAD(s_open_files);
-static rwlock_t s_open_files_lock;
 static struct task_struct *s_demux_task;
 
 /* Message related services */
@@ -168,7 +167,7 @@ static int aocc_demux_kthread(void *data)
 		channel = node->channel_index;
 
 		/* Find the open file with the correct matching ID. */
-		read_lock(&s_open_files_lock);
+		mutex_lock(&s_open_files_lock);
 		list_for_each_entry(entry, &s_open_files, open_files_list) {
 			if (channel == entry->channel_index) {
 				handler_found = 1;
@@ -202,7 +201,7 @@ static int aocc_demux_kthread(void *data)
 				break;
 			}
 		}
-		read_unlock(&s_open_files_lock);
+		mutex_unlock(&s_open_files_lock);
 
 		if (!handler_found) {
 			pr_warn_ratelimited("Could not find handler for channel %d",
@@ -368,10 +367,10 @@ static int aocc_open(struct inode *inode, struct file *file)
 	init_waitqueue_head(&prvdata->read_queue);
 
 	/* Add this item to the open files list for the dispatcher thread. */
-	write_lock(&s_open_files_lock);
+	mutex_lock(&s_open_files_lock);
 	INIT_LIST_HEAD(&prvdata->open_files_list);
 	list_add(&prvdata->open_files_list, &s_open_files);
-	write_unlock(&s_open_files_lock);
+	mutex_unlock(&s_open_files_lock);
 
 	/*Send a message to AOC to register a new channel. */
 	rc = aocc_send_cmd_msg(prvdata->aocc_device_entry->service,
@@ -384,9 +383,9 @@ static int aocc_open(struct inode *inode, struct file *file)
 	return 0;
 
 err_send_cmd_msg:
-	write_lock(&s_open_files_lock);
+	mutex_lock(&s_open_files_lock);
 	list_del(&prvdata->open_files_list);
-	write_unlock(&s_open_files_lock);
+	mutex_unlock(&s_open_files_lock);
 
 	mutex_lock(&aocc_devices_lock);
 	put_device(&entry->service->dev);
@@ -415,9 +414,9 @@ static int aocc_release(struct inode *inode, struct file *file)
 	mutex_unlock(&aocc_devices_lock);
 
 	/*Remove this file from from the list of active channels. */
-	write_lock(&s_open_files_lock);
+	mutex_lock(&s_open_files_lock);
 	list_del(&private->open_files_list);
-	write_unlock(&s_open_files_lock);
+	mutex_unlock(&s_open_files_lock);
 
 	/*Clear all pending messages. */
 	mutex_lock(&private->pending_msg_lock);
@@ -683,7 +682,6 @@ static int __init aocc_init(void)
 
 	aoc_driver_register(&aoc_chan_driver);
 
-	rwlock_init(&s_open_files_lock);
 	return 0;
 
 fail:
