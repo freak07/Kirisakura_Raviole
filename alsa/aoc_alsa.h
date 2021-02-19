@@ -57,7 +57,7 @@
 #define N_MIC_IN_SPATIAL_MODULE 3
 
 /* TODO: the exact number has to be determined based on hardware platform*/
-#define MAX_NUM_OF_SUBSTREAMS 12
+#define MAX_NUM_OF_SUBSTREAMS 32
 #define MAX_NUM_OF_SINKS 5
 #define AVAIL_SUBSTREAMS_MASK 0x0fff
 
