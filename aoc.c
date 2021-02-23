@@ -76,7 +76,7 @@ struct aoc_prvdata {
 	struct mbox_client mbox_client;
 	struct work_struct online_work;
 	struct resource dram_resource;
-	struct ion_heap *sensor_heap;
+	struct dma_heap *sensor_heap;
 	aoc_map_handler map_handler;
 	void *map_handler_ctx;
 
@@ -1767,11 +1767,11 @@ void aoc_remove_map_handler(struct aoc_service_dev *dev)
 }
 EXPORT_SYMBOL(aoc_remove_map_handler);
 
-static void aoc_pheap_alloc_cb(struct ion_buffer *buffer, void *ctx)
+static void aoc_pheap_alloc_cb(struct samsung_dma_buffer *buffer, void *ctx)
 {
 	struct device *dev = ctx;
 	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
-	struct sg_table *sg = buffer->sg_table;
+	struct sg_table *sg = &buffer->sg_table;
 	phys_addr_t phys;
 	size_t size;
 
@@ -1786,16 +1786,16 @@ static void aoc_pheap_alloc_cb(struct ion_buffer *buffer, void *ctx)
 	size = sg->sgl[0].length;
 
 	if (prvdata->map_handler) {
-		prvdata->map_handler((u64)buffer->priv_virt, phys, size, true,
+		prvdata->map_handler((u64)buffer->priv, phys, size, true,
 				     prvdata->map_handler_ctx);
 	}
 }
 
-static void aoc_pheap_free_cb(struct ion_buffer *buffer, void *ctx)
+static void aoc_pheap_free_cb(struct samsung_dma_buffer *buffer, void *ctx)
 {
 	struct device *dev = ctx;
 	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
-	struct sg_table *sg = buffer->sg_table;
+	struct sg_table *sg = &buffer->sg_table;
 	phys_addr_t phys;
 	size_t size;
 
@@ -1810,7 +1810,7 @@ static void aoc_pheap_free_cb(struct ion_buffer *buffer, void *ctx)
 	size = sg->sgl[0].length;
 
 	if (prvdata->map_handler) {
-		prvdata->map_handler((u64)buffer->priv_virt, phys, size, false,
+		prvdata->map_handler((u64)buffer->priv, phys, size, false,
 				     prvdata->map_handler_ctx);
 	}
 }
@@ -1960,22 +1960,17 @@ static bool aoc_create_ion_heap(struct aoc_prvdata *prvdata)
 {
 	phys_addr_t base = prvdata->dram_resource.start + (28 * SZ_1M);
 	struct device *dev = prvdata->dev;
-	struct ion_heap *heap;
 	size_t size = SZ_4M;
 	size_t align = SZ_16K;
 	const char *name = "sensor_direct_heap";
+	struct dma_heap *heap;
 
-	heap = ion_physical_heap_create(base, size, align, name);
-	if (IS_ERR(heap)) {
-		dev_err(dev, "ION heap failure: %ld\n", PTR_ERR(heap));
-	} else {
+	heap = ion_physical_heap_create(base, size, align, name, aoc_pheap_alloc_cb,
+					aoc_pheap_free_cb, dev);
+	if (IS_ERR(heap))
+		dev_err(dev, "heap creation failure: %ld\n", PTR_ERR(heap));
+	else
 		prvdata->sensor_heap = heap;
-
-		ion_physical_heap_set_allocate_callback(heap, aoc_pheap_alloc_cb, dev);
-		ion_physical_heap_set_free_callback(heap, aoc_pheap_free_cb, dev);
-
-		ion_device_add_heap(heap);
-	}
 
 	return !IS_ERR(heap);
 }
@@ -1992,10 +1987,9 @@ static int aoc_open(struct inode *inode, struct file *file)
 static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct dma_buf *dmabuf;
-	struct ion_buffer *ionbuf;
-	long ret = -EFAULT;
-
 	struct aoc_prvdata *prvdata = file->private_data;
+	struct samsung_dma_buffer *dma_heap_buf;
+	long ret = -EINVAL;
 
 	switch (cmd) {
 	case AOC_IOCTL_ION_FD_TO_HANDLE:
@@ -2015,8 +2009,8 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lon
 			break;
 		}
 
-		ionbuf = dmabuf->priv;
-		handle.handle = (u64)ionbuf->priv_virt;
+		dma_heap_buf = dmabuf->priv;
+		handle.handle = (u64)dma_heap_buf->priv;
 
 		dma_buf_put(dmabuf);
 
@@ -2378,7 +2372,11 @@ static int aoc_platform_probe(struct platform_device *pdev)
 
 	aoc_configure_sysmmu(prvdata);
 
-	aoc_create_ion_heap(prvdata);
+	if (!aoc_create_ion_heap(prvdata)) {
+		pr_err("Unable to create heap\n");
+		aoc_cleanup_resources(pdev);
+		return -ENOMEM;
+	}
 #endif
 
 	/* Default to 6MB if we are not loading the firmware (i.e. trace32) */

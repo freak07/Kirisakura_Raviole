@@ -8,24 +8,21 @@
 #include <linux/genalloc.h>
 #include <linux/io.h>
 #include <linux/mm.h>
+#include <linux/samsung-dma-heap.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 
 #include <asm/cacheflush.h>
 
-#include <uapi/linux/ion.h>
-
 #include "ion_physical_heap.h"
 
 #define ION_PHYSICAL_ALLOCATE_FAIL -1
 
 struct ion_physical_heap {
-	struct ion_heap heap;
 	struct gen_pool *pool;
 	phys_addr_t base;
 	size_t size;
-	size_t alloc_align;
 
 	ion_physical_heap_allocate_callback *allocate_cb;
 	void *allocate_ctx;
@@ -69,12 +66,11 @@ static int _sglist_zero(struct scatterlist *sgl, unsigned int nents,
 	return ret;
 }
 
-static int _buffer_zero(struct ion_buffer *buffer)
+static int _buffer_zero(struct samsung_dma_buffer *buffer)
 {
-	struct sg_table *table = buffer->sg_table;
 	pgprot_t pgprot = PAGE_KERNEL;
 
-	return _sglist_zero(table->sgl, table->orig_nents, pgprot);
+	return _sglist_zero(buffer->sg_table.sgl, buffer->sg_table.orig_nents, pgprot);
 }
 
 static int _pages_zero(struct page *page, size_t size, pgprot_t pgprot)
@@ -86,133 +82,130 @@ static int _pages_zero(struct page *page, size_t size, pgprot_t pgprot)
 	return _sglist_zero(&sg, 1, pgprot);
 }
 
-void ion_physical_heap_set_allocate_callback(
-	struct ion_heap *heap, ion_physical_heap_allocate_callback cb,
-	void *ctx)
-{
-	struct ion_physical_heap *physical_heap =
-		container_of(heap, struct ion_physical_heap, heap);
-
-	physical_heap->allocate_cb = cb;
-	physical_heap->allocate_ctx = ctx;
-}
-
-void ion_physical_heap_set_free_callback(struct ion_heap *heap,
-					 ion_physical_heap_free_callback cb,
-					 void *ctx)
-{
-	struct ion_physical_heap *physical_heap =
-		container_of(heap, struct ion_physical_heap, heap);
-
-	physical_heap->free_cb = cb;
-	physical_heap->free_ctx = ctx;
-}
-
-static phys_addr_t ion_physical_allocate(struct ion_physical_heap *heap,
+static int ion_physical_heap_do_allocate(struct dma_heap *heap,
+					 struct samsung_dma_buffer *buffer,
 					 unsigned long size)
 {
-	unsigned long offset = gen_pool_alloc(heap->pool, size);
-
-	if (!offset)
-		return ION_PHYSICAL_ALLOCATE_FAIL;
-
-	return offset;
-}
-
-static void ion_physical_free(struct ion_physical_heap *physical_heap,
-			      phys_addr_t addr, unsigned long size)
-{
-	if (addr == ION_PHYSICAL_ALLOCATE_FAIL)
-		return;
-	gen_pool_free(physical_heap->pool, addr,
-		      ALIGN(size, physical_heap->alloc_align));
-}
-
-static int ion_physical_heap_allocate(struct ion_heap *heap,
-				      struct ion_buffer *buffer,
-				      unsigned long size, unsigned long flags)
-{
-	struct ion_physical_heap *physical_heap =
-		container_of(heap, struct ion_physical_heap, heap);
-	struct sg_table *table;
-	unsigned long aligned_size = ALIGN(size, physical_heap->alloc_align);
+	struct samsung_dma_heap *samsung_dma_heap = dma_heap_get_drvdata(heap);
+	struct ion_physical_heap *physical_heap = samsung_dma_heap->priv;
+	unsigned long aligned_size = ALIGN(size, samsung_dma_heap->alignment);
 	phys_addr_t paddr;
-	int ret;
 
-	table = kmalloc(sizeof(*table), GFP_KERNEL);
-	if (!table)
+	paddr = gen_pool_alloc(physical_heap->pool, aligned_size);
+	if (!paddr) {
+		pr_err("%s: failed to allocate from AOC physical heap size %lu",
+		       __func__, size);
 		return -ENOMEM;
-	ret = sg_alloc_table(table, 1, GFP_KERNEL);
-	if (ret) {
-		pr_err("%s: failed to allocate scatterlist (err %d)", __func__,
-		       ret);
-		goto err_free;
 	}
 
-	paddr = ion_physical_allocate(physical_heap, aligned_size);
-	if (paddr == ION_PHYSICAL_ALLOCATE_FAIL) {
-		pr_err("%s: failed to allocate from %s(id %d), size %lu",
-		       __func__, heap->name, heap->id, size);
-		ret = -ENOMEM;
-		goto err_free_table;
-	}
-
-	sg_set_page(table->sgl, pfn_to_page(PFN_DOWN(paddr)), size, 0);
-	buffer->sg_table = table;
-	buffer->priv_virt = (void *)(uintptr_t)hash_long(paddr, 32);
+	sg_set_page(buffer->sg_table.sgl, pfn_to_page(PFN_DOWN(paddr)), size, 0);
+	buffer->priv = (void *)(uintptr_t)hash_long(paddr, 32);
 
 	if (physical_heap->allocate_cb)
 		physical_heap->allocate_cb(buffer, physical_heap->allocate_ctx);
 
 	return 0;
-
-err_free_table:
-	sg_free_table(table);
-err_free:
-	kfree(table);
-	return ret;
 }
 
-static void ion_physical_heap_free(struct ion_buffer *buffer)
+static void ion_physical_heap_buffer_free(struct samsung_dma_buffer *buffer)
 {
-	struct ion_physical_heap *physical_heap =
-		container_of(buffer->heap, struct ion_physical_heap, heap);
-	struct sg_table *table = buffer->sg_table;
-	struct page *page = sg_page(table->sgl);
-	phys_addr_t paddr = PFN_PHYS(page_to_pfn(page));
-	unsigned long size = buffer->size;
+	struct ion_physical_heap *physical_heap = buffer->heap->priv;
+	struct page *page;
+	phys_addr_t paddr;
+
+	page = sg_page(buffer->sg_table.sgl);
+	paddr = PFN_PHYS(page_to_pfn(page));
 
 	if (physical_heap->free_cb)
 		physical_heap->free_cb(buffer, physical_heap->free_ctx);
 
 	_buffer_zero(buffer);
-	ion_physical_free(physical_heap, paddr, size);
+	if (paddr)
+		gen_pool_free(physical_heap->pool, paddr,
+			      ALIGN(buffer->len, buffer->heap->alignment));
 
-	sg_free_table(table);
-	kfree(table);
+	samsung_dma_buffer_free(buffer);
 }
 
-static long ion_physical_get_pool_size(struct ion_heap *heap)
+static struct dma_buf *ion_physical_heap_allocate(struct dma_heap *heap,
+						  unsigned long len,
+						  unsigned long fd_flags,
+						  unsigned long heap_flags)
 {
-	struct ion_physical_heap *physical_heap =
-		container_of(heap, struct ion_physical_heap, heap);
+	int ret;
+	struct dma_buf *dmabuf;
+	struct samsung_dma_buffer *buffer;
+	struct samsung_dma_heap *samsung_dma_heap = dma_heap_get_drvdata(heap);
+
+	buffer = samsung_dma_buffer_alloc(samsung_dma_heap, len, 1);
+	if (IS_ERR(buffer))
+		return ERR_CAST(buffer);
+
+	ret = ion_physical_heap_do_allocate(heap, buffer, len);
+	if (ret) {
+		samsung_dma_buffer_free(buffer);
+		return ERR_PTR(ret);
+	}
+
+	dmabuf = samsung_export_dmabuf(buffer, fd_flags);
+	if (IS_ERR(dmabuf))
+		ion_physical_heap_buffer_free(buffer);
+
+	return dmabuf;
+}
+
+static long ion_physical_get_pool_size(struct dma_heap *heap)
+{
+	struct samsung_dma_heap *samsung_dma_heap = dma_heap_get_drvdata(heap);
+	struct ion_physical_heap *physical_heap = samsung_dma_heap->priv;
 
 	return physical_heap->size / PAGE_SIZE;
 }
 
-static struct ion_heap_ops physical_heap_ops = {
+static struct dma_heap_ops physical_heap_ops = {
 	.allocate = ion_physical_heap_allocate,
-	.free = ion_physical_heap_free,
 	.get_pool_size = ion_physical_get_pool_size,
 };
 
-struct ion_heap *ion_physical_heap_create(phys_addr_t base, size_t size,
-					  size_t align, const char *name)
+static struct dma_heap *samsung_dma_heap_create_helper(const char *name,
+						       size_t align,
+						       void *priv)
+{
+	struct samsung_dma_heap *samsung_dma_heap;
+	struct dma_heap *heap;
+	struct dma_heap_export_info exp_info;
+
+	samsung_dma_heap = kzalloc(sizeof(*samsung_dma_heap), GFP_KERNEL);
+	if (!samsung_dma_heap)
+		return ERR_PTR(-ENOMEM);
+
+	samsung_dma_heap->name = name;
+	samsung_dma_heap->release = ion_physical_heap_buffer_free;
+	samsung_dma_heap->priv = priv;
+	samsung_dma_heap->flags = DMA_HEAP_FLAG_UNCACHED;
+	samsung_dma_heap->alignment = align;
+
+	exp_info.name = name;
+	exp_info.ops = &physical_heap_ops;
+	exp_info.priv = samsung_dma_heap;
+
+	heap = dma_heap_add(&exp_info);
+	if (IS_ERR(heap))
+		kfree(samsung_dma_heap);
+
+	return heap;
+}
+
+struct dma_heap *ion_physical_heap_create(phys_addr_t base, size_t size,
+					  size_t align, const char *name,
+					  ion_physical_heap_allocate_callback alloc_cb,
+					  ion_physical_heap_free_callback free_cb,
+					  void *ctx)
 {
 	struct ion_physical_heap *physical_heap;
 	int ret;
-
 	struct page *page;
+	struct dma_heap *physical_dmabuf_heap;
 
 	page = pfn_to_page(PFN_DOWN(base));
 
@@ -224,27 +217,29 @@ struct ion_heap *ion_physical_heap_create(phys_addr_t base, size_t size,
 	if (!physical_heap)
 		return ERR_PTR(-ENOMEM);
 
-	physical_heap->pool =
-		gen_pool_create(get_order(align) + PAGE_SHIFT, -1);
+	physical_heap->pool = gen_pool_create(get_order(align) + PAGE_SHIFT, -1);
 	if (!physical_heap->pool) {
 		kfree(physical_heap);
 		return ERR_PTR(-ENOMEM);
 	}
+
 	physical_heap->base = base;
 	gen_pool_add(physical_heap->pool, physical_heap->base, size, -1);
-	physical_heap->heap.ops = &physical_heap_ops;
-	physical_heap->heap.name =
-		kstrndup(name, MAX_HEAP_NAME - 1, GFP_KERNEL);
-	if (!physical_heap->heap.name) {
-		gen_pool_destroy(physical_heap->pool);
-		kfree(physical_heap);
-		return ERR_PTR(-ENOMEM);
-	}
-	physical_heap->heap.type = ION_HEAP_TYPE_CUSTOM;
-	physical_heap->heap.owner = THIS_MODULE;
 
 	physical_heap->size = size;
-	physical_heap->alloc_align = align;
 
-	return &physical_heap->heap;
+	physical_heap->allocate_cb = alloc_cb;
+	physical_heap->allocate_ctx = ctx;
+
+	physical_heap->free_cb = free_cb;
+	physical_heap->free_ctx = ctx;
+
+	physical_dmabuf_heap = samsung_dma_heap_create_helper(name, align,
+							      (void *)physical_heap);
+	if (IS_ERR(physical_dmabuf_heap)) {
+		gen_pool_destroy(physical_heap->pool);
+		kfree(physical_heap);
+	}
+
+	return physical_dmabuf_heap;
 }
