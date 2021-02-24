@@ -184,6 +184,7 @@ struct aoc_chip {
 	bool voip_tx_prepared;
 	bool voip_path_vote[PORT_MAX];
 	bool voice_path_vote[PORT_MAX];
+	struct wakeup_source *wakelock;
 
 	int compr_offload_volume;
 	int mic_spatial_module_enable;

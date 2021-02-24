@@ -1883,6 +1883,8 @@ static int aoc_snd_card_probe(struct platform_device *pdev)
 		goto err;
 	}
 
+	pdata->g_chip.wakelock = wakeup_source_register(dev, dev_name(dev));
+
 	card->owner = THIS_MODULE;
 	card->dev = dev;
 	card->late_probe = aoc_card_late_probe;

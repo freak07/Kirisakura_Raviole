@@ -49,6 +49,8 @@ void aoc_compr_offload_isr(struct aoc_service_dev *dev)
 		return;
 	}
 
+	pm_wakeup_ws_event(alsa_stream->chip->wakelock, 3000, true);
+
 	/*
 	 * The number of bytes read/writtien should be the bytes in the buffer
 	 * already played out in the case of playback. But this may not be true
@@ -315,6 +317,7 @@ static int aoc_compr_playback_free(struct snd_compr_stream *cstream)
 
 	pr_notice("alsa compr offload close\n");
 	free_aoc_audio_service(rtd->dai_link->name, alsa_stream->dev);
+
 	/*
 	 * Call stop if it's still running. This happens when app
 	 * is force killed and we don't get a stop trigger.
