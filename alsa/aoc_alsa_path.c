@@ -40,6 +40,7 @@ static aoc_audio_sink[] = {
 	[PORT_TDM_1_RX] = ASNK_MODEM,	  [PORT_TDM_1_TX] = -1,
 	[PORT_USB_RX] = ASNK_USB,	  [PORT_USB_TX] = -1,
 	[PORT_BT_RX] = ASNK_BT,		  [PORT_BT_TX] = -1,
+	[PORT_INTERNAL_MIC] = -1,
 };
 
 static int ep_id_to_source(int ep_idx)
