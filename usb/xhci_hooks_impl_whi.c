@@ -7,6 +7,8 @@
  */
 
 #include <linux/dma-mapping.h>
+#include <linux/of.h>
+#include <linux/pm_wakeup.h>
 #include <linux/slab.h>
 #include <linux/usb.h>
 #include <linux/workqueue.h>
