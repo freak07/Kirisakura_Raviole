@@ -49,6 +49,7 @@ struct aoc_usb_drvdata {
 	struct aoc_service_dev *adev;
 
 	struct mutex lock;
+	struct wakeup_source *ws;
 
 	struct notifier_block nb;
 };

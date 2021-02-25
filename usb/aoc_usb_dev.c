@@ -6,6 +6,7 @@
 
 #define pr_fmt(fmt) "aoc_usb_control: " fmt
 
+#include <linux/device.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -37,6 +38,8 @@ static ssize_t aoc_usb_send_command(struct aoc_usb_drvdata *drvdata,
 	if (ret != 0)
 		return ret;
 
+	__pm_stay_awake(drvdata->ws);
+
 	ret = aoc_service_write(adev, in_cmd, in_size, BLOCKING);
 	if (ret != in_size) {
 		ret = -EIO;
@@ -48,6 +51,7 @@ static ssize_t aoc_usb_send_command(struct aoc_usb_drvdata *drvdata,
 		ret = -EIO;
 
 out:
+	__pm_relax(drvdata->ws);
 	mutex_unlock(&drvdata->lock);
 	return ret;
 }
@@ -217,6 +221,10 @@ static int aoc_usb_probe(struct aoc_service_dev *adev)
 
 	mutex_init(&drvdata->lock);
 
+	drvdata->ws = wakeup_source_register(dev, dev_name(dev));
+	if (!drvdata->ws)
+		return -ENOMEM;
+
 	drvdata->nb.notifier_call = aoc_usb_notify;
 	register_aoc_usb_notifier(&drvdata->nb);
 
@@ -232,6 +240,7 @@ static int aoc_usb_remove(struct aoc_service_dev *adev)
 	struct aoc_usb_drvdata *drvdata = dev_get_drvdata(&adev->dev);
 
 	unregister_aoc_usb_notifier(&drvdata->nb);
+	wakeup_source_unregister(drvdata->ws);
 	mutex_destroy(&drvdata->lock);
 
 	kfree(drvdata);
