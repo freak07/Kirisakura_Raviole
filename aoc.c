@@ -1191,8 +1191,8 @@ static ssize_t services_show(struct device *dev, struct device_attribute *attr,
 		struct aoc_ipc_service_header *hdr =
 			(struct aoc_ipc_service_header *)s;
 
-		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%d : name %s\n",
-				 i, aoc_service_name(s));
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%d : name %s channel %d\n",
+				 i, aoc_service_name(s), aoc_service_irq_index(s));
 		if (hdr->regions[0].slots > 0) {
 			ret += scnprintf(
 				buf + ret, PAGE_SIZE - ret,
