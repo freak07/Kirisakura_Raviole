@@ -1067,7 +1067,7 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		.private_value = PCM_PLAYBACK_VOLUME,
 		.info = snd_aoc_ctl_info,
 		.get = snd_aoc_ctl_get,
-		.put = snd_aoc_ctl_put,
+		.put = NULL,
 		.count = 1,
 	},
 	{

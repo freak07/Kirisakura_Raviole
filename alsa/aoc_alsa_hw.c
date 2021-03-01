@@ -1361,23 +1361,26 @@ int aoc_audio_set_ctls(struct aoc_chip *chip)
 }
 
 int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
-			 uint32_t samplerate, uint32_t bps, bool pcm_float_fmt,
-			 int source_mode)
+			 uint32_t samplerate, uint32_t bps, bool pcm_float_fmt, int source_mode)
 {
 	int err = 0;
 	struct aoc_chip *chip = alsa_stream->chip;
 
-	pr_debug("setting channels(%u), samplerate(%u), bits-per-sample(%u)\n",
-		 channels, samplerate, bps);
+	pr_debug("setting channels(%u), samplerate(%u), bits-per-sample(%u)\n", channels,
+		 samplerate, bps);
 
-	if (alsa_stream->cstream ||
-	    alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		err = aoc_audio_playback_set_params(alsa_stream, channels,
-						    samplerate, bps,
+	if (alsa_stream->cstream || alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		err = aoc_audio_playback_set_params(alsa_stream, channels, samplerate, bps,
 						    pcm_float_fmt, source_mode);
+		if (err < 0)
+			pr_err("ERR:%d playback audio param set fails\n", err);
 	} else {
-		err = aoc_audio_capture_set_params(
-			alsa_stream, channels, samplerate, bps, pcm_float_fmt);
+		err = aoc_audio_capture_set_params(alsa_stream, channels, samplerate, bps,
+						   pcm_float_fmt);
+		if (err < 0) {
+			pr_err("ERR:%d capture audio param set fails\n", err);
+			goto exit;
+		}
 
 		/* To deal with recording with spatial module enabled */
 		if (chip->mic_spatial_module_enable) {
@@ -1387,21 +1390,7 @@ int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 		}
 	}
 
-	if (err < 0)
-		goto out;
-
-	/* Resend volume ctls-alsa_stream may not be open when first send */
-	if (alsa_stream->cstream ||
-	    alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		err = aoc_audio_set_ctls_chan(alsa_stream, chip);
-		if (err != 0) {
-			pr_debug(
-				"alsa controls in setting params not supported\n");
-			err = -EINVAL;
-		}
-	}
-
-out:
+exit:
 	return err;
 }
 

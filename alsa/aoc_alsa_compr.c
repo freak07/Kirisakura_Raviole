@@ -201,6 +201,8 @@ out:
 		free_aoc_audio_service(rtd->dai_link->name, dev);
 		dev = NULL;
 	}
+	chip->alsa_stream[idx] = NULL;
+	chip->opened &= ~(1 << idx);
 	mutex_unlock(&chip->audio_mutex);
 
 	pr_err("pcm open err=%d\n", err);
