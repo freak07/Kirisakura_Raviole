@@ -65,6 +65,10 @@
 #define AOC_MAX_MINOR (1U)
 #define AOC_MBOX_CHANNELS 16
 
+#define AOC_FWDATA_ENTRIES 10
+#define AOC_FWDATA_BOARDID_DFL  0x20202
+#define AOC_FWDATA_BOARDREV_DFL 0x10000
+
 static struct platform_device *aoc_platform_device;
 static bool aoc_online;
 
@@ -458,12 +462,73 @@ static void aoc_pass_fw_information(void *base, const struct aoc_fw_data *fwd,
 	}
 }
 
+static u32 aoc_board_config_parse(struct device_node *node, u32 *board_id, u32 *board_rev)
+{
+	const char *board_cfg;
+	int err = 0;
+
+	/* Read board config from device tree */
+	err = of_property_read_string(node, "aoc-board-cfg", &board_cfg);
+
+	if (err < 0) {
+		pr_err("Unable to retrieve AoC board configuration, check DT");
+		pr_info("Assuming R4/O6 board configuration");
+		*board_id  = AOC_FWDATA_BOARDID_DFL;
+		*board_rev = AOC_FWDATA_BOARDREV_DFL;
+	} else {
+		if (strncmp(board_cfg, "sl1", 3) == 0) {
+			*board_id  = 0x201;
+			*board_rev = 0x100;
+			pr_info("AoC Platform: SL1");
+		} else if (strncmp(board_cfg, "sl2", 3) == 0) {
+			*board_id  = 0x201;
+			*board_rev = 0x101;
+			pr_info("AoC Platform: SL2");
+		} else if (strncmp(board_cfg, "wf1", 3) == 0) {
+			*board_id  = 0x201;
+			*board_rev = 0x200;
+			pr_info("AoC Platform: WF1");
+		} else if (strncmp(board_cfg, "wf2v2", 5) == 0) {
+			*board_id  = 0x201;
+			*board_rev = 0x202;
+			pr_info("AoC Platform: WF2 (v2)");
+		} else if (strncmp(board_cfg, "wf2", 3) == 0) {
+			*board_id  = 0x201;
+			*board_rev = 0x201;
+			pr_info("AoC Platform: WF2 (v1)");
+		} else if (strncmp(board_cfg, "r4", 2) == 0) {
+			*board_id  = 0x20202;
+			*board_rev = 0x10000;
+			pr_info("AoC Platform: R4");
+		} else if (strncmp(board_cfg, "o6", 2) == 0) {
+			*board_id  = 0x20302;
+			*board_rev = 0x10000;
+			pr_info("AoC Platform: O6");
+		} else if (strncmp(board_cfg, "p7", 2) == 0) {
+			*board_id  = 0x20401;
+			*board_rev = 0x10000;
+			pr_info("AoC Platform: P7");
+		} else if (strncmp(board_cfg, "b3", 2) == 0) {
+			*board_id  = 0x20501;
+			*board_rev = 0x10000;
+			pr_info("AoC Platform: B3");
+		} else {
+			pr_err("Unable to identify AoC board configuration, check DT");
+			pr_info("Assuming R4/O6 board configuration");
+
+			// Assume R4/O6, as this is the most likely to work
+			*board_id  = AOC_FWDATA_BOARDID_DFL;
+			*board_rev = AOC_FWDATA_BOARDREV_DFL;
+		}
+	}
+
+	return err;
+}
+
 static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 {
 	struct device *dev = ctx;
 	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
-	u32 board_id = dt_property(prvdata->dev->of_node, "board_id");
-	u32 board_rev = dt_property(prvdata->dev->of_node, "board_rev");
 	u32 sram_was_repaired = aoc_sram_was_repaired(prvdata);
 	u32 carveout_base = prvdata->dram_resource.start;
 	u32 carveout_size = prvdata->dram_size;
@@ -471,6 +536,9 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	u32 force_vnom = ((dt_force_vnom != 0) || (prvdata->force_voltage_nominal != 0)) ? 1 : 0;
 	u32 disable_mm = prvdata->disable_monitor_mode;
 	u32 enable_uart = prvdata->enable_uart_tx;
+	u32 board_id  = AOC_FWDATA_BOARDID_DFL;
+	u32 board_rev = AOC_FWDATA_BOARDREV_DFL;
+	unsigned int i;
 
 	struct aoc_fw_data fw_data[] = {
 		{ .key = kAOCBoardID, .value = board_id },
@@ -485,7 +553,17 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		{ .key = kAOCEnableUART, .value = enable_uart }
 	};
 	const char *version;
+	u32 fw_data_entries = ARRAY_SIZE(fw_data);
 	u32 ipc_offset, bootloader_offset;
+
+	aoc_board_config_parse(prvdata->dev->of_node, &board_id, &board_rev);
+
+	for (i = 0; i < fw_data_entries; i++) {
+		if (fw_data[i].key == kAOCBoardID)
+			fw_data[i].value = board_id;
+		else if (fw_data[i].key == kAOCBoardRevision)
+			fw_data[i].value = board_rev;
+	}
 
 	aoc_req_assert(prvdata, true);
 
