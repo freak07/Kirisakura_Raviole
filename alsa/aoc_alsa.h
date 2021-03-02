@@ -106,7 +106,8 @@ enum {
 	USB_RX_EP_ID,
 	USB_RX_SR,
 	USB_RX_CH,
-	USB_RX_BW
+	USB_RX_BW,
+	USB_CFG_TO_AOC
 };
 
 /* AoC sidetone EQ */
