@@ -13,8 +13,12 @@
 
 #define AOC_FIRMWARE_OFFSET_INVALID 0xffffffff
 
+#define AOC_AUTH_HEADER_SIZE 4096
+
 /* Dev builds bypass the UUID check on load */
 bool _aoc_fw_is_release(const struct firmware *fw);
+
+bool _aoc_fw_is_signed(const struct firmware *fw);
 
 bool _aoc_fw_is_compatible(const struct firmware *fw);
 

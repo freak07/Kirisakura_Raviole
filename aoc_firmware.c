@@ -19,6 +19,22 @@
 #include "aoc_firmware.h"
 #include "aoc-interface.h"
 
+struct aoc_auth_header {
+	u8 signature[512];
+	u8 key[512];
+	struct {
+		u32 magic;
+		u32 generation;
+		u32 rollback_info;
+		u32 length;
+		u8 flags [16];
+		u8 hash [32];
+		u8 chip_id [32];
+		u8 auth_config [256];
+		u8 image_config [256];
+	} header;
+} __packed;
+
 struct aoc_superbin_header {
 	u32 magic;
 	u32 release_type;
@@ -46,10 +62,22 @@ struct aoc_superbin_header {
 	u32 crc32;
 } __packed;
 
+static u32 aoc_img_header_size(const struct firmware *fw)
+{
+	if(_aoc_fw_is_signed(fw))
+		return AOC_AUTH_HEADER_SIZE;
+
+	return 0UL;
+}
+
 static bool region_is_in_firmware(size_t start, size_t length,
 				  const struct firmware *fw)
 {
-	return ((start + length) < fw->size);
+	return ((start + length) < (fw->size - aoc_img_header_size(fw)));
+}
+
+static const struct aoc_superbin_header *superbin_header(const struct firmware* fw) {
+	return (const struct aoc_superbin_header *)(fw->data + aoc_img_header_size(fw));
 }
 
 bool _aoc_fw_is_valid(const struct firmware *fw)
@@ -64,7 +92,7 @@ bool _aoc_fw_is_valid(const struct firmware *fw)
 	if (!region_is_in_firmware(0, sizeof(*header), fw))
 		return false;
 
-	header = (const struct aoc_superbin_header *)fw->data;
+	header = superbin_header(fw);
 	if (le32_to_cpu(header->magic) != 0xaabbccdd)
 		return false;
 
@@ -95,16 +123,24 @@ bool _aoc_fw_is_valid(const struct firmware *fw)
 
 bool _aoc_fw_is_release(const struct firmware *fw)
 {
-	const struct aoc_superbin_header *header =
-		(const struct aoc_superbin_header *)fw->data;
+	const struct aoc_superbin_header *header = superbin_header(fw);
 
 	return (le32_to_cpu(header->release_type) == 1);
 }
 
+bool _aoc_fw_is_signed(const struct firmware *fw)
+{
+	const struct aoc_auth_header *header = (const struct aoc_auth_header *)(fw->data);
+	if (le32_to_cpu(header->header.magic) != 0x00414F43) {
+		return false;
+	}
+
+	return true;
+}
+
 bool _aoc_fw_is_compatible(const struct firmware *fw)
 {
-	const struct aoc_superbin_header *header =
-		(const struct aoc_superbin_header *)fw->data;
+	const struct aoc_superbin_header *header = superbin_header(fw);
 	u32 uuid_offset, uuid_size;
 
 	if (!_aoc_fw_is_release(fw))
@@ -113,7 +149,7 @@ bool _aoc_fw_is_compatible(const struct firmware *fw)
 	uuid_offset = le32_to_cpu(header->uuid_table_offset);
 	uuid_size = le32_to_cpu(header->uuid_table_size);
 
-	if (AocInterfaceCheck(fw->data + uuid_offset, uuid_size) != 0) {
+	if (AocInterfaceCheck(fw->data + aoc_img_header_size(fw) + uuid_offset, uuid_size) != 0) {
 		pr_err("failed to validate method signature table\n");
 		return false;
 	}
@@ -123,23 +159,20 @@ bool _aoc_fw_is_compatible(const struct firmware *fw)
 
 u32 _aoc_fw_bootloader_offset(const struct firmware *fw)
 {
-	const struct aoc_superbin_header *header =
-		(const struct aoc_superbin_header *)fw->data;
+	const struct aoc_superbin_header *header = superbin_header(fw);
 	return le32_to_cpu(header->bootloader_offset);
 }
 
 u32 _aoc_fw_ipc_offset(const struct firmware *fw)
 {
-	const struct aoc_superbin_header *header =
-		(const struct aoc_superbin_header *)fw->data;
+	const struct aoc_superbin_header *header = superbin_header(fw);
 	return le32_to_cpu(header->image_size);
 }
 
 /* Returns firmware version, or 0 on error */
 const char* _aoc_fw_version(const struct firmware *fw)
 {
-	const struct aoc_superbin_header *header =
-		(const struct aoc_superbin_header *)fw->data;
+	const struct aoc_superbin_header *header = superbin_header(fw);
 	size_t maxlen = sizeof(header->version_string);
 
 	if (strnlen(header->version_string, maxlen) == maxlen)
@@ -150,9 +183,10 @@ const char* _aoc_fw_version(const struct firmware *fw)
 
 bool _aoc_fw_commit(const struct firmware *fw, void *dest)
 {
+	u32 header_size = aoc_img_header_size(fw);
 	if (!_aoc_fw_is_valid(fw))
 		return false;
 
-	memcpy(dest, fw->data, fw->size);
+	memcpy(dest, fw->data + header_size, fw->size - header_size);
 	return true;
 }

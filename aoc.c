@@ -32,6 +32,7 @@
 #include <linux/moduleparam.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/of_platform.h>
 #include <linux/platform_data/sscoredump.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -44,6 +45,8 @@
 #include <linux/workqueue.h>
 #include <soc/google/acpm_ipc_ctrl.h>
 #include <soc/google/exynos-cpupm.h>
+
+#include <linux/gsa/gsa_aoc.h>
 
 #if IS_ENABLED(CONFIG_EXYNOS_ITMON)
 #include <soc/google/exynos-itmon.h>
@@ -139,6 +142,7 @@ struct aoc_prvdata {
 #if IS_ENABLED(CONFIG_EXYNOS_ITMON)
 	struct notifier_block itmon_nb;
 #endif
+	struct device *gsa_dev;
 };
 
 /* TODO: Reduce the global variables (move into a driver structure) */
@@ -631,6 +635,37 @@ static u32 aoc_board_config_parse(struct device_node *node, u32 *board_id, u32 *
 	return err;
 }
 
+static int aoc_fw_authenticate(struct aoc_prvdata *prvdata,
+			       const struct firmware *fw) {
+
+	int rc;
+	dma_addr_t header_dma_addr;
+	void *header_vaddr;
+
+	/* Allocate coherent memory for the image header */
+	header_vaddr = dma_alloc_coherent(prvdata->gsa_dev, AOC_AUTH_HEADER_SIZE,
+					  &header_dma_addr, GFP_KERNEL);
+	if (!header_vaddr) {
+		dev_err(prvdata->dev, "Failed to allocate coherent memory for header\n");
+		rc = -ENOMEM;
+		goto err_alloc;
+	}
+
+	memcpy(header_vaddr, fw->data, AOC_AUTH_HEADER_SIZE);
+
+	rc = gsa_load_aoc_fw_image(prvdata->gsa_dev, header_dma_addr,
+				   prvdata->dram_resource.start + AOC_BINARY_DRAM_OFFSET);
+	if (rc) {
+		dev_err(prvdata->dev, "GSA authentication failed: %d\n", rc);
+		goto err_auth;
+	}
+
+err_auth:
+err_alloc:
+	dma_free_coherent(prvdata->gsa_dev, AOC_AUTH_HEADER_SIZE, header_vaddr, header_dma_addr);
+	return rc;
+}
+
 static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 {
 	struct device *dev = ctx;
@@ -712,26 +747,67 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		goto free_fw;
 	}
 
-	aoc_control = aoc_dram_translate(prvdata, ipc_offset);
+	if (false == _aoc_fw_is_signed(fw)) {
 
-	aoc_fpga_reset(prvdata);
+		dev_info(dev, "Loading unsigned aoc image\n");
 
-	_aoc_fw_commit(fw, aoc_dram_virt_mapping + AOC_BINARY_DRAM_OFFSET);
+		aoc_control = aoc_dram_translate(prvdata, ipc_offset);
 
-	aoc_pass_fw_information(aoc_dram_translate(prvdata, ipc_offset),
+		aoc_fpga_reset(prvdata);
+
+		_aoc_fw_commit(fw, aoc_dram_virt_mapping + AOC_BINARY_DRAM_OFFSET);
+
+		aoc_pass_fw_information(aoc_dram_translate(prvdata, ipc_offset),
 				fw_data, ARRAY_SIZE(fw_data));
 
-	write_reset_trampoline(AOC_BINARY_LOAD_ADDRESS + bootloader_offset);
+		write_reset_trampoline(AOC_BINARY_LOAD_ADDRESS + bootloader_offset);
 
-	aoc_state = AOC_STATE_FIRMWARE_LOADED;
+		aoc_state = AOC_STATE_FIRMWARE_LOADED;
 
-	dev_info(dev, "disabling SICD for 2 sec for aoc boot\n");
-	disable_power_mode(0, POWERMODE_TYPE_SYSTEM);
-	prvdata->ipc_base = aoc_dram_translate(prvdata, ipc_offset);
-	aoc_a32_reset();
-	msleep(2000);
-	dev_info(dev, "re-enabling SICD\n");
-	enable_power_mode(0, POWERMODE_TYPE_SYSTEM);
+		dev_info(dev, "disabling SICD for 2 sec for aoc boot\n");
+		disable_power_mode(0, POWERMODE_TYPE_SYSTEM);
+		prvdata->ipc_base = aoc_dram_translate(prvdata, ipc_offset);
+		aoc_a32_reset();
+		msleep(2000);
+		dev_info(dev, "re-enabling SICD\n");
+		enable_power_mode(0, POWERMODE_TYPE_SYSTEM);
+	} else {
+		int rc;
+
+		dev_info(dev, "Loading signed aoc image\n");
+
+		aoc_control = aoc_dram_translate(prvdata, ipc_offset);
+
+		aoc_fpga_reset(prvdata);
+
+		_aoc_fw_commit(fw, aoc_dram_virt_mapping + AOC_BINARY_DRAM_OFFSET);
+
+		rc = aoc_fw_authenticate(prvdata, fw);
+		if (rc) {
+			dev_err(dev, "GSA: FW authentication failed: %d\n", rc);
+			goto free_fw;
+		}
+
+		aoc_pass_fw_information(aoc_dram_translate(prvdata, ipc_offset),
+					fw_data, ARRAY_SIZE(fw_data));
+
+		dev_info(dev, "disabling SICD for 2 sec for aoc boot\n");
+		disable_power_mode(0, POWERMODE_TYPE_SYSTEM);
+		prvdata->ipc_base = aoc_dram_translate(prvdata, ipc_offset);
+
+		/* start AOC */
+		rc = gsa_send_aoc_cmd(prvdata->gsa_dev, GSA_AOC_START);
+		if (rc < 0) {
+			dev_err(dev, "GSA: Failed to start AOC: %d\n", rc);
+			goto free_fw;
+		}
+
+		aoc_state = AOC_STATE_FIRMWARE_LOADED;
+
+		msleep(2000);
+		dev_info(dev, "re-enabling SICD\n");
+		enable_power_mode(0, POWERMODE_TYPE_SYSTEM);
+	}
 
 free_fw:
 	release_firmware(fw);
@@ -1245,11 +1321,6 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 	dev_info(prvdata->dev, "aoc reset finished\n");
 	prvdata->aoc_reset_done = false;
 
-	if (readl(pcu + AOC_PCU_RESET_CONTROL_OFFSET) != AOC_PCU_RESET_CONTROL_RESET_VALUE) {
-		dev_err(prvdata->dev, "aoc watchdog reset failed\n");
-		return -ENODEV;
-	}
-
 	/*
 	 * AOC_TZPC has been restored by ACPM, so we can access AOC_S2MPU.
 	 * Restore AOC_S2MPU.
@@ -1539,7 +1610,7 @@ static int aoc_bus_match(struct device *dev, struct device_driver *drv)
 	pr_debug("bus match dev:%s drv:%s\n", device_name, drv->name);
 
 	/*
-	 * If the drviver matches by name, only call probe if the name matches.
+	 * If the driver matches by name, only call probe if the name matches.
 	 *
 	 * If there is a specific driver matching this service, do not allow a
 	 * generic driver to claim the service
@@ -2352,6 +2423,37 @@ static void aoc_cleanup_resources(struct platform_device *pdev)
 
 }
 
+static void release_gsa_device(void *prv)
+{
+	struct aoc_prvdata *prvdata = prv;
+
+	put_device(prvdata->gsa_dev);
+}
+
+static int find_gsa_device(struct aoc_prvdata *prvdata)
+{
+	struct device_node *np;
+	struct platform_device *gsa_pdev;
+
+	np = of_parse_phandle(prvdata->dev->of_node, "gsa-device", 0);
+	if (!np) {
+		dev_err(prvdata->dev,
+			"gsa-device phandle not found in AOC device tree node\n");
+		return -ENODEV;
+	}
+	gsa_pdev = of_find_device_by_node(np);
+	of_node_put(np);
+
+	if (!gsa_pdev) {
+		dev_err(prvdata->dev,
+			"gsa-device phandle doesn't refer to a device\n");
+		return -ENODEV;
+	}
+	prvdata->gsa_dev = &gsa_pdev->dev;
+	return devm_add_action_or_reset(prvdata->dev, release_gsa_device,
+					prvdata);
+}
+
 static int aoc_platform_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -2383,6 +2485,11 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	prvdata->disable_monitor_mode = 0;
 	prvdata->enable_uart_tx = 0;
 	prvdata->force_voltage_nominal = 0;
+
+	rc = find_gsa_device(prvdata);
+	if (rc) {
+		dev_err(dev, "Failed to initialize gsa device: %d\n", rc);
+	}
 
 	ret = init_chardev(prvdata);
 	if (ret) {
