@@ -361,6 +361,7 @@ static int snd_aoc_pcm_hw_params(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *s
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
+	struct aoc_chip *chip = alsa_stream->chip;
 	int err;
 
 	err = snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
@@ -368,6 +369,8 @@ static int snd_aoc_pcm_hw_params(EXTRA_ARG_LINUX_5_9 struct snd_pcm_substream *s
 		pr_err("ERR:%d fail in pcm buffer allocation\n", err);
 		return err;
 	}
+
+	substream->wait_time = msecs_to_jiffies(chip->pcm_wait_time_in_ms);
 
 	alsa_stream->channels = params_channels(params);
 	alsa_stream->params_rate = params_rate(params);

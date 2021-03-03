@@ -1805,6 +1805,8 @@ static int snd_aoc_init(struct aoc_chip *chip)
 	chip->mic_spatial_module_enable = 0;
 	chip->sidetone_enable = 0;
 
+	chip->pcm_wait_time_in_ms = DEFAULT_PCM_WAIT_TIME_IN_MSECS;
+
 	mutex_init(&chip->audio_mutex);
 	spin_lock_init(&chip->audio_lock);
 
