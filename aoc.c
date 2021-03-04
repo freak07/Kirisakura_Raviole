@@ -512,6 +512,18 @@ static u32 aoc_board_config_parse(struct device_node *node, u32 *board_id, u32 *
 			*board_id  = 0x20501;
 			*board_rev = 0x10000;
 			pr_info("AoC Platform: B3");
+		} else if (strncmp(board_cfg, "r7", 2) == 0) {
+			*board_id  = 0x20601;
+			*board_rev = 0x10000;
+			pr_info("AoC Platform: R7");
+		} else if (strncmp(board_cfg, "c6", 2) == 0) {
+			*board_id  = 0x20801;
+			*board_rev = 0x10000;
+			pr_info("AoC Platform: C6");
+		} else if (strncmp(board_cfg, "t6", 2) == 0) {
+			*board_id  = 0x20901;
+			*board_rev = 0x10000;
+			pr_info("AoC Platform: T6");
 		} else {
 			pr_err("Unable to identify AoC board configuration, check DT");
 			pr_info("Assuming R4/O6 board configuration");
