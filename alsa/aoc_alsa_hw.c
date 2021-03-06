@@ -1004,6 +1004,8 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 {
 	int i, mic_id, n_mic, err = 0;
 	struct CMD_AUDIO_INPUT_MIC_RECORD_AP_SET_PARAMS cmd;
+	struct CMD_HDR cmd_mic_start;
+
 	struct aoc_chip *chip = alsa_stream->chip;
 
 	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_MIC_RECORD_AP_SET_PARAMS_ID,
@@ -1089,6 +1091,17 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 		goto exit;
 	}
 
+	/* Start the pdm mic */
+	AocCmdHdrSet(&cmd_mic_start, CMD_AUDIO_INPUT_MIC_RECORD_AP_START_PREPARE_ID,
+		     sizeof(cmd_mic_start));
+
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd_mic_start, sizeof(cmd_mic_start),
+				NULL, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in capture start prepare\n", err);
+		goto exit;
+	}
+
 	pr_debug("Flush aoc ring buffer\n");
 	if (!aoc_ring_flush_read_data(alsa_stream->dev->service, AOC_UP, 0)) {
 		pr_err("ERR: capture ring buffer flush fail\n");
@@ -1161,8 +1174,8 @@ static int aoc_audio_capture_trigger(struct aoc_alsa_stream *alsa_stream, int re
 
 	if (chip->audio_capture_mic_source == BUILTIN_MIC) {
 		AocCmdHdrSet(&cmd,
-			     (record_cmd == START) ? CMD_AUDIO_INPUT_MIC_RECORD_AP_START_ID :
-						     CMD_AUDIO_INPUT_MIC_RECORD_AP_STOP_ID,
+			     (record_cmd == START) ? CMD_AUDIO_INPUT_MIC_RECORD_AP_START_DATA_ID :
+							   CMD_AUDIO_INPUT_MIC_RECORD_AP_STOP_ID,
 			     sizeof(cmd));
 
 		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL,
