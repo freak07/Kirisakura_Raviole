@@ -25,7 +25,13 @@ enum aoc_usb_msg {
 	GET_DCBAA_PTR,
 	GET_TR_DEQUEUE_PTR,
 	SETUP_DONE,
-	GET_ISOC_TR_INFO
+	GET_ISOC_TR_INFO,
+	SYNC_CONN_STAT
+};
+
+enum aoc_usb_state {
+	USB_DISCONNECTED,
+	USB_CONNECTED
 };
 
 enum usb_offload_op_mode {

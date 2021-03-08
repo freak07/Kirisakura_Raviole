@@ -75,8 +75,10 @@ static int aoc_usb_get_dev_ctx(struct aoc_usb_drvdata *drvdata,
 
 	dev_dbg(&drvdata->adev->dev, "cmd=(%u, %u)\n", cmd->device_id, cmd->length);
 	ret = aoc_usb_send_command(drvdata, cmd, sizeof(*cmd), cmd, sizeof(*cmd));
-	if (ret < 0)
+	if (ret < 0) {
+		kfree(cmd);
 		return ret;
+	}
 
 	memcpy(dev_ctx, cmd->payload, length);
 
@@ -100,8 +102,10 @@ static int aoc_usb_get_dcbaa_ptr(struct aoc_usb_drvdata *drvdata,
 		     sizeof(*cmd));
 
 	ret = aoc_usb_send_command(drvdata, cmd, sizeof(*cmd), cmd, sizeof(*cmd));
-	if (ret < 0)
+	if (ret < 0) {
+		kfree(cmd);
 		return ret;
+	}
 
 	*aoc_dcbaa_ptr = cmd->aoc_dcbaa_ptr;
 
@@ -129,10 +133,38 @@ static int aoc_usb_setup_done(struct aoc_usb_drvdata *drvdata)
 	cmd->spbuf_idx = 0;
 	cmd->length = 0;
 	ret = aoc_usb_send_command(drvdata, cmd, sizeof(*cmd), cmd, sizeof(*cmd));
-	if (ret < 0)
+	if (ret < 0) {
+		kfree(cmd);
 		return ret;
+	}
 
 	aoc_dcbaa = cmd->aoc_dcbaa;
+
+	kfree(cmd);
+
+	return 0;
+}
+
+static int aoc_usb_notify_conn_stat(struct aoc_usb_drvdata *drvdata, u32 *conn_state)
+{
+	int ret = 0;
+	struct CMD_USB_CONTROL_NOTIFY_CONN_STAT *cmd;
+
+	cmd = kzalloc(sizeof(struct CMD_USB_CONTROL_NOTIFY_CONN_STAT), GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	AocCmdHdrSet(&cmd->parent,
+		     CMD_USB_CONTROL_NOTIFY_CONN_STAT_ID,
+		     sizeof(*cmd));
+
+	cmd->conn_state = *conn_state;
+
+	ret = aoc_usb_send_command(drvdata, cmd, sizeof(*cmd), cmd, sizeof(*cmd));
+	if (ret < 0) {
+		kfree(cmd);
+		return ret;
+	}
 
 	kfree(cmd);
 
@@ -159,8 +191,10 @@ static int aoc_usb_get_isoc_tr_info(struct aoc_usb_drvdata *drvdata, void *args)
 
 	dev_dbg(&drvdata->adev->dev, "ep_id=%u, dir=%u\n", cmd->ep_id, cmd->dir);
 	ret = aoc_usb_send_command(drvdata, cmd, sizeof(*cmd), cmd, sizeof(*cmd));
-	if (ret < 0)
+	if (ret < 0) {
+		kfree(cmd);
 		return ret;
+	}
 
 	tr_info_args->type = cmd->type;
 	tr_info_args->num_segs = cmd->num_segs;
@@ -197,6 +231,9 @@ static int aoc_usb_notify(struct notifier_block *this,
 		break;
 	case GET_ISOC_TR_INFO:
 		ret = aoc_usb_get_isoc_tr_info(drvdata, data);
+		break;
+	case SYNC_CONN_STAT:
+		ret = aoc_usb_notify_conn_stat(drvdata, data);
 		break;
 	default:
 		dev_warn(&drvdata->adev->dev, "Code %lu is not supported\n", code);
