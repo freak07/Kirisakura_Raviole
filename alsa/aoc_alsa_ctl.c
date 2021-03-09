@@ -411,6 +411,76 @@ static int sidetone_enable_ctl_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int lvm_enable_ctl_set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int val, err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	val = ucontrol->value.integer.value[0];
+	err = aoc_lvm_enable_set(chip, val);
+	if (err < 0)
+		pr_err("ERR:%d lvm %s fail\n", err, val ? "Enable" : "Disable");
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
+static int lvm_enable_ctl_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_lvm_enable_get(chip, &ucontrol->value.integer.value[0]);
+	if (err < 0)
+		pr_err("ERR:%d lvm enable get fail\n", err);
+
+	mutex_unlock(&chip->audio_mutex);
+
+	return err;
+}
+
+static int decoder_ref_enable_ctl_set(struct snd_kcontrol *kcontrol,
+				      struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int val, err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	val = ucontrol->value.integer.value[0];
+	err = aoc_decoder_ref_enable_set(chip, val);
+	if (err < 0)
+		pr_err("ERR:%d lvm %s fail\n", err, val ? "Enable" : "Disable");
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
+static int decoder_ref_enable_ctl_get(struct snd_kcontrol *kcontrol,
+				      struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_decoder_ref_enable_get(chip, &ucontrol->value.integer.value[0]);
+	if (err < 0)
+		pr_err("ERR:%d lvm enable get fail\n", err);
+
+	mutex_unlock(&chip->audio_mutex);
+
+	return err;
+}
+
 static int sidetone_enable_ctl_set(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
@@ -1268,6 +1338,12 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		"MIC HW Gain (cB)", SND_SOC_NOPM, MIC_CURRENT_GAIN,
 		MIC_HW_GAIN_IN_CB_MIN, MIC_HW_GAIN_IN_CB_MAX, 0,
 		mic_hw_gain_get, NULL, NULL),
+
+	/* LVM enable 1/0 for comp offload */
+	SOC_SINGLE_EXT("LVM Enable", SND_SOC_NOPM, 0, 1, 0,
+		       lvm_enable_ctl_get, lvm_enable_ctl_set),
+	SOC_SINGLE_EXT("Decoder Reference Enable", SND_SOC_NOPM, 0, 1, 0,
+		       decoder_ref_enable_ctl_get, decoder_ref_enable_ctl_set),
 
 	/* Sidetone switch and tuning parameters */
 	SOC_SINGLE_EXT("Sidetone Enable", SND_SOC_NOPM, 0, 1, 0,

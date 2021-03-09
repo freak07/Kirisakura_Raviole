@@ -1123,6 +1123,102 @@ exit:
 	return err;
 }
 
+int aoc_lvm_enable_get(struct aoc_chip *chip, long *enable)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_GET_PARAMETER cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_PARAMETER_ID, sizeof(cmd));
+
+	cmd.block = 14; /* ABLOCK_DCDOFF */
+	cmd.component = 0; /* LVM */
+	cmd.key = 16; /* ASP_LVM_PARAM_ENABLE */
+	pr_debug("lvm: %s\n", enable ? "enabled" : "disabled");
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in lvm set\n", err);
+		return err;
+	}
+
+	if (enable)
+		*enable = cmd.val;
+
+	return 0;
+}
+
+int aoc_lvm_enable_set(struct aoc_chip *chip, long enable)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_SET_PARAMETER cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SET_PARAMETER_ID, sizeof(cmd));
+
+	cmd.block = 14; /* ABLOCK_DCDOFF */
+	cmd.component = 0;
+	cmd.key = 16;
+	cmd.val = enable;
+	pr_debug("lvm: %s\n", enable ? "enabled" : "disabled");
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in lvm set\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
+int aoc_decoder_ref_enable_get(struct aoc_chip *chip, long *enable)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_GET_PARAMETER cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_GET_PARAMETER_ID, sizeof(cmd));
+
+	cmd.block = 14;
+	cmd.component = 1;
+	cmd.key = 0;
+	pr_debug("Decoder ref: %s\n", enable ? "enabled" : "disabled");
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in decoder ref get\n", err);
+		return err;
+	}
+
+	if (enable)
+		*enable = cmd.val;
+
+	return 0;
+}
+
+int aoc_decoder_ref_enable_set(struct aoc_chip *chip, long enable)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_SET_PARAMETER cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SET_PARAMETER_ID, sizeof(cmd));
+
+	cmd.block = 14;
+	cmd.component = 1;
+	cmd.key = 0;
+	cmd.val = enable;
+	pr_debug("decoder ref: %s\n", enable ? "enabled" : "disabled");
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in decoder ref set\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
 int aoc_sidetone_enable(struct aoc_chip *chip, int enable)
 {
 	int err = 0;

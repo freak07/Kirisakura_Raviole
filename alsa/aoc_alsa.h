@@ -242,6 +242,12 @@ int aoc_incall_capture_enable_set(struct aoc_chip *chip, int stream, long val);
 int aoc_incall_playback_enable_get(struct aoc_chip *chip, int stream, long *val);
 int aoc_incall_playback_enable_set(struct aoc_chip *chip, int stream, long val);
 
+int aoc_lvm_enable_get(struct aoc_chip *chip, long *enable);
+int aoc_lvm_enable_set(struct aoc_chip *chip, long enable);
+int aoc_decoder_ref_enable_get(struct aoc_chip *chip, long*enable);
+int aoc_decoder_ref_enable_set(struct aoc_chip *chip, long enable);
+
+
 int aoc_sidetone_enable(struct aoc_chip *chip, int enable);
 int aoc_sidetone_cfg_get(struct aoc_chip *chip, int param, long *val);
 int aoc_sidetone_cfg_set(struct aoc_chip *chip, int param, long val);
