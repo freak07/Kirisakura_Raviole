@@ -70,16 +70,25 @@
 
 static struct platform_device *aoc_platform_device;
 static bool aoc_online;
+static bool aoc_is_starting;
+
+struct mbox_slot {
+	struct mbox_client client;
+	struct mbox_chan *channel;
+	void *prvdata;
+	int index;
+};
 
 struct aoc_prvdata {
-	struct mbox_client mbox_client;
+	struct mbox_slot mbox_channels[AOC_MBOX_CHANNELS];
+	struct aoc_service_dev **services;
+
 	struct work_struct online_work;
 	struct resource dram_resource;
 	struct dma_heap *sensor_heap;
 	aoc_map_handler map_handler;
 	void *map_handler_ctx;
 
-	struct mbox_chan *mbox_channel[AOC_MBOX_CHANNELS];
 	struct device *dev;
 	struct iommu_domain *domain;
 	void *ipc_base;
@@ -98,6 +107,7 @@ struct aoc_prvdata {
 	bool aoc_reset_done;
 	wait_queue_head_t aoc_reset_wait_queue;
 	unsigned int acpm_async_id;
+	int total_services;
 
 	char firmware_name[MAX_FIRMWARE_LENGTH];
 	char *firmware_version;
@@ -168,14 +178,8 @@ struct aoc_client {
 	int endpoint;
 };
 
-struct aoc_service_metadata {
-	wait_queue_head_t read_queue;
-	wait_queue_head_t write_queue;
-};
-
 static unsigned long read_blocked_mask;
 static unsigned long write_blocked_mask;
-static struct aoc_service_metadata *metadata;
 
 static bool aoc_fpga_reset(struct aoc_prvdata *prvdata);
 static bool write_reset_trampoline(u32 addr);
@@ -187,7 +191,7 @@ static int start_firmware_load(struct device *dev);
 static void aoc_take_offline(struct aoc_prvdata *prvdata);
 static void signal_aoc(struct mbox_chan *channel);
 
-static void aoc_process_services(struct aoc_prvdata *prvdata);
+static void aoc_process_services(struct aoc_prvdata *prvdata, int offset);
 
 static irqreturn_t watchdog_int_handler(int irq, void *dev);
 static void aoc_watchdog(struct work_struct *work);
@@ -264,13 +268,21 @@ static inline int aoc_num_services(void)
 }
 
 static inline aoc_service *service_at_index(struct aoc_prvdata *prvdata,
-					    int index)
+					    unsigned index)
 {
 	if (!aoc_is_online() || index > aoc_num_services())
 		return NULL;
 
 	return (((uint8_t *)prvdata->ipc_base) + aoc_control->services_offset +
 		(le32_to_cpu(aoc_control->service_size) * index));
+}
+
+static inline struct aoc_service_dev *service_dev_at_index(struct aoc_prvdata *prvdata, unsigned index)
+{
+	if (!aoc_is_online() || index > aoc_num_services())
+		return NULL;
+
+	return prvdata->services[index];
 }
 
 static bool validate_service(struct aoc_prvdata *prv, int i)
@@ -378,17 +390,61 @@ static bool service_names_are_valid(struct aoc_prvdata *prv)
 	return true;
 }
 
+static void free_mailbox_channels(struct aoc_prvdata *prv);
+
+static int allocate_mailbox_channels(struct aoc_prvdata *prv)
+{
+	struct device *dev = prv->dev;
+	struct mbox_slot *slot;
+	int i, rc = 0;
+
+	for (i = 0; i < ARRAY_SIZE(prv->mbox_channels); i++) {
+		slot = &prv->mbox_channels[i];
+		slot->channel = mbox_request_channel(&slot->client, i);
+		if (IS_ERR(slot->channel)) {
+			dev_err(dev, "failed to find mailbox interface %d : %ld\n", i,
+				PTR_ERR(slot->channel));
+			slot->channel = NULL;
+			rc = -EIO;
+			goto err_mbox_req;
+		}
+	}
+
+err_mbox_req:
+	if (rc != 0)
+		free_mailbox_channels(prv);
+
+	return rc;
+}
+
+static void free_mailbox_channels(struct aoc_prvdata *prv)
+{
+	struct mbox_slot *slot;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(prv->mbox_channels); i++) {
+		slot = &prv->mbox_channels[i];
+		if (slot->channel) {
+			mbox_free_channel(slot->channel);
+			slot->channel = NULL;
+		}
+	}
+}
+
 static void aoc_mbox_rx_callback(struct mbox_client *cl, void *mssg)
 {
-	struct aoc_prvdata *prvdata =
-		container_of(cl, struct aoc_prvdata, mbox_client);
+	struct mbox_slot *slot = container_of(cl, struct mbox_slot, client);
+	struct aoc_prvdata *prvdata = slot->prvdata;
 
 	/* Transitioning from offline to online */
+	if (aoc_is_starting)
+		return;
+
 	if (aoc_online == false && aoc_is_online()) {
-		aoc_online = true;
+		aoc_is_starting = true;
 		schedule_work(&prvdata->online_work);
 	} else {
-		aoc_process_services(prvdata);
+		aoc_process_services(prvdata, slot->index);
 	}
 }
 
@@ -727,7 +783,7 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 		return -ENODEV;
 
 	if (!aoc_online)
-		return -ENODEV;
+		return -EBUSY;
 
 	parent = dev->dev.parent;
 	prvdata = dev_get_drvdata(parent);
@@ -745,8 +801,7 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 			return -EAGAIN;
 
 		set_bit(service_number, &read_blocked_mask);
-		ret = wait_event_interruptible(
-			metadata[service_number].read_queue,
+		ret = wait_event_interruptible(dev->read_queue,
 			!aoc_online || dev->dead ||
 				aoc_service_can_read_message(service, AOC_UP));
 		clear_bit(service_number, &read_blocked_mask);
@@ -796,7 +851,7 @@ ssize_t aoc_service_read_timeout(struct aoc_service_dev *dev, uint8_t *buffer,
 		return -ENODEV;
 
 	if (!aoc_online)
-		return -ENODEV;
+		return -EBUSY;
 
 	parent = dev->dev.parent;
 	prvdata = dev_get_drvdata(parent);
@@ -815,7 +870,7 @@ ssize_t aoc_service_read_timeout(struct aoc_service_dev *dev, uint8_t *buffer,
 	if (!aoc_service_can_read_message(service, AOC_UP)) {
 		set_bit(service_number, &read_blocked_mask);
 		ret = wait_event_interruptible_timeout(
-			metadata[service_number].read_queue,
+			dev->read_queue,
 			!aoc_online || dev->dead ||
 				aoc_service_can_read_message(service, AOC_UP),
 			timeout);
@@ -871,6 +926,8 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 	if (interrupt >= AOC_MBOX_CHANNELS)
 		return -EINVAL;
 
+	BUG_ON(!dev->dev.parent);
+
 	parent = dev->dev.parent;
 	prvdata = dev_get_drvdata(parent);
 
@@ -890,8 +947,7 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 			return -EAGAIN;
 
 		set_bit(service_number, &write_blocked_mask);
-		ret = wait_event_interruptible(
-			metadata[service_number].write_queue,
+		ret = wait_event_interruptible(dev->write_queue,
 			!aoc_online || dev->dead ||
 				aoc_service_can_write_message(service, AOC_DOWN));
 		clear_bit(service_number, &write_blocked_mask);
@@ -914,7 +970,7 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 					buffer, count);
 
 	if (!aoc_service_is_ring(service) || aoc_ring_is_push(service))
-		signal_aoc(prvdata->mbox_channel[interrupt]);
+		signal_aoc(prvdata->mbox_channels[interrupt].channel);
 
 	return count;
 }
@@ -960,7 +1016,7 @@ ssize_t aoc_service_write_timeout(struct aoc_service_dev *dev, const uint8_t *bu
 	if (!aoc_service_can_write_message(service, AOC_DOWN)) {
 		set_bit(service_number, &write_blocked_mask);
 		ret = wait_event_interruptible_timeout(
-			metadata[service_number].write_queue,
+			dev->write_queue,
 			!aoc_online || dev->dead ||
 				aoc_service_can_write_message(service, AOC_DOWN),
 			timeout);
@@ -983,7 +1039,7 @@ ssize_t aoc_service_write_timeout(struct aoc_service_dev *dev, const uint8_t *bu
 					buffer, count);
 
 	if (!aoc_service_is_ring(service) || aoc_ring_is_push(service))
-		signal_aoc(prvdata->mbox_channel[interrupt]);
+		signal_aoc(prvdata->mbox_channels[interrupt].channel);
 
 	return count;
 }
@@ -1043,19 +1099,13 @@ EXPORT_SYMBOL_GPL(aoc_service_set_write_blocked);
 
 wait_queue_head_t *aoc_service_get_read_queue(struct aoc_service_dev *dev)
 {
-	int service_number;
-
-	service_number = dev->service_index;
-	return &metadata[service_number].read_queue;
+	return &dev->read_queue;
 }
 EXPORT_SYMBOL_GPL(aoc_service_get_read_queue);
 
 wait_queue_head_t *aoc_service_get_write_queue(struct aoc_service_dev *dev)
 {
-	int service_number;
-
-	service_number = dev->service_index;
-	return &metadata[service_number].write_queue;
+	return &dev->write_queue;
 }
 EXPORT_SYMBOL_GPL(aoc_service_get_write_queue);
 
@@ -1130,12 +1180,11 @@ static bool aoc_a32_reset(void)
 
 static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 {
-	struct device *dev = prvdata->dev;
 	/* 4100 * 0.244 us * 100 = 100 ms */
 	const int aoc_watchdog_value_ssr = 4100 * 100;
 	const int aoc_reset_timeout_ms = 1000;
 	const u32 aoc_watchdog_control_ssr = 0x2F;
-	int rc, i;
+	int rc;
 	void __iomem *pcu;
 
 	pcu = aoc_sram_translate(AOC_PCU_BASE);
@@ -1193,14 +1242,9 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 		return rc;
 	}
 
-	for (i = 0; i < AOC_MBOX_CHANNELS; i++) {
-		prvdata->mbox_channel[i] = mbox_request_channel(&prvdata->mbox_client, i);
-		if (IS_ERR(prvdata->mbox_channel[i])) {
-			dev_err(dev, "failed to find mailbox interface : %ld\n",
-				PTR_ERR(prvdata->mbox_channel[i]));
-			prvdata->mbox_channel[i] = NULL;
-			return -EIO;
-		}
+	rc = allocate_mailbox_channels(prvdata);
+	if (rc) {
+		dev_err(prvdata->dev, "failed to register mailbox channels rc = %d\n", rc);
 	}
 
 	rc = start_firmware_load(prvdata->dev);
@@ -1521,23 +1565,23 @@ static void aoc_configure_interrupt(void)
 static int aoc_remove_device(struct device *dev, void *ctx)
 {
 	struct aoc_service_dev *the_dev = AOC_DEVICE(dev);
-	int service_number;
 
 	/*
 	 * Once dead is set to true, function calls using this AoC device will return error.
 	 * Clients may still hold a refcount on the AoC device, so freeing is delayed.
 	 */
 	the_dev->dead = true;
+
 	// Allow any pending reads and writes to finish before removing devices
-	service_number = the_dev->service_index;
-	wake_up(&metadata[service_number].read_queue);
-	wake_up(&metadata[service_number].write_queue);
+	wake_up(&the_dev->read_queue);
+	wake_up(&the_dev->write_queue);
 
 	device_unregister(dev);
 
 	return 0;
 }
 
+/* Service devices are freed after offline is complete */
 static void aoc_device_release(struct device *dev)
 {
 	struct aoc_service_dev *the_dev = AOC_DEVICE(dev);
@@ -1547,23 +1591,20 @@ static void aoc_device_release(struct device *dev)
 	kfree(the_dev);
 }
 
-static struct aoc_service_dev *register_service_device(int index,
-						       struct device *parent)
+static struct aoc_service_dev *register_service_device(struct aoc_prvdata *prvdata, int index)
 {
-	struct aoc_prvdata *prv;
+	struct device *parent = prvdata->dev;
 	char service_name[32];
 	aoc_service *s;
 	struct aoc_service_dev *dev;
 	int ret;
 
-	prv = dev_get_drvdata(parent);
-	s = service_at_index(prv, index);
+	s = service_at_index(prvdata, index);
 	if (!s)
 		return NULL;
 
 	dev = kzalloc(sizeof(struct aoc_service_dev), GFP_KERNEL);
-	if (!dev)
-		return NULL;
+	prvdata->services[index] = dev;
 
 	memcpy_fromio(service_name, aoc_service_name(s), sizeof(service_name));
 
@@ -1575,21 +1616,14 @@ static struct aoc_service_dev *register_service_device(int index,
 	dev->service_index = index;
 	dev->mbox_index = aoc_service_irq_index(s);
 	dev->service = s;
-	dev->ipc_base = prv->ipc_base;
+	dev->ipc_base = prvdata->ipc_base;
 	dev->dead = false;
 
-	/*
-	 * Bus corruption has been seen during reboot cycling.  Check for it
-	 * explictly so more information can be part of the panic log
-	 */
-	if (aoc_bus_type.p == NULL) {
-		panic("corrupted bus found when adding service (%d) %s\n",
-		      index, dev_name(&dev->dev));
-	}
+	init_waitqueue_head(&dev->read_queue);
+	init_waitqueue_head(&dev->write_queue);
 
 	ret = device_register(&dev->dev);
 	if (ret) {
-		kfree(dev);
 		dev = NULL;
 	}
 
@@ -1739,61 +1773,74 @@ static void aoc_did_become_online(struct work_struct *work)
 		return;
 	}
 
-	metadata = kmalloc(s * sizeof(struct aoc_service_metadata), GFP_KERNEL);
-	for (i = 0; i < s; i++) {
-		init_waitqueue_head(&metadata[i].read_queue);
-		init_waitqueue_head(&metadata[i].write_queue);
-	}
-
 	for (i = 0; i < s; i++) {
 		if (!validate_service(prvdata, i)) {
 			pr_err("service %d invalid\n", i);
-			continue;
+			return;
 		}
-
-		register_service_device(i, prvdata->dev);
 	}
+
+	prvdata->services = devm_kcalloc(prvdata->dev, s, sizeof(struct aoc_service_dev *), GFP_KERNEL);
+	if (!prvdata->services) {
+		dev_err(prvdata->dev, "failed to allocate service array\n");
+		return;
+	}
+
+	prvdata->total_services = s;
+
+	aoc_online = true;
+
+	for (i = 0; i < s; i++) {
+		register_service_device(prvdata, i);
+	}
+
+	aoc_is_starting = false;
 }
 
 static void aoc_take_offline(struct aoc_prvdata *prvdata)
 {
-	int i;
-
 	pr_notice("taking aoc offline\n");
-
-	for (i = 0; i < AOC_MBOX_CHANNELS; i++) {
-		if (prvdata->mbox_channel[i]) {
-			mbox_free_channel(prvdata->mbox_channel[i]);
-			prvdata->mbox_channel[i] = NULL;
-		}
-	}
-
+	free_mailbox_channels(prvdata);
 	aoc_online = false;
 
 	bus_for_each_dev(&aoc_bus_type, NULL, NULL, aoc_remove_device);
 
 	if (aoc_control)
 		aoc_control->magic = 0;
+
+	devm_kfree(prvdata->dev, prvdata->services);
+	prvdata->services = NULL;
+	prvdata->total_services = 0;
 }
 
-static void aoc_process_services(struct aoc_prvdata *prvdata)
+static void aoc_process_services(struct aoc_prvdata *prvdata, int offset)
 {
+	struct aoc_service_dev *service_dev;
+	aoc_service *service;
 	int services;
 	int i;
 
+	if (!aoc_online)
+		return;
+
 	services = aoc_num_services();
 	for (i = 0; i < services; i++) {
-		if (test_bit(i, &read_blocked_mask) &&
-		    aoc_service_can_read_message(service_at_index(prvdata, i),
-						 AOC_UP))
-			wake_up(&metadata[i].read_queue);
-	}
+		service_dev = service_dev_at_index(prvdata, i);
+		service = service_dev->service;
+		if (service_dev->mbox_index != offset)
+			continue;
 
-	for (i = 0; i < services; i++) {
-		if (test_bit(i, &write_blocked_mask) &&
-		    aoc_service_can_write_message(service_at_index(prvdata, i),
-						  AOC_DOWN))
-			wake_up(&metadata[i].write_queue);
+		if (service_dev->handler) {
+			service_dev->handler(service_dev);
+		} else {
+			if (test_bit(i, &read_blocked_mask) &&
+			    aoc_service_can_read_message(service, AOC_UP))
+				wake_up(&service_dev->read_queue);
+
+			if (test_bit(i, &write_blocked_mask) &&
+			    aoc_service_can_write_message(service, AOC_DOWN))
+				wake_up(&service_dev->write_queue);
+		}
 	}
 }
 
@@ -1876,7 +1923,7 @@ static irqreturn_t aoc_int_handler(int irq, void *dev)
 		aoc_online = true;
 		schedule_work(&aoc_online_work);
 	} else {
-		aoc_process_services(dev_get_drvdata(dev));
+		aoc_process_services(dev_get_drvdata(dev), 0);
 	}
 
 	return IRQ_HANDLED;
@@ -2317,28 +2364,30 @@ static int aoc_platform_probe(struct platform_device *pdev)
 		goto err_get_irq;
 	}
 #else
-	prvdata->mbox_client.dev = dev;
-	prvdata->mbox_client.tx_block = false;
-	prvdata->mbox_client.tx_tout = 100; /* 100ms timeout for tx */
-	prvdata->mbox_client.knows_txdone = false;
-	prvdata->mbox_client.rx_callback = aoc_mbox_rx_callback;
-	prvdata->mbox_client.tx_done = aoc_mbox_tx_done;
-	prvdata->mbox_client.tx_prepare = aoc_mbox_tx_prepare;
+	for (i = 0; i < ARRAY_SIZE(prvdata->mbox_channels); i++) {
+		prvdata->mbox_channels[i].client.dev = dev;
+		prvdata->mbox_channels[i].client.tx_block = false;
+		prvdata->mbox_channels[i].client.tx_tout = 100; /* 100ms timeout for tx */
+		prvdata->mbox_channels[i].client.knows_txdone = false;
+		prvdata->mbox_channels[i].client.rx_callback = aoc_mbox_rx_callback;
+		prvdata->mbox_channels[i].client.tx_done = aoc_mbox_tx_done;
+		prvdata->mbox_channels[i].client.tx_prepare = aoc_mbox_tx_prepare;
+
+		prvdata->mbox_channels[i].prvdata = prvdata;
+		prvdata->mbox_channels[i].index = i;
+	}
+
 
 	strscpy(prvdata->firmware_name, default_firmware,
 		sizeof(prvdata->firmware_name));
 
 	platform_set_drvdata(pdev, prvdata);
 
-	for (i = 0; i < AOC_MBOX_CHANNELS; i++) {
-		prvdata->mbox_channel[i] = mbox_request_channel(&prvdata->mbox_client, i);
-		if (IS_ERR(prvdata->mbox_channel[i])) {
-			dev_err(dev, "failed to find mailbox interface %d : %ld\n", i,
-				PTR_ERR(prvdata->mbox_channel[i]));
-			prvdata->mbox_channel[i] = NULL;
-			rc = -EIO;
-			goto err_mbox_req;
-		}
+	ret = allocate_mailbox_channels(prvdata);
+	if (ret) {
+		dev_err(dev, "failed to allocate mailbox channels %d\n", ret);
+		rc = -ENOMEM;
+		goto err_mem_resources;
 	}
 
 	init_waitqueue_head(&prvdata->aoc_reset_wait_queue);
@@ -2486,7 +2535,6 @@ err_sram_dram_map:
 #ifndef AOC_JUNO
 err_watchdog_irq_req:
 err_watchdog_irq_get:
-err_mbox_req:
 #else
 err_get_irq:
 #endif

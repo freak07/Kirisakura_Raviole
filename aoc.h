@@ -16,13 +16,22 @@
 
 #ifdef __KERNEL__
 
+struct aoc_service_dev;
+typedef void (*aoc_service_dev_handler)(struct aoc_service_dev *d);
+
 struct aoc_service_dev {
 	struct device dev;
-	int mbox_index;
-	int service_index;
+	wait_queue_head_t read_queue;
+	wait_queue_head_t write_queue;
+
 	aoc_service *service;
 	void *ipc_base;
+	aoc_service_dev_handler handler;
+	void *prvdata;
+
 	bool dead;
+	uint8_t mbox_index;
+	uint8_t service_index;
 };
 
 #define AOC_DEVICE(_d) container_of((_d), struct aoc_service_dev, dev)
