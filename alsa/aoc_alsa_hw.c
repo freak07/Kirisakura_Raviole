@@ -836,7 +836,7 @@ static int aoc_audio_path_bind(int src, int dst, int cmd, struct aoc_chip *chip)
 int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest)
 {
 	/* voice call capture or playback */
-	if (src == 3 || src == 4)
+	if ((src == 3 && dest == -1) || src == 4)
 		return aoc_phonecall_path_open(chip, src, dest);
 
 	return aoc_audio_path_bind(src, dest, START, chip);
@@ -845,7 +845,7 @@ int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest)
 int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest)
 {
 	/* voice call capture or playback */
-	if (src == 3 || src == 4)
+	if ((src == 3 && dest == -1) || src == 4)
 		return aoc_phonecall_path_close(chip, src, dest);
 
 	return aoc_audio_path_bind(src, dest, STOP, chip);
