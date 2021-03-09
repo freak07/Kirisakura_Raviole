@@ -385,7 +385,6 @@ static void aoc_mbox_rx_callback(struct mbox_client *cl, void *mssg)
 
 	/* Transitioning from offline to online */
 	if (aoc_online == false && aoc_is_online()) {
-		aoc_online = true;
 		schedule_work(&prvdata->online_work);
 	} else {
 		aoc_process_services(prvdata);
@@ -1721,6 +1720,9 @@ static void aoc_did_become_online(struct work_struct *work)
 	struct device *dev = prvdata->dev;
 	int i, s;
 
+	if (aoc_online)
+		return;
+
 	s = aoc_num_services();
 
 	aoc_req_assert(prvdata, false);
@@ -1753,6 +1755,8 @@ static void aoc_did_become_online(struct work_struct *work)
 
 		register_service_device(i, prvdata->dev);
 	}
+
+	aoc_online = true;
 }
 
 static void aoc_take_offline(struct aoc_prvdata *prvdata)
@@ -1873,7 +1877,6 @@ static irqreturn_t aoc_int_handler(int irq, void *dev)
 
 	/* Transitioning from offline to online */
 	if (aoc_online == false && aoc_is_online()) {
-		aoc_online = true;
 		schedule_work(&aoc_online_work);
 	} else {
 		aoc_process_services(dev_get_drvdata(dev));
