@@ -789,26 +789,6 @@ static int aoc_audio_playback_source_on(struct aoc_chip *chip, int cmd, int src)
 	return 0;
 }
 
-static int aoc_audio_playback_trigger_bind(struct aoc_alsa_stream *alsa_stream,
-					   int cmd, int src, int dst)
-{
-	int err;
-	struct CMD_AUDIO_OUTPUT_BIND bind;
-
-	AocCmdHdrSet(&(bind.parent), CMD_AUDIO_OUTPUT_BIND_ID, sizeof(bind));
-	bind.bind = (cmd == START) ? 1 : 0;
-	bind.src = src;
-	bind.dst = dst;
-	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&bind,
-				sizeof(bind), NULL, alsa_stream->chip);
-
-	/* bind/unbind the source and dest */
-	pr_debug("%s: src: %d- sink: %d!\n", cmd == START ? "bind" : "unbind",
-		 src, dst);
-
-	return err;
-}
-
 /* Bind/unbind the source and dest */
 static int aoc_audio_path_bind(int src, int dst, int cmd, struct aoc_chip *chip)
 {
@@ -1774,6 +1754,49 @@ exit:
 	return err;
 }
 
+static int aoc_modem_voip_control(struct aoc_chip *chip, int cmd_id)
+{
+	int err;
+	struct CMD_HDR cmd;
+
+	AocCmdHdrSet(&cmd, cmd_id, sizeof(cmd));
+
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0)
+		pr_err("ERR:%d modem/voip start or stop fail!\n", err);
+
+	return err;
+}
+
+static int aoc_modem_start(struct aoc_chip *chip)
+{
+	int cmd_id = CMD_AUDIO_OUTPUT_TELEPHONY_MODEM_START_ID;
+
+	return aoc_modem_voip_control(chip, cmd_id);
+}
+
+static int aoc_modem_stop(struct aoc_chip *chip)
+{
+	int cmd_id = CMD_AUDIO_OUTPUT_TELEPHONY_MODEM_STOP_ID;
+
+	return aoc_modem_voip_control(chip, cmd_id);
+}
+
+static int aoc_voip_start(struct aoc_chip *chip)
+{
+	int cmd_id = CMD_AUDIO_OUTPUT_TELEPHONY_VOIP_START_ID;
+
+	return aoc_modem_voip_control(chip, cmd_id);
+}
+
+
+static int aoc_voip_stop(struct aoc_chip *chip)
+{
+	int cmd_id = CMD_AUDIO_OUTPUT_TELEPHONY_VOIP_STOP_ID;
+
+	return aoc_modem_voip_control(chip, cmd_id);
+}
+
 /* TODO: entry point idx and sink id should be specified  in the alsa_stream */
 int prepare_phonecall(struct aoc_alsa_stream *alsa_stream)
 {
@@ -1791,9 +1814,9 @@ int prepare_phonecall(struct aoc_alsa_stream *alsa_stream)
 		return 0;
 
 	/* Binding modem to start audio flow */
-	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 3, 3);
+	err = aoc_modem_start(alsa_stream->chip);
 	if (err < 0)
-		pr_err("ERR:%d Telephony Uplink bind fail\n", err);
+		pr_err("ERR:%d Telephony modem start fail\n", err);
 
 	return err;
 }
@@ -1811,9 +1834,9 @@ int teardown_phonecall(struct aoc_alsa_stream *alsa_stream)
 		return 0;
 
 	/* Unbinding modem to stop audio flow */
-	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 3, 3);
+	err = aoc_modem_stop(alsa_stream->chip);
 	if (err < 0)
-		pr_err("ERR:%d Telephony Uplink unbind fail\n", err);
+		pr_err("ERR:%d Telephony modem stop fail\n", err);
 
 	return err;
 }
@@ -1841,14 +1864,9 @@ int prepare_voipcall(struct aoc_alsa_stream *alsa_stream)
 
 	pr_debug("prepare voip call - dev %d\n", alsa_stream->entry_point_idx);
 
-	/* Set modem mode to voip call */
-	/* Need mixer control for voip sampling rate or source mode */
-	aoc_set_sink_mode(chip, 3, 1);
-
-	/* Binding modem to start audio flow */
-	err = aoc_audio_playback_trigger_bind(alsa_stream, START, 3, 3);
+	err = aoc_voip_start(chip);
 	if (err < 0)
-		pr_err("ERR:%d Telephony Uplink bind fail\n", err);
+		pr_err("ERR:%d Telephony voip start fail\n", err);
 
 	return err;
 }
@@ -1873,13 +1891,9 @@ int teardown_voipcall(struct aoc_alsa_stream *alsa_stream)
 
 	pr_info("stop voip call - dev %d\n", alsa_stream->entry_point_idx);
 
-	/* Unbinding modem to stop audio flow */
-	err = aoc_audio_playback_trigger_bind(alsa_stream, STOP, 3, 3);
+	err = aoc_voip_stop(chip);
 	if (err < 0)
-		pr_err("ERR:%d Telephony Uplink unbind fail\n", err);
-
-	/* TODO: further changes needed */
-	aoc_set_sink_mode(chip, 3, 0);
+		pr_err("ERR:%d Telephony voip stop fail\n", err);
 
 	return err;
 }
