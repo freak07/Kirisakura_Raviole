@@ -169,6 +169,8 @@ struct aoc_chip {
 
 	int voip_rx_prepared;
 	int voip_tx_prepared;
+	bool voice_path_active;
+	bool voip_path_active;
 
 	int compr_offload_volume;
 	int mic_spatial_module_enable;

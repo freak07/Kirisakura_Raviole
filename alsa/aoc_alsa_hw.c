@@ -1577,6 +1577,8 @@ int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst)
 	if (src != 4)
 		return 0;
 
+	chip->voice_path_active = true;
+
 	/* Audio playback enabled for momdem output */
 	err = aoc_audio_path_bind(8, dst, START, chip);
 	if (err < 0) {
@@ -1644,6 +1646,12 @@ int aoc_phonecall_path_close(struct aoc_chip *chip, int src, int dst)
 	if (src != 4)
 		return 0;
 
+	chip->voice_path_active = false;
+
+	/* Not closing the audio path if voice call is still active */
+	if (chip->voip_path_active)
+		return 0;
+
 	/* Audio capture disabled for modem input */
 	err = aoc_audio_modem_mic_input(chip, STOP, 0);
 	if (err < 0) {
@@ -1671,6 +1679,8 @@ int aoc_voipcall_path_open(struct aoc_chip *chip, int src, int dst)
 		pr_info("phone call audio NOT enabled\n");
 		return 0;
 	}
+
+	chip->voip_path_active = true;
 
 	if (dst >= 0) {
 		/* Audio playback enabled for momdem output */
@@ -1735,6 +1745,12 @@ int aoc_voipcall_path_close(struct aoc_chip *chip, int src, int dst)
 		pr_info("phone call audio NOT enabled\n");
 		return 0;
 	}
+
+	chip->voip_path_active = false;
+
+	/* Not closing the audio path if voice call is still active */
+	if (chip->voice_path_active)
+		return 0;
 
 	if (dst >= 0) {
 		/* Audio playback disabled for modem ouput */
