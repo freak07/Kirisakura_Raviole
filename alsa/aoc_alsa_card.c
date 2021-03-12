@@ -250,6 +250,8 @@ static const struct be_param_cache default_be_params[PORT_MAX] = {
 	MK_BE_PARAMS(BT_TX, SNDRV_PCM_FORMAT_S16_LE, 1, 16000)
 	MK_BE_PARAMS(USB_RX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
 	MK_BE_PARAMS(USB_TX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
+	MK_BE_PARAMS(INCALL_RX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
+	MK_BE_PARAMS(INCALL_TX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
 };
 
 static struct snd_soc_dai_link_component null_component = {
@@ -936,6 +938,8 @@ MK_HW_PARAM_CTRLS(BT_RX, "BT_RX");
 MK_HW_PARAM_CTRLS(BT_TX, "BT_TX");
 MK_HW_PARAM_CTRLS(USB_RX, "USB_RX");
 MK_HW_PARAM_CTRLS(USB_TX, "USB_TX");
+MK_HW_PARAM_CTRLS(INCALL_RX, "INCALL_RX");
+MK_HW_PARAM_CTRLS(INCALL_TX, "INCALL_TX");
 
 /*
  * The resource array that have ALSA controls, ops and fixup
@@ -958,6 +962,8 @@ static const struct dai_link_res_map be_res_map[PORT_MAX] = {
 	MK_BE_RES_ITEM(BT_TX, &aoc_i2s_ops, hw_params_fixup)
 	MK_BE_RES_ITEM(USB_RX, &aoc_i2s_ops, hw_params_fixup)
 	MK_BE_RES_ITEM(USB_TX, &aoc_i2s_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(INCALL_RX, &aoc_i2s_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(INCALL_TX, &aoc_i2s_ops, hw_params_fixup)
 };
 
 static void put_component(struct snd_soc_dai_link_component *component,
