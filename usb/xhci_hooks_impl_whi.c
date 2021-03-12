@@ -332,6 +332,12 @@ xhci_initialize_ring_info_for_remote_isoc(struct xhci_hcd *xhci,
 
 	xhci_dbg(xhci, "ring->first_seg->dma=0x%llx\n", ring->first_seg->dma);
 
+	if (ring->first_seg->dma == 0) {
+		kfree(seg);
+		kfree(ring);
+		return NULL;
+	}
+
 	return ring;
 }
 
