@@ -29,6 +29,7 @@
 #include <sound/compress_driver.h>
 
 #include "../aoc-interface.h"
+#include "google-aoc-enum.h"
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
 #define EXTRA_ARG_LINUX_5_9 struct snd_soc_component *component,
@@ -85,6 +86,8 @@
 
 #define alsa2chip(vol) (vol) /* Convert alsa to chip volume */
 #define chip2alsa(vol) (vol) /* Convert chip to alsa volume */
+
+#define NULL_PATH -1
 
 /* TODO: Copied from AoC repo and will be removed */
 enum bluetooth_mode {
@@ -167,10 +170,14 @@ struct aoc_chip {
 	int voice_call_audio_enable;
 	int incall_capture_state[MAX_NUM_OF_INCALL_CAPTURE_STREAM];
 
-	int voip_rx_prepared;
-	int voip_tx_prepared;
-	bool voice_path_active;
-	bool voip_path_active;
+	int telephony_curr_mic;
+	int telephony_curr_sink;
+	int telephony_expect_mic;
+	int telephony_expect_sink;
+	bool voip_rx_prepared;
+	bool voip_tx_prepared;
+	bool voip_path_vote[PORT_MAX];
+	bool voice_path_vote[PORT_MAX];
 
 	int compr_offload_volume;
 	int mic_spatial_module_enable;
@@ -240,10 +247,10 @@ int aoc_audio_voip_stop(struct aoc_alsa_stream *alsa_stream);
 
 int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest);
 int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest);
-int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst);
-int aoc_phonecall_path_close(struct aoc_chip *chip, int src, int dst);
-int aoc_voipcall_path_open(struct aoc_chip *chip, int src, int dst);
-int aoc_voipcall_path_close(struct aoc_chip *chip, int src, int dst);
+int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst, bool capture);
+int aoc_phonecall_path_close(struct aoc_chip *chip, int src, int dst, bool capture);
+int aoc_voipcall_path_open(struct aoc_chip *chip, int src, int dst, bool capture);
+int aoc_voipcall_path_close(struct aoc_chip *chip, int src, int dst, bool capture);
 
 int aoc_audio_set_ctls(struct aoc_chip *chip);
 

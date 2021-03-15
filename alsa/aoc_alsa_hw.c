@@ -16,6 +16,62 @@
 static int cmd_count;
 #endif
 
+#define DEFAULT_TELEPHONY_MIC PORT_INCALL_TX
+/*
+ * TODO: TDM/I2S will be removed from port naming and will be replaced
+ * by sink-associated devices such as spker, headphone, bt, usb, mode
+ */
+static aoc_audio_sink[] = {
+	[PORT_I2S_0_RX] = ASNK_HEADPHONE, [PORT_I2S_0_TX] = -1,
+	[PORT_I2S_1_RX] = ASNK_BT,        [PORT_I2S_1_TX] = -1,
+	[PORT_I2S_2_RX] = ASNK_USB,       [PORT_I2S_2_TX] = -1,
+	[PORT_TDM_0_RX] = ASNK_SPEAKER,   [PORT_TDM_0_TX] = -1,
+	[PORT_TDM_1_RX] = ASNK_MODEM,     [PORT_TDM_1_TX] = -1,
+	[PORT_USB_RX] = ASNK_USB,         [PORT_USB_TX] = -1,
+	[PORT_BT_RX] = ASNK_BT,           [PORT_BT_TX] = -1,
+	[PORT_INCALL_RX] = -1,            [PORT_INCALL_TX] = -1,
+	[PORT_INTERNAL_MIC] = -1,
+};
+
+static int hw_id_to_sink(int hw_idx)
+{
+	if (hw_idx < 0 || hw_idx >= ARRAY_SIZE(aoc_audio_sink))
+		return -1;
+
+	return aoc_audio_sink[hw_idx];
+}
+
+static int ep_id_to_source(int ep_idx)
+{
+	/* TODO: refactor needed. Haptics pcm dev id: 7, its entrypoint is 10(HAPTICS) */
+	return (ep_idx == 7) ? HAPTICS : ep_idx;
+}
+
+static int hw_id_to_phone_mic_source(int hw_id)
+{
+	int mic_input_source;
+
+	/* Use user-specified mic for voice call independently of the playback sink */
+	switch (hw_id) {
+	case PORT_USB_TX:
+		mic_input_source = MODEM_USB_INPUT_INDEX;
+		break;
+	case PORT_BT_TX:
+		mic_input_source = MODEM_BT_INPUT_INDEX;
+		break;
+	case PORT_INCALL_TX:
+		mic_input_source = MODEM_INCALL_INPUT_INDEX;
+		break;
+	default:
+		pr_err("ERR in mic input source for voice call, mic source=%d\n",
+			hw_id);
+	case PORT_INTERNAL_MIC:
+		mic_input_source = MODEM_MIC_INPUT_INDEX;
+		break;
+	}
+	return mic_input_source;
+}
+
 /*
  * Sending commands to AoC for setting parameters and start/stop the streams
  */
@@ -815,26 +871,36 @@ static int aoc_audio_path_bind(int src, int dst, int cmd, struct aoc_chip *chip)
 
 int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest)
 {
+	uint32_t src_idx, dest_idx;
+
+	src_idx = AOC_ID_TO_INDEX(src);
+	dest_idx = AOC_ID_TO_INDEX(dest);
+
 	/* voice call capture or playback */
-	if ((src == 3 && dest == -1) || src == 4)
-		return aoc_phonecall_path_open(chip, src, dest);
+	if (src_idx == 3 || src_idx == 4)
+		return aoc_phonecall_path_open(chip, src_idx, dest_idx, dest & AOC_TX);
 
-	if (src == IDX_VOIP)
-		return aoc_voipcall_path_open(chip, src, dest);
+	if (src_idx == IDX_VOIP)
+		return aoc_voipcall_path_open(chip, src_idx, dest_idx, dest & AOC_TX);
 
-	return aoc_audio_path_bind(src, dest, START, chip);
+	return aoc_audio_path_bind(ep_id_to_source(src_idx), hw_id_to_sink(dest_idx), START, chip);
 }
 
 int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest)
 {
+	uint32_t src_idx, dest_idx;
+
+	src_idx = AOC_ID_TO_INDEX(src);
+	dest_idx = AOC_ID_TO_INDEX(dest);
+
 	/* voice call capture or playback */
-	if ((src == 3 && dest == -1) || src == 4)
-		return aoc_phonecall_path_close(chip, src, dest);
+	if (src_idx == 3 || src_idx == 4)
+		return aoc_phonecall_path_close(chip, src_idx, dest_idx, dest & AOC_TX);
 
-	if (src == IDX_VOIP)
-		return aoc_voipcall_path_close(chip, src, dest);
+	if (src_idx == IDX_VOIP)
+		return aoc_voipcall_path_close(chip, src_idx, dest_idx, dest & AOC_TX);
 
-	return aoc_audio_path_bind(src, dest, STOP, chip);
+	return aoc_audio_path_bind(ep_id_to_source(src_idx), hw_id_to_sink(dest_idx), STOP, chip);
 }
 
 static int aoc_audio_playback_set_params(struct aoc_alsa_stream *alsa_stream,
@@ -1562,10 +1628,168 @@ static int aoc_audio_modem_mic_input(struct aoc_chip *chip,
 	return err;
 }
 
-int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst)
+static int aoc_telephony_mic_close(struct aoc_chip *chip, int mic)
 {
 	int err;
-	int mic_input_source = 0;
+	int mic_input_source;
+
+	if (chip->telephony_expect_mic != mic) {
+		pr_info("%s: expect_mic %d and mic %d is not matched\n", __func__,
+			chip->telephony_expect_mic, mic);
+		return 0;
+	}
+
+	chip->telephony_expect_mic = NULL_PATH;
+
+	if (chip->telephony_curr_mic != NULL_PATH) {
+		pr_info("close telephony mic - %d\n", mic);
+		/* Audio capture disabled for modem input */
+		err = aoc_audio_modem_mic_input(chip, STOP, 0);
+		if (err < 0)
+			pr_err("ERR:%d modem input stop fail\n", err);
+
+		chip->telephony_curr_mic = NULL_PATH;
+	}
+
+	/* Since the telehpony sink is still active, use the default mic source */
+	if (chip->telephony_curr_sink != NULL_PATH) {
+		pr_info("%s: telephony_curr_sink - %d\n", __func__, chip->telephony_curr_sink);
+		mic_input_source = hw_id_to_phone_mic_source(DEFAULT_TELEPHONY_MIC);
+		err = aoc_audio_modem_mic_input(chip, START, mic_input_source);
+		if (err < 0)
+			pr_err("ERR:%d modem input start fail\n", err);
+		chip->telephony_curr_mic = DEFAULT_TELEPHONY_MIC;
+	}
+	return err;
+}
+
+static int aoc_telephony_mic_open(struct aoc_chip *chip, int mic)
+{
+	int err;
+	int mic_input_source;
+
+	chip->telephony_expect_mic = mic;
+
+	/* The same mic source, ignore update */
+	if (chip->telephony_curr_mic == mic) {
+		pr_info("%s: same mic source %d\n", __func__, mic);
+		return 0;
+	}
+
+	/* Different mic source is active, tear down the old one */
+	if (chip->telephony_curr_mic != NULL_PATH) {
+		pr_info("%s: disable mic - %d\n", __func__, chip->telephony_curr_mic);
+		err = aoc_audio_modem_mic_input(chip, STOP, 0);
+		if (err < 0)
+			pr_err("ERR:%d modem input stop fail\n", err);
+
+		chip->telephony_curr_mic = NULL_PATH;
+	}
+
+	mic_input_source = hw_id_to_phone_mic_source(mic);
+	pr_info("open telephony mic: %d - %d\n", mic_input_source, mic);
+	if (mic_input_source != NULL_PATH) {
+		err = aoc_audio_modem_mic_input(chip, START, mic_input_source);
+		if (err < 0)
+			pr_err("ERR:%d modem input start fail\n", err);
+	}
+
+	chip->telephony_curr_mic = mic;
+
+	return err;
+}
+
+static int aoc_telephony_sink_close(struct aoc_chip *chip, int sink)
+{
+	int err;
+	int sink_id;
+
+	if (chip->telephony_expect_sink != sink) {
+		pr_info("%s: expect_sink %d and sink %d is not matched\n", __func__,
+			chip->telephony_expect_sink, sink);
+		return 0;
+	}
+
+	chip->telephony_expect_sink = NULL_PATH;
+
+	if (chip->telephony_curr_sink != NULL_PATH) {
+		sink_id = hw_id_to_sink(sink);
+		pr_info("close telephony sink: %d - %d\n", sink_id, sink);
+		if (sink_id != NULL_PATH) {
+			/* Audio playback disabled for modem output */
+			err = aoc_audio_path_bind(8, sink_id, STOP, chip);
+			if (err < 0)
+				pr_err("ERR:%d Telephony Downlink unbind fail\n", err);
+		}
+		chip->telephony_curr_sink = NULL_PATH;
+	}
+
+	/* No mic active requirement, disable the default mic source */
+	if (chip->telephony_curr_mic != NULL_PATH &&
+		chip->telephony_expect_mic == NULL_PATH) {
+		pr_info("%s: disable mic - %d\n", __func__, chip->telephony_curr_mic);
+		err = aoc_audio_modem_mic_input(chip, STOP, 0);
+		if (err < 0)
+			pr_err("ERR:%d modem input stop fail\n", err);
+
+		chip->telephony_curr_mic = NULL_PATH;
+	}
+	return err;
+}
+
+static int aoc_telephony_sink_open(struct aoc_chip *chip, int sink)
+{
+	int err;
+	int sink_id;
+
+	chip->telephony_expect_sink = sink;
+
+	/* If there's sink active already on then, disable it first */
+	if (chip->telephony_curr_sink != NULL_PATH) {
+		sink_id = hw_id_to_sink(chip->telephony_curr_sink);
+		pr_info("%s: reset previous sink id %d", __func__, sink_id);
+		if (sink_id != NULL_PATH) {
+			/* Audio playback disabled for modem output */
+			err = aoc_audio_path_bind(8, sink_id, STOP, chip);
+			if (err < 0)
+				pr_err("ERR:%d Telephony Downlink unbind fail\n", err);
+		}
+		chip->telephony_curr_sink = NULL_PATH;
+	}
+
+
+	/* Since DSP requires mic source active before the sink is active,
+	 * use the default mic source if no mic source is active on then
+	 */
+	if (chip->telephony_curr_mic == NULL_PATH) {
+		int mic_input_source;
+
+		mic_input_source = hw_id_to_phone_mic_source(DEFAULT_TELEPHONY_MIC);
+		pr_info("%s: use default mic source: %d - %d\n", __func__,
+			mic_input_source, DEFAULT_TELEPHONY_MIC);
+		err = aoc_audio_modem_mic_input(chip, START, mic_input_source);
+		if (err < 0)
+			pr_err("ERR:%d modem input start fail\n", err);
+		chip->telephony_curr_mic = DEFAULT_TELEPHONY_MIC;
+	}
+
+	sink_id = hw_id_to_sink(sink);
+	pr_info("open telephony sink id: %d - %d\n", sink_id, sink);
+	if (sink_id != NULL_PATH) {
+		/* Audio playback enabled for momdem output */
+		err = aoc_audio_path_bind(8, sink_id, START, chip);
+		if (err < 0)
+			pr_err("ERR:%d Telephony Downlink bind fail\n", err);
+	}
+
+	chip->telephony_curr_sink = sink;
+
+	return err;
+}
+
+int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst, bool capture)
+{
+	int err;
 
 	pr_info("Open phone call path - src:%d, dst:%d\n", src, dst);
 
@@ -1574,65 +1798,38 @@ int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst)
 		return 0;
 	}
 
-	if (src != 4)
+	if (dst < 0 || dst >= ARRAY_SIZE(chip->voice_path_vote)) {
+		pr_warn("%s: invalid dst %d\n", __func__, dst);
+		return -EINVAL;
+	}
+
+	if (chip->voice_path_vote[dst])
 		return 0;
 
-	chip->voice_path_active = true;
+	chip->voice_path_vote[dst] = true;
 
-	/* Audio playback enabled for momdem output */
-	err = aoc_audio_path_bind(8, dst, START, chip);
-	if (err < 0) {
-		pr_err("ERR:%d Telephony Downlink bind fail\n", err);
-		goto exit;
+	if (chip->voip_path_vote[dst]) {
+		pr_info("%s: voip already votes %d\n", __func__, dst);
+		return 0;
 	}
 
-	/* Audio capture enabled for modem input */
-	if (chip->voice_call_mic_source == DEFAULT_MIC) {
-		/* Use default mic for voice call based on the playback sink */
-		switch (dst) {
-		case ASNK_SPEAKER:
-			mic_input_source = MODEM_MIC_INPUT_INDEX;
-			break;
-		case ASNK_BT:
-			mic_input_source = MODEM_BT_INPUT_INDEX;
-			break;
-		case ASNK_USB:
-			mic_input_source = MODEM_USB_INPUT_INDEX;
-			break;
-		default:
-			pr_err("ERR in mic input source for voice call, dst=%d\n", dst);
-		}
+	if (capture) {
+		pr_info("voice call mic input: %d\n", dst);
+		err = aoc_telephony_mic_open(chip, dst);
+		if (err < 0)
+			pr_err("ERR:%d modem input start fail\n", err);
 	} else {
-		/* Use user-specified mic for voice call independently of the playback sink */
-		switch (chip->voice_call_mic_source) {
-		case BUILTIN_MIC:
-			mic_input_source = MODEM_MIC_INPUT_INDEX;
-			break;
-		case USB_MIC:
-			mic_input_source = MODEM_USB_INPUT_INDEX;
-			break;
-		case BT_MIC:
-			mic_input_source = MODEM_BT_INPUT_INDEX;
-			break;
-		case IN_CALL_MUSIC:
-			mic_input_source = MODEM_INCALL_INPUT_INDEX;
-			break;
-		default:
-			pr_err("ERR in mic input source for voice call, mic source=%d\n",
-			       chip->voice_call_mic_source);
-		}
+		pr_info("voice call sink: %d\n", dst);
+		/* Audio playback enabled for momdem output */
+		err = aoc_telephony_sink_open(chip, dst);
+		if (err < 0)
+			pr_err("ERR:%d Telephony Downlink bind fail\n", err);
 	}
 
-	pr_info("voice call mic input source: %d\n", mic_input_source);
-	err = aoc_audio_modem_mic_input(chip, START, mic_input_source);
-	if (err < 0)
-		pr_err("ERR:%d modem input start fail\n", err);
-
-exit:
 	return err;
 }
 
-int aoc_phonecall_path_close(struct aoc_chip *chip, int src, int dst)
+int aoc_phonecall_path_close(struct aoc_chip *chip, int src, int dst, bool capture)
 {
 	int err;
 
@@ -1643,35 +1840,41 @@ int aoc_phonecall_path_close(struct aoc_chip *chip, int src, int dst)
 		return 0;
 	}
 
-	if (src != 4)
-		return 0;
-
-	chip->voice_path_active = false;
-
-	/* Not closing the audio path if voice call is still active */
-	if (chip->voip_path_active)
-		return 0;
-
-	/* Audio capture disabled for modem input */
-	err = aoc_audio_modem_mic_input(chip, STOP, 0);
-	if (err < 0) {
-		pr_err("ERR:%d modem input stop fail\n", err);
-		goto exit;
+	if (dst < 0 || dst >= ARRAY_SIZE(chip->voice_path_vote)) {
+		pr_warn("%s: invalid dst %d\n", __func__, dst);
+		return -EINVAL;
 	}
 
-	/* Audio playback disabled for modem ouput */
-	err = aoc_audio_path_bind(8, dst, STOP, chip);
-	if (err < 0)
-		pr_err("ERR:%d Telephony Downlink unbind fail\n", err);
+	if (!chip->voice_path_vote[dst])
+		return 0;
 
+	chip->voice_path_vote[dst] = false;
+
+	if (chip->voip_path_vote[dst]) {
+		pr_info("%s: voip still needs %d\n", __func__, dst);
+		return 0;
+	}
+
+	if (capture) {
+		/* Audio capture disabled for modem input */
+		err = aoc_telephony_mic_close(chip, dst);
+		if (err < 0) {
+			pr_err("ERR:%d modem input stop fail\n", err);
+			goto exit;
+		}
+	} else {
+		/* Audio playback disabled for modem output */
+		err = aoc_telephony_sink_close(chip, dst);
+		if (err < 0)
+			pr_err("ERR:%d Telephony Downlink unbind fail\n", err);
+	}
 exit:
 	return err;
 }
 
-int aoc_voipcall_path_open(struct aoc_chip *chip, int src, int dst)
+int aoc_voipcall_path_open(struct aoc_chip *chip, int src, int dst, bool capture)
 {
 	int err;
-	int mic_input_source = 0;
 
 	pr_info("Open voip call path - src:%d, dst:%d\n", src, dst);
 
@@ -1680,93 +1883,77 @@ int aoc_voipcall_path_open(struct aoc_chip *chip, int src, int dst)
 		return 0;
 	}
 
-	chip->voip_path_active = true;
+	if (dst < 0 || dst >= ARRAY_SIZE(chip->voip_path_vote)) {
+		pr_warn("%s: invalid dst %d\n", __func__, dst);
+		return -EINVAL;
+	}
 
-	if (dst >= 0) {
+	if (chip->voip_path_vote[dst])
+		return 0;
+
+	chip->voip_path_vote[dst] = true;
+	if (chip->voice_path_vote[dst]) {
+		pr_info("%s: voice already votes %d\n", __func__, dst);
+		return 0;
+	}
+
+	if (capture) {
+		pr_info("voip call mic input: %d\n", dst);
+		err = aoc_telephony_mic_open(chip, dst);
+		if (err < 0)
+			pr_err("ERR:%d modem input start fail\n", err);
+	} else {
+		pr_info("voice call sink: %d\n", dst);
 		/* Audio playback enabled for momdem output */
-		err = aoc_audio_path_bind(8, dst, START, chip);
+		err = aoc_telephony_sink_open(chip, dst);
 		if (err < 0) {
 			pr_err("ERR:%d Telephony Downlink bind fail\n", err);
 			goto exit;
 		}
 	}
-	/* Audio capture enabled for modem input */
-	if (chip->voice_call_mic_source == DEFAULT_MIC) {
-		/* Use default mic for voice call based on the playback sink */
-		switch (dst) {
-		case ASNK_SPEAKER:
-			mic_input_source = MODEM_MIC_INPUT_INDEX;
-			break;
-		case ASNK_BT:
-			mic_input_source = MODEM_BT_INPUT_INDEX;
-			break;
-		case ASNK_USB:
-			mic_input_source = MODEM_USB_INPUT_INDEX;
-			break;
-		default:
-			pr_err("ERR in mic input source for voice call, dst=%d\n", dst);
-		}
-	} else {
-		/* Use user-specified mic for voice call independently of the playback sink */
-		switch (chip->voice_call_mic_source) {
-		case BUILTIN_MIC:
-			mic_input_source = MODEM_MIC_INPUT_INDEX;
-			break;
-		case USB_MIC:
-			mic_input_source = MODEM_USB_INPUT_INDEX;
-			break;
-		case BT_MIC:
-			mic_input_source = MODEM_BT_INPUT_INDEX;
-			break;
-		case IN_CALL_MUSIC: /* TODO: do we have this option for voip */
-			mic_input_source = MODEM_INCALL_INPUT_INDEX;
-			break;
-		default:
-			pr_err("ERR in mic input source for voice call, mic source=%d\n",
-			       chip->voice_call_mic_source);
-		}
-	}
-
-	pr_info("voice call mic input source: %d\n", mic_input_source);
-	err = aoc_audio_modem_mic_input(chip, START, mic_input_source);
-	if (err < 0)
-		pr_err("ERR:%d modem input start fail\n", err);
 exit:
 	return err;
 }
 
-int aoc_voipcall_path_close(struct aoc_chip *chip, int src, int dst)
+int aoc_voipcall_path_close(struct aoc_chip *chip, int src, int dst, bool capture)
 {
 	int err;
 
-	pr_info("close phone call path - src:%d, dst:%d\n", src, dst);
+	pr_info("close voip call path - src:%d, dst:%d\n", src, dst);
 
 	if (!chip->voice_call_audio_enable) {
 		pr_info("phone call audio NOT enabled\n");
 		return 0;
 	}
 
-	chip->voip_path_active = false;
-
-	/* Not closing the audio path if voice call is still active */
-	if (chip->voice_path_active)
-		return 0;
-
-	if (dst >= 0) {
-		/* Audio playback disabled for modem ouput */
-		err = aoc_audio_path_bind(8, dst, STOP, chip);
-		if (err < 0) {
-			pr_err("ERR:%d Telephony Downlink unbind fail\n", err);
-			goto exit;
-		}
+	if (dst < 0 || dst >= ARRAY_SIZE(chip->voip_path_vote)) {
+		pr_warn("%s: invalid dst %d\n", __func__, dst);
+		return -EINVAL;
 	}
 
-	/* Audio capture disabled for modem input */
-	err = aoc_audio_modem_mic_input(chip, STOP, 0);
-	if (err < 0)
-		pr_err("ERR:%d modem input stop fail\n", err);
+	if (!chip->voip_path_vote[dst])
+		return 0;
 
-exit:
+	chip->voip_path_vote[dst] = false;
+
+	if (chip->voice_path_vote[dst]) {
+		pr_info("%s: voice still needs %d\n", __func__, dst);
+		return 0;
+	}
+
+	if (capture) {
+		/* Audio capture disabled for modem input */
+		err = aoc_telephony_mic_close(chip, dst);
+		if (err < 0) {
+			pr_err("ERR:%d modem input stop fail\n", err);
+		}
+	} else {
+		/* Audio playback disabled for modem output */
+		err = aoc_telephony_sink_close(chip, dst);
+		if (err < 0)
+			pr_err("ERR:%d Telephony Downlink unbind fail\n", err);
+	}
+
 	return err;
 }
 
@@ -1869,11 +2056,11 @@ int prepare_voipcall(struct aoc_alsa_stream *alsa_stream)
 	}
 
 	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
-		chip->voip_tx_prepared = 1;
+		chip->voip_tx_prepared = true;
 		if (chip->voip_rx_prepared)
 			return 0;
 	} else {
-		chip->voip_rx_prepared = 1;
+		chip->voip_rx_prepared = true;
 		if (chip->voip_tx_prepared)
 			return 0;
 	}
@@ -1896,11 +2083,11 @@ int teardown_voipcall(struct aoc_alsa_stream *alsa_stream)
 		return 0;
 
 	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
-		chip->voip_tx_prepared = 0;
+		chip->voip_tx_prepared = false;
 		if (chip->voip_rx_prepared)
 			return 0;
 	} else {
-		chip->voip_rx_prepared = 0;
+		chip->voip_rx_prepared = false;
 		if (chip->voip_tx_prepared)
 			return 0;
 	}
