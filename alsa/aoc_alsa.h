@@ -43,11 +43,14 @@
 #define CMD_CHANNEL(_dev)                                                      \
 	(strcmp(dev_name(&(_dev)->dev), CMD_INPUT_CHANNEL)) ? "output" : "input"
 
+#define AOC_COMPR_OFFLOAD_SERVICE "audio_playback6"
+
 #define AOC_CMD_DEBUG_ENABLE
 #define WAITING_TIME_MS 100
 
 #define PCM_TIMER_INTERVAL_NANOSECS 10e6
 #define COMPR_OFFLOAD_TIMER_INTERVAL_NANOSECS 5000e6
+#define AOC_COMPR_HRTIMER_IRQ_HANDLER_BYPASS
 #define DEFAULT_PCM_WAIT_TIME_IN_MSECS 10000
 
 /* Default mic and sink for audio capturing/playback */
@@ -314,6 +317,7 @@ int teardown_phonecall(struct aoc_alsa_stream *alsa_stream);
 int prepare_voipcall(struct aoc_alsa_stream *alsa_stream);
 int teardown_voipcall(struct aoc_alsa_stream *alsa_stream);
 
+void aoc_compr_offload_isr(struct aoc_service_dev *dev);
 int aoc_compr_offload_setup(struct aoc_alsa_stream *alsa_stream, int type);
 int aoc_compr_offload_get_io_samples(struct aoc_alsa_stream *alsa_stream);
 int aoc_compr_offload_flush_buffer(struct aoc_alsa_stream *alsa_stream);

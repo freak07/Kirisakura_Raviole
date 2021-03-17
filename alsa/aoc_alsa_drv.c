@@ -65,6 +65,11 @@ static bool drv_registered;
 static bool aoc_audio_online;
 static wait_queue_head_t aoc_audio_state_wait_head;
 
+static void compressed_offload_isr(struct aoc_service_dev *dev)
+{
+	aoc_compr_offload_isr(dev);
+}
+
 int8_t aoc_audio_service_num(void)
 {
 	return n_services;
@@ -322,6 +327,9 @@ static int aoc_alsa_probe(struct aoc_service_dev *dev)
 		drv_registered = true;
 		pr_notice("alsa-aoc communication is ready!\n");
 	}
+
+	if (strcmp(dev_name(&dev->dev), AOC_COMPR_OFFLOAD_SERVICE) == 0)
+		dev->handler = compressed_offload_isr;
 
 	return 0;
 }

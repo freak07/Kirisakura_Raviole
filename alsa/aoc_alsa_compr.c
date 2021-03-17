@@ -33,10 +33,75 @@ static void aoc_compr_reset_handler(aoc_aud_service_event_t evnt, void *cookies)
 	}
 }
 
+void aoc_compr_offload_isr(struct aoc_service_dev *dev)
+{
+	struct aoc_alsa_stream *alsa_stream;
+	unsigned long consumed;
+
+	if (!dev) {
+		pr_err("ERR: NULL compress offload aoc service pointer\n");
+		return;
+	}
+
+	alsa_stream = dev->prvdata;
+	if (!alsa_stream || !alsa_stream->cstream) {
+		pr_err("ERR: NULL compress offload stream pointer\n");
+		return;
+	}
+
+	/*
+	 * The number of bytes read/writtien should be the bytes in the buffer
+	 * already played out in the case of playback. But this may not be true
+	 * in the AoC ring buffer implementation, since the reader pointer in
+	 * the playback case represents what has been read from the buffer,
+	 * not what already played out .
+	 */
+
+	if (aoc_ring_bytes_available_to_read(dev->service, AOC_DOWN) == 0) {
+		pr_info("compress offload ring buffer is depleted\n");
+		snd_compr_drain_notify(alsa_stream->cstream);
+		return;
+	}
+
+	consumed = aoc_ring_bytes_read(dev->service, AOC_DOWN);
+
+	/* TODO: To do more on no pointer update? */
+	if (consumed == alsa_stream->prev_consumed)
+		return;
+
+	pr_debug("consumed = %lu, hw_ptr_base = %lu\n", consumed, alsa_stream->hw_ptr_base);
+
+	/* To deal with overlfow in Tx or Rx in int32_t */
+	if (consumed < alsa_stream->prev_consumed) {
+		alsa_stream->n_overflow++;
+		pr_notice("overflow in Tx/Rx: %lu - %lu - %d times\n", consumed,
+			  alsa_stream->prev_consumed, alsa_stream->n_overflow);
+	}
+	alsa_stream->prev_consumed = consumed;
+
+	/* Update the pcm pointer */
+	if (unlikely(alsa_stream->n_overflow)) {
+		alsa_stream->pos = (consumed + 0x100000000 * alsa_stream->n_overflow -
+				    alsa_stream->hw_ptr_base) %
+				   alsa_stream->buffer_size;
+	} else {
+		alsa_stream->pos = (consumed - alsa_stream->hw_ptr_base) % alsa_stream->buffer_size;
+	}
+
+	/* Wake up the sleeping thread */
+	if (alsa_stream->cstream)
+		snd_compr_fragment_elapsed(alsa_stream->cstream);
+
+	return;
+}
+
 /* TODO: the handler has to be changed based on the compress offload */
 /*  the pointer should be modified based on the interrupt from AoC */
 static enum hrtimer_restart aoc_compr_hrtimer_irq_handler(struct hrtimer *timer)
 {
+#ifdef AOC_COMPR_HRTIMER_IRQ_HANDLER_BYPASS
+	return HRTIMER_NORESTART;
+#else
 	struct aoc_alsa_stream *alsa_stream;
 	struct aoc_service_dev *dev;
 	unsigned long consumed;
@@ -103,6 +168,7 @@ static enum hrtimer_restart aoc_compr_hrtimer_irq_handler(struct hrtimer *timer)
 		snd_compr_fragment_elapsed(alsa_stream->cstream);
 
 	return HRTIMER_RESTART;
+#endif
 }
 
 static int aoc_compr_prepare(struct aoc_alsa_stream *alsa_stream)
@@ -197,6 +263,8 @@ static int aoc_compr_playback_open(struct snd_compr_stream *cstream)
 	hrtimer_init(&(alsa_stream->hr_timer), CLOCK_MONOTONIC,
 		     HRTIMER_MODE_REL);
 	alsa_stream->hr_timer.function = &aoc_compr_hrtimer_irq_handler;
+
+	dev->prvdata = alsa_stream; /* For interrupt-driven playback */
 
 	alsa_stream->entry_point_idx = idx;
 
