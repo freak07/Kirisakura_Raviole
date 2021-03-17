@@ -523,25 +523,47 @@ static void free_transfer_ring(struct xhci_hcd *xhci,
 		struct xhci_virt_device *virt_dev, unsigned int ep_index)
 {
 	struct xhci_vendor_data *vendor_data = xhci_to_priv(xhci)->vendor_data;
-	struct xhci_ring *ring;
+	struct xhci_ring *ring, *new_ring;
 	struct xhci_ep_ctx *ep_ctx;
 	u32 ep_type;
 
 	ring = virt_dev->eps[ep_index].ring;
+	new_ring = virt_dev->eps[ep_index].new_ring;
 	ep_ctx = xhci_get_ep_ctx(xhci, virt_dev->out_ctx, ep_index);
 	ep_type = CTX_TO_EP_TYPE(le32_to_cpu(ep_ctx->ep_info2));
 
-	xhci_dbg(xhci, "ep_index=%u, ep_type=%u, ring type=%u\n", ep_index,
-		 ep_type, ring->type);
+	if (ring) {
+		xhci_dbg(xhci, "ep_index=%u, ep_type=%u, ring type=%u\n", ep_index,
+			 ep_type, ring->type);
 
-	if (vendor_data->op_mode != USB_OFFLOAD_STOP &&
-	    ring->type == TYPE_ISOC) {
-		kfree(ring->first_seg);
-		kfree(virt_dev->eps[ep_index].ring);
-	} else
-		xhci_ring_free(xhci, virt_dev->eps[ep_index].ring);
+		if (vendor_data->op_mode != USB_OFFLOAD_STOP &&
+			ring->type == TYPE_ISOC) {
+			kfree(ring->first_seg);
+			kfree(virt_dev->eps[ep_index].ring);
+		} else
+			xhci_ring_free(xhci, virt_dev->eps[ep_index].ring);
 
-	virt_dev->eps[ep_index].ring = NULL;
+		virt_dev->eps[ep_index].ring = NULL;
+		virt_dev->eps[ep_index].new_ring = NULL;
+
+		return;
+	}
+
+	if (new_ring) {
+		xhci_dbg(xhci, "ep_index=%u, ep_type=%u, new_ring type=%u\n", ep_index,
+			 ep_type, new_ring->type);
+
+		if (vendor_data->op_mode != USB_OFFLOAD_STOP &&
+			new_ring->type == TYPE_ISOC) {
+			kfree(new_ring->first_seg);
+			kfree(virt_dev->eps[ep_index].new_ring);
+		} else
+			xhci_ring_free(xhci, virt_dev->eps[ep_index].new_ring);
+
+		virt_dev->eps[ep_index].new_ring = NULL;
+
+		return;
+	}
 }
 
 static bool usb_offload_skip_urb(struct xhci_hcd *xhci, struct urb *urb)
