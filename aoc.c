@@ -2415,8 +2415,15 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	aoc_platform_device = pdev;
 
 	aoc_sram_virt_mapping = devm_ioremap_resource(dev, aoc_sram_resource);
-	aoc_dram_virt_mapping =
-		devm_ioremap_resource(dev, &prvdata->dram_resource);
+
+	prvdata->dram_size = resource_size(&prvdata->dram_resource);
+	if (!devm_request_mem_region(dev, prvdata->dram_resource.start, prvdata->dram_size, dev_name(dev))) {
+		dev_err(dev, "Failed to claim dram resource %pR\n", &prvdata->dram_resource);
+		rc = -EIO;
+		goto err_sram_dram_map;
+	}
+
+	aoc_dram_virt_mapping = devm_ioremap_wc(dev, prvdata->dram_resource.start, prvdata->dram_size);
 
 	/* Change to devm_platform_ioremap_resource_byname when available */
 	rsrc = platform_get_resource_byname(pdev, IORESOURCE_MEM, "aoc_req");
@@ -2438,7 +2445,6 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	prvdata->sram_size = resource_size(aoc_sram_resource);
 
 	prvdata->dram_virt = aoc_dram_virt_mapping;
-	prvdata->dram_size = resource_size(&prvdata->dram_resource);
 
 	if (IS_ERR(aoc_sram_virt_mapping) || IS_ERR(aoc_dram_virt_mapping)) {
 		rc = -ENOMEM;
