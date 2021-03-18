@@ -213,12 +213,11 @@ static int xhci_udev_notify(struct notifier_block *self, unsigned long action,
 	switch (action) {
 	case USB_DEVICE_ADD:
 		if (is_compatible_with_usb_audio_offload(udev)) {
-			dev_err(&udev->dev,
-				 "[PU] Compatible with usb audio offload\n");
+			dev_dbg(&udev->dev,
+				 "Compatible with usb audio offload\n");
 			xhci_reset_for_usb_audio_offload(udev);
 			if (vendor_data->op_mode ==
 			    USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY) {
-				pr_err("[PU][%s] call xhci_sync_conn_stat(USB_CONNECTED) ++\n", __func__);
 				xhci_sync_conn_stat(USB_CONNECTED);
 			}
 		}
@@ -227,7 +226,6 @@ static int xhci_udev_notify(struct notifier_block *self, unsigned long action,
 		if (is_compatible_with_usb_audio_offload(udev) &&
 		    vendor_data->op_mode ==
 		    USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY) {
-			pr_err("[PU][%s] call xhci_sync_conn_stat(USB_DISCONNECTED) ++\n", __func__);
 			xhci_sync_conn_stat(USB_DISCONNECTED);
 		}
 		break;
