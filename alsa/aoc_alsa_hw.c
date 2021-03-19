@@ -78,6 +78,7 @@ static aoc_audio_stream_type[] = {
 	[6] = COMPRESS, [7] = NORMAL,  [8] = NORMAL,  [9] = MMAPED,  [10] = RAW, [11] = NORMAL,
 	[12] = NORMAL,	[13] = NORMAL, [14] = NORMAL, [15] = NORMAL, [16] = NORMAL, [17] = NORMAL,
 	[18] = INCALL,	[19] = INCALL, [20] = INCALL, [21] = INCALL, [22] = INCALL, [23] = MMAPED,
+	[24] = NORMAL,	[25] = HIFI,	[26] = HIFI,
 };
 
 int aoc_pcm_device_to_stream_type(int device)
@@ -1626,10 +1627,53 @@ int aoc_audio_stop(struct aoc_alsa_stream *alsa_stream)
 	return err;
 }
 
+static int aoc_audio_hifi_start(struct aoc_alsa_stream *alsa_stream)
+{
+	int cmd_id, err = 0;
+	struct aoc_chip *chip = alsa_stream->chip;
+
+	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		cmd_id = CMD_AUDIO_OUTPUT_USB_HIFI_PLAYBACK_START_ID;
+		err = aoc_audio_control_simple_cmd(CMD_OUTPUT_CHANNEL, cmd_id, chip);
+		if (err < 0)
+			pr_err("ERR:%d in usb hifi playback start on\n", err);
+	} else {
+		cmd_id = CMD_AUDIO_INPUT_USB_HIFI_CAPTURE_START_ID;
+		err = aoc_audio_control_simple_cmd(CMD_INPUT_CHANNEL, cmd_id, chip);
+		if (err < 0)
+			pr_err("ERR:%d in usb hifi capture start on\n", err);
+	}
+
+	return err;
+}
+
+static int aoc_audio_hifi_stop(struct aoc_alsa_stream *alsa_stream)
+{
+	int cmd_id, err = 0;
+	struct aoc_chip *chip = alsa_stream->chip;
+
+	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		cmd_id = CMD_AUDIO_OUTPUT_USB_HIFI_PLAYBACK_STOP_ID;
+		err = aoc_audio_control_simple_cmd(CMD_OUTPUT_CHANNEL, cmd_id, chip);
+		if (err < 0)
+			pr_err("ERR:%d in usb hifi playback stop on\n", err);
+	} else {
+		cmd_id = CMD_AUDIO_INPUT_USB_HIFI_CAPTURE_STOP_ID;
+		err = aoc_audio_control_simple_cmd(CMD_INPUT_CHANNEL, cmd_id, chip);
+		if (err < 0)
+			pr_err("ERR:%d in usb hifi capture stop on\n", err);
+	}
+
+	return err;
+}
+
 int aoc_audio_incall_start(struct aoc_alsa_stream *alsa_stream)
 {
 	int stream, err = 0;
 	struct aoc_chip *chip = alsa_stream->chip;
+
+	if (alsa_stream->stream_type == HIFI)
+		return aoc_audio_hifi_start(alsa_stream);
 
 	/* TODO: stream number inferred by pcm device idx, pb_0:18, cap_0:20, better way needed */
 	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
@@ -1652,6 +1696,9 @@ int aoc_audio_incall_stop(struct aoc_alsa_stream *alsa_stream)
 {
 	int stream, err = 0;
 	struct aoc_chip *chip = alsa_stream->chip;
+
+	if (alsa_stream->stream_type == HIFI)
+		return aoc_audio_hifi_stop(alsa_stream);
 
 	/* TODO: stream number inferred by pcm device idx, pb_0:18, cap_0:20, better way needed */
 	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {

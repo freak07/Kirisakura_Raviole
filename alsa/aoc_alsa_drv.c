@@ -55,6 +55,8 @@ static const char *const audio_service_names[] = {
 	"audio_incall_cap_2",
 	"decoder_eof",
 	"audio_raw",
+	"audio_hifiin",
+	"audio_hifiout",
 	NULL,
 };
 
