@@ -14,6 +14,7 @@
 
 #define AOC_UWB_SERVICE_DEV_NAME "aoc_uwb_sdev"
 #define AOC_SERVICE_NAME "uwb_service"
+#define SEND_TIMEOUT_JIFFY (100)
 
 static struct aoc_service_dev *aoc_uwb_service = NULL;
 static const char * const service_names[] = {
@@ -61,11 +62,11 @@ ssize_t aoc_uwb_service_send(void *cmd, size_t size)
 {
 	int ret;
 
-	ret = aoc_service_write(aoc_uwb_service, cmd, size, true);
-	if (ret < 0)
+	ret = aoc_service_write_timeout(aoc_uwb_service, cmd, size, SEND_TIMEOUT_JIFFY);
+	if (ret <= 0)
 		goto out;
 
-	ret = aoc_service_read(aoc_uwb_service, cmd, size, true);
+	ret = aoc_service_read_timeout(aoc_uwb_service, cmd, size, SEND_TIMEOUT_JIFFY);
 
 out:
 	return ret;
