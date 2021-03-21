@@ -73,6 +73,7 @@ static enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
 	struct aoc_alsa_stream *alsa_stream;
 	struct aoc_service_dev *dev;
 	unsigned long consumed; /* TODO: uint64_t? */
+	int avail;
 
 	WARN_ON(!timer);
 	alsa_stream = container_of(timer, struct aoc_alsa_stream, hr_timer);
@@ -95,6 +96,15 @@ static enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
 				  aoc_ring_bytes_written(dev->service, AOC_UP));
 
 	pr_debug("consumed = %ld , hw_ptr_base =%ld\n", consumed, alsa_stream->hw_ptr_base);
+
+	/* Advance the write ptr in the DRAM ring buffer for mmap-based playback */
+	if (alsa_stream->entry_point_idx == ULL &&
+	    alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		avail = aoc_ring_bytes_available_to_write(dev->service, AOC_DOWN);
+		if (!aoc_service_advance_write_index(dev->service, AOC_DOWN, avail)) {
+			dev_err(&(dev->dev), "ERR: in advancing pcm playback writer ptr\n");
+		}
+	}
 
 	/* TODO: To do more on no pointer update? */
 	if (consumed == alsa_stream->prev_consumed)
