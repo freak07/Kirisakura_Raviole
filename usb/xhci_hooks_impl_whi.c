@@ -577,5 +577,5 @@ static struct xhci_vendor_ops ops = {
 
 int xhci_vendor_helper_init(void)
 {
-	return xhci_plat_register_vendor_ops(&ops);
+	return xhci_exynos_register_vendor_ops(&ops);
 }
