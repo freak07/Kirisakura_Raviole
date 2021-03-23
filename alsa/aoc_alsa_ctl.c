@@ -349,6 +349,46 @@ static int sidetone_enable_ctl_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int incall_mic_sink_mute_ctl_set(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc = (struct soc_mixer_control *)kcontrol->private_value;
+	int param = mc->shift;
+	int val, err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	val = ucontrol->value.integer.value[0];
+	err = aoc_incall_mic_sink_mute_set(chip, param, val);
+	if (err < 0)
+		pr_err("ERR:%d incall %s mute set to %d fail\n", err, (param == 0) ? "mic" : "sink",
+		       val);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
+static int incall_mic_sink_mute_ctl_get(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc = (struct soc_mixer_control *)kcontrol->private_value;
+	int param = mc->shift;
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_incall_mic_sink_mute_get(chip, param, &ucontrol->value.integer.value[0]);
+	if (err < 0)
+		pr_err("ERR:%d incall %s mute get fail\n", err, (param == 0) ? "mic" : "sink");
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
 static int lvm_enable_ctl_set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
 	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
@@ -1276,6 +1316,12 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		"MIC HW Gain (cB)", SND_SOC_NOPM, MIC_CURRENT_GAIN,
 		MIC_HW_GAIN_IN_CB_MIN, MIC_HW_GAIN_IN_CB_MAX, 0,
 		mic_hw_gain_get, NULL, NULL),
+
+	/* Incall mic and sink mute */
+	SOC_SINGLE_EXT("Incall Mic Mute", SND_SOC_NOPM, 0, 1, 0, incall_mic_sink_mute_ctl_get,
+		       incall_mic_sink_mute_ctl_set),
+	SOC_SINGLE_EXT("Incall Sink Mute", SND_SOC_NOPM, 1, 1, 0, incall_mic_sink_mute_ctl_get,
+		       incall_mic_sink_mute_ctl_set),
 
 	/* LVM enable 1/0 for comp offload */
 	SOC_SINGLE_EXT("LVM Enable", SND_SOC_NOPM, 0, 1, 0,

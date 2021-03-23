@@ -84,6 +84,9 @@
 #define SIDETONE_BIQUAD_PARAM_MIN S32_MIN
 #define SIDETONE_BIQUAD_PARAM_MAX S32_MAX
 
+#define FLOAT_ZERO	0x00000000
+#define FLOAT_ONE	0x3f800000
+
 #define alsa2chip(vol) (vol) /* Convert alsa to chip volume */
 #define chip2alsa(vol) (vol) /* Convert chip to alsa volume */
 
@@ -270,6 +273,8 @@ int aoc_incall_capture_enable_get(struct aoc_chip *chip, int stream, long *val);
 int aoc_incall_capture_enable_set(struct aoc_chip *chip, int stream, long val);
 int aoc_incall_playback_enable_get(struct aoc_chip *chip, int stream, long *val);
 int aoc_incall_playback_enable_set(struct aoc_chip *chip, int stream, long val);
+int aoc_incall_mic_sink_mute_get(struct aoc_chip *chip, int param, long *mute);
+int aoc_incall_mic_sink_mute_set(struct aoc_chip *chip, int param, long mute);
 
 int aoc_lvm_enable_get(struct aoc_chip *chip, long *enable);
 int aoc_lvm_enable_set(struct aoc_chip *chip, long enable);

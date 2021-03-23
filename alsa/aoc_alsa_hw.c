@@ -1175,6 +1175,69 @@ exit:
 	return err;
 }
 
+int aoc_incall_mic_sink_mute_get(struct aoc_chip *chip, int param, long *mute)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_GET_PARAMETER cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_GET_PARAMETER_ID, sizeof(cmd));
+
+	if (param == 0) /* Up link (mic) */
+	{
+		cmd.block = 135;
+		cmd.component = 30;
+		cmd.key = 6;
+	} else /* Download link (sink) */
+	{
+		cmd.block = 19;
+		cmd.component = 3;
+		cmd.key = 6;
+	}
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in incall mute get\n", err);
+		return err;
+	}
+
+	if (mute)
+		*mute = (cmd.val == FLOAT_ZERO) ? 1 : 0;
+
+	return 0;
+}
+
+int aoc_incall_mic_sink_mute_set(struct aoc_chip *chip, int param, long mute)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_SET_PARAMETER cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_SET_PARAMETER_ID, sizeof(cmd));
+
+	if (param == 0) /* Up link (mic) */
+	{
+		cmd.block = 135;
+		cmd.component = 30;
+		cmd.key = 6;
+	} else /* Download link (sink) */
+	{
+		cmd.block = 19;
+		cmd.component = 3;
+		cmd.key = 6;
+	}
+
+	cmd.val = mute ? FLOAT_ZERO : FLOAT_ONE;
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in incall mute set\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
 int aoc_lvm_enable_get(struct aoc_chip *chip, long *enable)
 {
 	int err;
