@@ -574,7 +574,7 @@ static ssize_t aocc_write(struct file *file, const char __user *buf,
 	}
 
 err_aocc_device_dead:
-	if (retval < 0) {
+	if (retval < 0 && retval != -EAGAIN) {
 		pr_err("Write failed for channel %d with code %zd\n", private->channel_index, retval);
 	}
 
