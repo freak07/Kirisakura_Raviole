@@ -1029,6 +1029,7 @@ int __weak memcmp_pages(struct page *page1, struct page *page2)
 	return ret;
 }
 
+#ifdef CONFIG_PRINTK
 /**
  * mem_dump_obj - Print available provenance information
  * @object: object for which to find provenance information.
@@ -1059,3 +1060,5 @@ void mem_dump_obj(void *object)
 	}
 	pr_cont(" non-slab/vmalloc memory.\n");
 }
+EXPORT_SYMBOL_GPL(mem_dump_obj);
+#endif

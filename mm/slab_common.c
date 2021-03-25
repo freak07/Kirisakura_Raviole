@@ -542,6 +542,7 @@ bool slab_is_available(void)
 	return slab_state >= UP;
 }
 
+#ifdef CONFIG_PRINTK
 /**
  * kmem_valid_obj - does the pointer reference a valid slab object?
  * @object: pointer to query.
@@ -560,6 +561,7 @@ bool kmem_valid_obj(void *object)
 	page = virt_to_head_page(object);
 	return PageSlab(page);
 }
+EXPORT_SYMBOL_GPL(kmem_valid_obj);
 
 /**
  * kmem_dump_obj - Print available slab provenance information
@@ -616,6 +618,8 @@ void kmem_dump_obj(void *object)
 		pr_info("    %pS\n", kp.kp_stack[i]);
 	}
 }
+EXPORT_SYMBOL_GPL(kmem_dump_obj);
+#endif
 
 #ifndef CONFIG_SLOB
 /* Create a cache during boot when no slab services are available yet */

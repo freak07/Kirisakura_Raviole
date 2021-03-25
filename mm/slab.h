@@ -693,6 +693,7 @@ void debugfs_slab_release(struct kmem_cache *);
 static inline void debugfs_slab_release(struct kmem_cache *s) { }
 #endif
 
+#ifdef CONFIG_PRINTK
 #define KS_ADDRS_COUNT 16
 struct kmem_obj_info {
 	void *kp_ptr;
@@ -704,5 +705,6 @@ struct kmem_obj_info {
 	void *kp_stack[KS_ADDRS_COUNT];
 };
 void kmem_obj_info(struct kmem_obj_info *kpp, void *object, struct page *page);
+#endif
 
 #endif /* MM_SLAB_H */
