@@ -78,30 +78,6 @@ static int snd_aoc_ctl_info(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-/*
- * Toggle mute on/off depending on the value of nmute, and returns
- * 1 if the mute value was changed, otherwise 0
- */
-static int toggle_mute(struct aoc_chip *chip, int nmute)
-{
-	if (chip->mute == nmute)
-		return 0;
-
-	if (chip->mute == CTRL_VOL_MUTE) {
-		chip->volume = chip->old_volume;
-		pr_debug("Unmuting, old_volume = %d, volume = %d\n",
-			 chip->old_volume, chip->volume);
-	} else {
-		chip->old_volume = chip->volume;
-		chip->volume = 0;
-		pr_debug("Muting, old_volume = %d, volume = %d\n",
-			 chip->old_volume, chip->volume);
-	}
-
-	chip->mute = nmute;
-	return 1;
-}
-
 static int snd_aoc_ctl_get(struct snd_kcontrol *kcontrol,
 			   struct snd_ctl_elem_value *ucontrol)
 {
@@ -119,44 +95,6 @@ static int snd_aoc_ctl_get(struct snd_kcontrol *kcontrol,
 
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
-}
-
-static int snd_aoc_ctl_put(struct snd_kcontrol *kcontrol,
-			   struct snd_ctl_elem_value *ucontrol)
-{
-	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
-	int changed = 0;
-
-	if (mutex_lock_interruptible(&chip->audio_mutex))
-		return -EINTR;
-
-	if (kcontrol->private_value == PCM_PLAYBACK_VOLUME) {
-		pr_debug(
-			"volume change attempted.. volume = %d new_volume = %d\n",
-			chip->volume, (int)ucontrol->value.integer.value[0]);
-		if (chip->mute == CTRL_VOL_MUTE) {
-			changed = 1;
-			goto unlock;
-		}
-		if (changed || (ucontrol->value.integer.value[0] !=
-				chip2alsa(chip->volume))) {
-			chip->volume =
-				alsa2chip(ucontrol->value.integer.value[0]);
-			changed = 1;
-		}
-	} else if (kcontrol->private_value == PCM_PLAYBACK_MUTE) {
-		pr_debug("mute attempted\n");
-		changed = toggle_mute(chip, ucontrol->value.integer.value[0]);
-	}
-
-	if (changed) {
-		if (aoc_audio_set_ctls(chip))
-			pr_err("ERR: fail in set ALSA controls\n");
-	}
-
-unlock:
-	mutex_unlock(&chip->audio_mutex);
-	return changed;
 }
 
 static int
@@ -1186,7 +1124,7 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		.private_value = PCM_PLAYBACK_MUTE,
 		.info = snd_aoc_ctl_info,
 		.get = snd_aoc_ctl_get,
-		.put = snd_aoc_ctl_put,
+		.put = NULL,
 		.count = 1,
 	},
 	{

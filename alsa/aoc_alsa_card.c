@@ -1819,6 +1819,10 @@ static int snd_aoc_init(struct aoc_chip *chip)
 
 	chip->pcm_wait_time_in_ms = DEFAULT_PCM_WAIT_TIME_IN_MSECS;
 
+	/* Default values for playback volume and mute */
+	chip->volume = 1000;
+	chip->mute = 1;
+
 	mutex_init(&chip->audio_mutex);
 	spin_lock_init(&chip->audio_lock);
 
