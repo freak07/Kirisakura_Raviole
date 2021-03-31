@@ -61,11 +61,11 @@ static struct snd_pcm_hardware snd_aoc_playback_hw = {
 	.rate_max = 48000,
 	.channels_min = 1,
 	.channels_max = 4,
-	.buffer_bytes_max = 16384,
+	.buffer_bytes_max = 16384*6,
 	.period_bytes_min = 16,
 	.period_bytes_max = 7680,
 	.periods_min = 2,
-	.periods_max = 128,
+	.periods_max = 512,
 };
 
 static enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
@@ -98,7 +98,7 @@ static enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
 	pr_debug("consumed = %ld , hw_ptr_base =%ld\n", consumed, alsa_stream->hw_ptr_base);
 
 	/* Advance the write ptr in the DRAM ring buffer for mmap-based playback */
-	if (alsa_stream->entry_point_idx == ULL &&
+	if (alsa_stream->stream_type == MMAPED &&
 	    alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		avail = aoc_ring_bytes_available_to_write(dev->service, AOC_DOWN);
 		if (!aoc_service_advance_write_index(dev->service, AOC_DOWN, avail)) {
@@ -185,6 +185,7 @@ static int snd_aoc_pcm_open(struct snd_soc_component *component,
 	alsa_stream->cstream = NULL;
 	alsa_stream->dev = dev;
 	alsa_stream->idx = idx;
+	alsa_stream->stream_type = aoc_pcm_device_to_stream_type(idx);
 
 	/* Ring buffer will be flushed at prepare() before playback/capture */
 	alsa_stream->hw_ptr_base = (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ?

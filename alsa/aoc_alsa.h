@@ -143,6 +143,9 @@ enum {
 	A2DP_ENCODER_PARAMETERS,
 };
 enum { ULL = 0, LL0, LL1, LL2, LL3, DEEP_BUFFER, OFF_LOAD, HAPTICS = 10, SIDETONE = 11 };
+
+enum { NORMAL = 0, MMAPED, INCALL, HIFI, COMPRESS };
+
 enum { BUILTIN_MIC0 = 0, BUILTIN_MIC1, BUILTIN_MIC2, BUILTIN_MIC3 };
 enum { MIC_LOW_POWER_GAIN = 0, MIC_HIGH_POWER_GAIN, MIC_CURRENT_GAIN };
 enum { DEFAULT_MIC = 0, BUILTIN_MIC, USB_MIC, BT_MIC, IN_CALL_MUSIC };
@@ -215,6 +218,7 @@ struct aoc_alsa_stream {
 	struct aoc_service_dev *dev_eof; /* Aoc service for EOF in compr offload */
 	int idx; /* PCM device number */
 	int entry_point_idx; /* Index of entry point, same as idx in playback */
+	int stream_type; /* Normal pcm, incall, mmap, hifi, compr */
 
 	int channels; /* Number of channels in audio */
 	int params_rate; /* Sampling rate */
@@ -253,6 +257,8 @@ int aoc_audio_incall_start(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_incall_stop(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_voip_start(struct aoc_alsa_stream *alsa_stream);
 int aoc_audio_voip_stop(struct aoc_alsa_stream *alsa_stream);
+
+int aoc_pcm_device_to_stream_type(int device);
 
 int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest);
 int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest);

@@ -72,6 +72,23 @@ static int hw_id_to_phone_mic_source(int hw_id)
 	return mic_input_source;
 }
 
+/* temp usage */
+static aoc_audio_stream_type[] = {
+	[0] = MMAPED,  [1] = NORMAL,   [2] = NORMAL,  [3] = NORMAL,  [4] = NORMAL,
+	[5] = NORMAL,  [6] = COMPRESS, [7] = NORMAL,  [8] = NORMAL,  [9] = MMAPED,
+	[10] = NORMAL, [11] = NORMAL,  [12] = NORMAL, [13] = NORMAL, [14] = NORMAL,
+	[15] = NORMAL, [16] = NORMAL,  [17] = NORMAL, [18] = INCALL, [19] = INCALL,
+	[20] = INCALL, [21] = INCALL,  [22] = INCALL,
+};
+
+int aoc_pcm_device_to_stream_type(int device)
+{
+	if (device < 0 || device >= ARRAY_SIZE(aoc_audio_stream_type))
+		return -1;
+
+	return aoc_audio_stream_type[device];
+}
+
 /*
  * Sending commands to AoC for setting parameters and start/stop the streams
  */
@@ -1166,6 +1183,23 @@ static int aoc_audio_capture_mic_input(struct aoc_chip *chip,
 	return err;
 }
 
+static int aoc_mmap_capture_trigger(struct aoc_alsa_stream *alsa_stream, int record_cmd)
+{
+	int err = 0;
+	int cmd_id;
+	struct aoc_chip *chip = alsa_stream->chip;
+
+	cmd_id = (record_cmd == START) ? CMD_AUDIO_INPUT_MIC_MMAP_ENABLE_ID :
+					       CMD_AUDIO_INPUT_MIC_MMAP_DISABLE_ID;
+
+	err = aoc_audio_control_simple_cmd(CMD_INPUT_CHANNEL, cmd_id, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in audio mmap capture start/stop\n", err);
+		return err;
+	}
+	return 0;
+}
+
 /* Start or stop the stream */
 static int aoc_audio_capture_trigger(struct aoc_alsa_stream *alsa_stream, int record_cmd)
 {
@@ -1184,6 +1218,11 @@ static int aoc_audio_capture_trigger(struct aoc_alsa_stream *alsa_stream, int re
 
 		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL,
 					chip);
+		if (err < 0) {
+			pr_err("ERR:%d in audio input mic record start/stop\n", err);
+			goto exit;
+		}
+
 	} else {
 		switch (chip->audio_capture_mic_source) {
 		case USB_MIC:
@@ -1199,6 +1238,17 @@ static int aoc_audio_capture_trigger(struct aoc_alsa_stream *alsa_stream, int re
 			goto exit;
 		}
 		err = aoc_audio_capture_mic_input(chip, record_cmd, mic_input_source);
+		if (err < 0) {
+			pr_err("ERR:%d in audio capture mic input setup start/stop\n", err);
+			goto exit;
+		}
+	}
+
+	/* For mmap capture */
+	if (alsa_stream->stream_type == MMAPED) {
+		err = aoc_mmap_capture_trigger(alsa_stream, record_cmd);
+		if (err < 0)
+			pr_err("ERR:%d in aoc mmap capture start/stop\n", err);
 	}
 
 exit:
