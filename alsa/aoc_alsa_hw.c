@@ -184,6 +184,22 @@ exit:
 	return err < 1 ? -EAGAIN : 0;
 }
 
+static int aoc_audio_control_simple_cmd(const char *cmd_channel, int cmd_id, struct aoc_chip *chip)
+{
+	int err = 0;
+	struct CMD_HDR cmd;
+
+	AocCmdHdrSet(&cmd, cmd_id, sizeof(cmd));
+
+	err = aoc_audio_control(cmd_channel, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in audio control simple cmd:%d sent\n", err, cmd_id);
+		return err;
+	}
+
+	return 0;
+}
+
 int aoc_audio_volume_set(struct aoc_chip *chip, uint32_t volume, int src,
 			 int dst)
 {
@@ -2023,11 +2039,8 @@ int aoc_voipcall_path_close(struct aoc_chip *chip, int src, int dst, bool captur
 static int aoc_modem_voip_control(struct aoc_chip *chip, int cmd_id)
 {
 	int err;
-	struct CMD_HDR cmd;
 
-	AocCmdHdrSet(&cmd, cmd_id, sizeof(cmd));
-
-	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	err = aoc_audio_control_simple_cmd(CMD_OUTPUT_CHANNEL, cmd_id, chip);
 	if (err < 0)
 		pr_err("ERR:%d modem/voip start or stop fail!\n", err);
 
