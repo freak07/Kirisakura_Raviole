@@ -33,6 +33,11 @@
 #include "aoc_alsa.h"
 #include "google-aoc-enum.h"
 
+static const char *aoc_detect[] = {
+	"aoc_audio_state",
+	"aoc_aocdump_state",
+};
+
 extern int snd_soc_component_set_jack(struct snd_soc_component *component,
 				      struct snd_soc_jack *jack, void *data);
 
@@ -1637,20 +1642,20 @@ err:
 	return ret;
 }
 
-static void init_audio_state_query(struct snd_soc_card *card)
+static void init_audio_state_query(struct snd_soc_card *card, const char *name)
 {
 	struct snd_info_entry *entry = NULL;
 	struct aoc_state_client_t *client;
 
 	client = alloc_audio_state_client();
 	if (!client) {
-		pr_err("fail to allocate audio state client\n");
+		pr_err("fail to allocate %s client\n", name);
 		return;
 	}
 
-	snd_card_proc_new(card->snd_card, "aoc_audio_state", &entry);
+	snd_card_proc_new(card->snd_card, name, &entry);
 	if (!entry) {
-		pr_warn("%s: fail to create aoc_state\n", __func__);
+		pr_warn("%s: fail to create entry %s\n", __func__, name);
 		free_audio_state_client(client);
 		return;
 	}
@@ -1781,7 +1786,10 @@ static int aoc_card_late_probe(struct snd_soc_card *card)
 		init_backend_control(rtd, id);
 	}
 
-	init_audio_state_query(card);
+	/* add for aocdump detect aoc SSR */
+	for (i = 0; i < ARRAY_SIZE(aoc_detect); i++)
+		init_audio_state_query(card, aoc_detect[i]);
+
 	return 0;
 }
 
