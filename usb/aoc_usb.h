@@ -84,7 +84,7 @@ int xhci_vendor_helper_init(void);
 extern int xhci_handle_event(struct xhci_hcd *xhci);
 extern void xhci_update_erst_dequeue(struct xhci_hcd *xhci,
 				     union xhci_trb *event_ring_deq);
-extern int xhci_plat_register_vendor_ops(struct xhci_vendor_ops *vendor_ops);
+extern int xhci_exynos_register_vendor_ops(struct xhci_vendor_ops *vendor_ops);
 
 int register_aoc_usb_notifier(struct notifier_block *nb);
 int unregister_aoc_usb_notifier(struct notifier_block *nb);
