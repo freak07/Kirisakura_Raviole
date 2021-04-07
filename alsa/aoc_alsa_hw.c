@@ -1204,34 +1204,110 @@ exit:
 	return err;
 }
 
+static int aoc_audio_get_parameters(int cmd_id, int block, int component, int key, int *val,
+				    struct aoc_chip *chip)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_GET_PARAMETER cmd0;
+	struct CMD_AUDIO_OUTPUT_GET_PARAMETER cmd1;
+
+	if (cmd_id == CMD_AUDIO_INPUT_GET_PARAMETER_ID) /* Input channel */
+	{
+		AocCmdHdrSet(&(cmd0.parent), CMD_AUDIO_INPUT_GET_PARAMETER_ID, sizeof(cmd0));
+		cmd0.block = block;
+		cmd0.component = component;
+		cmd0.key = key;
+		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd0, sizeof(cmd0),
+					(uint8_t *)&cmd0, chip);
+
+		if (!err && val)
+			*val = cmd0.val;
+	} else /*Output channel */
+	{
+		AocCmdHdrSet(&(cmd1.parent), CMD_AUDIO_OUTPUT_GET_PARAMETER_ID, sizeof(cmd1));
+		cmd1.block = block;
+		cmd1.component = component;
+		cmd1.key = key;
+		err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd1, sizeof(cmd1),
+					(uint8_t *)&cmd1, chip);
+
+		if (!err && val)
+			*val = cmd1.val;
+	}
+
+	if (err < 0) {
+		pr_err("ERR:%d in audio parameter get- block:%d,component:%d,key:%d\n", err, block,
+		       component, key);
+		return err;
+	}
+
+	return 0;
+}
+
+static int aoc_audio_set_parameters(int cmd_id, int block, int component, int key, int val,
+				    struct aoc_chip *chip)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_SET_PARAMETER cmd0;
+	struct CMD_AUDIO_OUTPUT_SET_PARAMETER cmd1;
+
+	if (cmd_id == CMD_AUDIO_INPUT_SET_PARAMETER_ID) /* Input channel */
+	{
+		AocCmdHdrSet(&(cmd0.parent), CMD_AUDIO_INPUT_SET_PARAMETER_ID, sizeof(cmd0));
+		cmd0.block = block;
+		cmd0.component = component;
+		cmd0.key = key;
+		cmd0.val = val;
+		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd0, sizeof(cmd0), NULL,
+					chip);
+	} else /*Output channel */
+	{
+		AocCmdHdrSet(&(cmd1.parent), CMD_AUDIO_OUTPUT_SET_PARAMETER_ID, sizeof(cmd1));
+		cmd1.block = block;
+		cmd1.component = component;
+		cmd1.key = key;
+		cmd1.val = val;
+		err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd1, sizeof(cmd1), NULL,
+					chip);
+	}
+
+	if (err < 0) {
+		pr_err("ERR:%d in audio parameter set- block:%d,component:%d,key:%d,val:%d\n", err,
+		       block, component, key, val);
+		return err;
+	}
+
+	return 0;
+}
+
 int aoc_incall_mic_sink_mute_get(struct aoc_chip *chip, int param, long *mute)
 {
 	int err;
-	struct CMD_AUDIO_INPUT_GET_PARAMETER cmd;
-
-	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_GET_PARAMETER_ID, sizeof(cmd));
+	int cmd_id, block, component, key, value;
 
 	if (param == 0) /* Up link (mic) */
 	{
-		cmd.block = 135;
-		cmd.component = 30;
-		cmd.key = 6;
+		cmd_id = CMD_AUDIO_INPUT_GET_PARAMETER_ID;
+		block = 135;
+		component = 30;
+		key = 6;
 	} else /* Download link (sink) */
 	{
-		cmd.block = 19;
-		cmd.component = 3;
-		cmd.key = 6;
+		cmd_id = CMD_AUDIO_OUTPUT_GET_PARAMETER_ID;
+		block = 19;
+		component = 30;
+		key = 6;
 	}
 
 	/* Send cmd to AOC */
-	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	err = aoc_audio_get_parameters(cmd_id, block, component, key, &value, chip);
 	if (err < 0) {
-		pr_err("ERR:%d in incall mute get\n", err);
+		pr_err("ERR:%d in incall mute set\n", err);
 		return err;
 	}
 
 	if (mute)
-		*mute = (cmd.val == FLOAT_ZERO) ? 1 : 0;
+		*mute = (value == FLOAT_ZERO) ? 1 : 0;
 
 	return 0;
 }
@@ -1239,26 +1315,26 @@ int aoc_incall_mic_sink_mute_get(struct aoc_chip *chip, int param, long *mute)
 int aoc_incall_mic_sink_mute_set(struct aoc_chip *chip, int param, long mute)
 {
 	int err;
-	struct CMD_AUDIO_INPUT_SET_PARAMETER cmd;
-
-	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_SET_PARAMETER_ID, sizeof(cmd));
+	int cmd_id, block, component, key, value;
 
 	if (param == 0) /* Up link (mic) */
 	{
-		cmd.block = 135;
-		cmd.component = 30;
-		cmd.key = 6;
+		cmd_id = CMD_AUDIO_INPUT_SET_PARAMETER_ID;
+		block = 135;
+		component = 30;
+		key = 6;
 	} else /* Download link (sink) */
 	{
-		cmd.block = 19;
-		cmd.component = 3;
-		cmd.key = 6;
+		cmd_id = CMD_AUDIO_OUTPUT_SET_PARAMETER_ID;
+		block = 19;
+		component = 30;
+		key = 6;
 	}
 
-	cmd.val = mute ? FLOAT_ZERO : FLOAT_ONE;
+	value = mute ? FLOAT_ZERO : FLOAT_ONE;
 
 	/* Send cmd to AOC */
-	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	err = aoc_audio_set_parameters(cmd_id, block, component, key, value, chip);
 	if (err < 0) {
 		pr_err("ERR:%d in incall mute set\n", err);
 		return err;
