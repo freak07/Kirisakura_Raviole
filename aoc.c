@@ -1469,17 +1469,10 @@ static struct platform_driver aoc_driver = {
 
 static int aoc_bus_match(struct device *dev, struct device_driver *drv)
 {
-	struct aoc_service_dev *device = AOC_DEVICE(dev);
 	struct aoc_driver *driver = AOC_DRIVER(drv);
-	struct device *aoc = dev->parent;
-	struct aoc_prvdata *prvdata = dev_get_drvdata(aoc);
 
-	aoc_service *s = service_at_index(prvdata, device->service_index);
-	struct aoc_ipc_service_header *header =
-		(struct aoc_ipc_service_header *)s;
 	const char *device_name = dev_name(dev);
 	bool driver_matches_by_name = (driver->service_names != NULL);
-	const char *service_name = header->name;
 
 	pr_debug("bus match dev:%s drv:%s\n", device_name, drv->name);
 
@@ -1489,15 +1482,15 @@ static int aoc_bus_match(struct device *dev, struct device_driver *drv)
 	 * If there is a specific driver matching this service, do not allow a
 	 * generic driver to claim the service
 	 */
-	if (!driver_matches_by_name && has_name_matching_driver(service_name)) {
+	if (!driver_matches_by_name && has_name_matching_driver(device_name)) {
 		pr_debug("ignoring generic driver for service %s\n",
-			 service_name);
+			 device_name);
 		return 0;
 	}
 
 	/* Drivers with a name only match services with that name */
 	if (driver_matches_by_name &&
-	    !driver_matches_service_by_name(drv, (char *)service_name)) {
+	    !driver_matches_service_by_name(drv, (char *)device_name)) {
 		return 0;
 	}
 
