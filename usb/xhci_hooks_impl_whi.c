@@ -322,7 +322,8 @@ static int xhci_vendor_init_irq_workqueue(struct xhci_vendor_data *vendor_data)
 static struct xhci_ring *
 xhci_initialize_ring_info_for_remote_isoc(struct xhci_hcd *xhci,
 					  u32 endpoint_type,
-					  enum xhci_ring_type type, gfp_t flags)
+					  enum xhci_ring_type type,
+					  unsigned int max_packet, gfp_t flags)
 {
 	struct xhci_ring *ring;
 	struct xhci_segment *seg;
@@ -342,6 +343,7 @@ xhci_initialize_ring_info_for_remote_isoc(struct xhci_hcd *xhci,
 		return NULL;
 	}
 
+	ring->bounce_buf_len = max_packet;
 	ring->first_seg = seg;
 	ring->enq_seg = ring->first_seg;
 	ring->deq_seg = ring->first_seg;
@@ -510,10 +512,11 @@ static void free_dcbaa(struct xhci_hcd *xhci)
 
 static struct xhci_ring *alloc_transfer_ring(struct xhci_hcd *xhci,
 		u32 endpoint_type, enum xhci_ring_type ring_type,
-		gfp_t mem_flags)
+		unsigned int max_packet, gfp_t mem_flags)
 {
 	return xhci_initialize_ring_info_for_remote_isoc(xhci, endpoint_type,
-							 ring_type, mem_flags);
+							 ring_type, max_packet,
+							 mem_flags);
 }
 
 static void free_transfer_ring(struct xhci_hcd *xhci,
