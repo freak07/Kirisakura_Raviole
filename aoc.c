@@ -68,6 +68,8 @@
 #define AOC_FWDATA_BOARDID_DFL  0x20202
 #define AOC_FWDATA_BOARDREV_DFL 0x10000
 
+#define MAX_RESET_REASON_STRING_LEN 128UL
+
 static struct platform_device *aoc_platform_device;
 static bool aoc_online;
 static bool aoc_is_starting;
@@ -1434,6 +1436,24 @@ static ssize_t firmware_store(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_RW(firmware);
 
+static ssize_t reset_store(struct device *dev, struct device_attribute *attr,
+			   const char *buf, size_t count)
+{
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+	char reason_str[MAX_RESET_REASON_STRING_LEN + 1];
+	size_t reason_str_len = min(MAX_RESET_REASON_STRING_LEN, count);
+
+	strscpy(reason_str, buf, reason_str_len);
+	reason_str[reason_str_len] = '\0';
+	dev_err(dev, "Reset requested from userspace, reason: %s", reason_str);
+
+	disable_irq_nosync(prvdata->watchdog_irq);
+	schedule_work(&prvdata->watchdog_work);
+	return count;
+}
+
+static DEVICE_ATTR_WO(reset);
+
 static struct attribute *aoc_attrs[] = {
 	&dev_attr_firmware.attr,
 	&dev_attr_revision.attr,
@@ -1441,6 +1461,7 @@ static struct attribute *aoc_attrs[] = {
 	&dev_attr_clock_offset.attr,
 	&dev_attr_aoc_clock.attr,
 	&dev_attr_aoc_clock_and_kernel_boottime.attr,
+	&dev_attr_reset.attr,
 	NULL
 };
 
