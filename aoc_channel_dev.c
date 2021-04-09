@@ -21,7 +21,6 @@
 #include <uapi/linux/sched/types.h>
 
 #include "aoc.h"
-#include "uapi/aoc_channel_dev.h"
 
 #define AOCC_CHARDEV_NAME "aoc_chan"
 
@@ -105,8 +104,6 @@ struct file_prvdata {
 	struct mutex pending_msg_lock;
 	atomic_t pending_msg_count;
 	bool is_channel_blocked;
-	int prev_sh_mem_doorbell_count;
-	bool sh_mem_doorbell_enabled;
 };
 
 /* Globals */
@@ -114,75 +111,17 @@ struct file_prvdata {
 static LIST_HEAD(s_open_files);
 static struct task_struct *s_demux_task;
 
-/* Shared memory transport doorbell defs and globals. */
-/* TODO (b/184637825): Use mailbox device for AoC shared memory transport. */
-#define SH_MEM_DOORBELL_INDEX 2
-static int aocc_sh_mem_doorbell_count = 0;
-static bool aocc_sh_mem_doorbell_available = false;
-static struct work_struct aocc_sh_mem_doorbell_work;
-
 /* Message related services */
 static int aocc_send_cmd_msg(aoc_service *service_id, enum aoc_cmd_code code,
 			      int channel_to_modify);
-
-static void sh_mem_doorbell_mbox_rx_callback(struct mbox_client *cl, void *mssg)
-{
-	schedule_work(&aocc_sh_mem_doorbell_work);
-}
-
-static void aocc_sh_mem_handle_doorbell(struct work_struct *work)
-{
-	struct file_prvdata *entry;
-
-	/* One more doorbell. */
-	aocc_sh_mem_doorbell_count++;
-
-	/*
-	 * Wake up all read queue waiters that have the shared memory transport
-	 * doorbell enabled.
-	 */
-	mutex_lock(&s_open_files_lock);
-	list_for_each_entry(entry, &s_open_files, open_files_list) {
-		if (entry->sh_mem_doorbell_enabled) {
-			wake_up(&entry->read_queue);
-		}
-	}
-	mutex_unlock(&s_open_files_lock);
-}
-
-static void sh_mem_doorbell_mbox_tx_done(struct mbox_client *cl, void *mssg,
-                                         int r)
-{
-}
-
-static void sh_mem_doorbell_mbox_tx_prepare(struct mbox_client *cl, void *mssg)
-{
-}
 
 static int aocc_demux_kthread(void *data)
 {
 	ssize_t retval = 0;
 	int rc = 0;
 	struct aoc_service_dev *service = (struct aoc_service_dev *)data;
-	struct mbox_client mbox_client;
 
 	pr_info("Demux handler started!");
-
-	/* Initialize the shared memory transport doorbell work task. */
-	INIT_WORK(&aocc_sh_mem_doorbell_work, aocc_sh_mem_handle_doorbell);
-
-	/* Set up the shared memory transport doorbell mailbox client. */
-	mbox_client.tx_block = false;
-	mbox_client.tx_tout = 100; /* 100ms timeout for tx */
-	mbox_client.knows_txdone = false;
-	mbox_client.rx_callback = sh_mem_doorbell_mbox_rx_callback;
-	mbox_client.tx_done = sh_mem_doorbell_mbox_tx_done;
-	mbox_client.tx_prepare = sh_mem_doorbell_mbox_tx_prepare;
-	rc = aoc_service_mbox_request_channel(service, &mbox_client,
-					      SH_MEM_DOORBELL_INDEX);
-	if (rc == 0) {
-		aocc_sh_mem_doorbell_available = true;
-	}
 
 	while (!kthread_should_stop()) {
 		int handler_found = 0;
@@ -275,12 +214,6 @@ static int aocc_demux_kthread(void *data)
 		}
 	}
 
-	/* Remove shared memory transport doorbell mailbox client. */
-	if (aocc_sh_mem_doorbell_available) {
-		aocc_sh_mem_doorbell_available = false;
-		aoc_service_mbox_free_channel(service, SH_MEM_DOORBELL_INDEX);
-	}
-
 	return 0;
 }
 
@@ -308,8 +241,6 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 static ssize_t aocc_write(struct file *file, const char __user *buf,
 			  size_t count, loff_t *off);
 static unsigned int aocc_poll(struct file *file, poll_table *wait);
-static long aocc_unlocked_ioctl(struct file *file, unsigned int cmd,
-				unsigned long arg);
 
 static const struct file_operations fops = {
 	.open = aocc_open,
@@ -317,7 +248,6 @@ static const struct file_operations fops = {
 	.read = aocc_read,
 	.write = aocc_write,
 	.poll = aocc_poll,
-	.unlocked_ioctl = aocc_unlocked_ioctl,
 
 	.owner = THIS_MODULE,
 };
@@ -404,8 +334,6 @@ static int aocc_open(struct inode *inode, struct file *file)
 		goto err_kmalloc;
 	}
 	mutex_init(&prvdata->pending_msg_lock);
-	prvdata->prev_sh_mem_doorbell_count = 0;
-	prvdata->sh_mem_doorbell_enabled = false;
 
 	mutex_lock(&aocc_devices_lock);
 	entry = aocc_device_entry_for_inode(inode);
@@ -673,46 +601,7 @@ static unsigned int aocc_poll(struct file *file, poll_table *wait)
 		mask |= POLLIN | POLLRDNORM;
 	}
 
-	/*
-	 * If the shared memory doorbell is enabled and the doorbell has been
-	 * rung, indicate that data may be read.
-	 */
-	if (private->sh_mem_doorbell_enabled &&
-	    (private->prev_sh_mem_doorbell_count != aocc_sh_mem_doorbell_count)) {
-		mask |= POLLIN | POLLRDNORM;
-		private->prev_sh_mem_doorbell_count = aocc_sh_mem_doorbell_count;
-	}
-
 	return mask;
-}
-
-static long aocc_unlocked_ioctl(struct file *file, unsigned int cmd,
-				unsigned long arg)
-{
-	struct file_prvdata *private = file->private_data;
-	long rv = 0;
-
-	switch (cmd) {
-	case AOCC_IOCTL_ENABLE_SH_MEM_DOORBELL:
-		if (!aocc_sh_mem_doorbell_available) {
-			rv = -ENOSYS;
-			break;
-		}
-		private->sh_mem_doorbell_enabled = true;
-	break;
-
-	default:
-		/*
-		 * ioctl(2) The specified request does not apply to the kind of
-		 * object that the file descriptor fd references
-		 */
-		pr_err("Received IOCTL with invalid ID (%d) returning ENOTTY",
-		       cmd);
-		rv = -ENOTTY;
-		break;
-	}
-
-	return rv;
 }
 
 static int aocc_probe(struct aoc_service_dev *dev)

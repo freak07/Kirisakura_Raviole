@@ -10,7 +10,6 @@
  */
 
 #include <linux/device.h>
-#include <linux/mailbox_client.h>
 #include <linux/sizes.h>
 #include "aoc_ipc_core.h"
 #include "uapi/aoc.h"
@@ -77,11 +76,6 @@ typedef int (*aoc_map_handler)(u32 handle, phys_addr_t p, size_t size,
 void aoc_set_map_handler(struct aoc_service_dev *dev, aoc_map_handler handler,
 			 void *ctx);
 void aoc_remove_map_handler(struct aoc_service_dev *dev);
-
-int aoc_service_mbox_request_channel(struct aoc_service_dev *dev,
-				     struct mbox_client *mbox_client,
-				     int index);
-void aoc_service_mbox_free_channel(struct aoc_service_dev *dev, int index);
 
 #define AOC_SERVICE_NAME_LENGTH 32
 

@@ -27,6 +27,7 @@
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
+#include <linux/mailbox_client.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/of.h>
@@ -1856,64 +1857,6 @@ void aoc_remove_map_handler(struct aoc_service_dev *dev)
 	prvdata->map_handler_ctx = NULL;
 }
 EXPORT_SYMBOL(aoc_remove_map_handler);
-
-int aoc_service_mbox_request_channel(struct aoc_service_dev *dev,
-				     struct mbox_client *mbox_client,
-				     int index)
-{
-	const struct device *parent;
-	struct aoc_prvdata *prvdata;
-	struct mbox_chan *channel;
-	int rc = 0;
-
-	parent = dev->dev.parent;
-	prvdata = dev_get_drvdata(parent);
-
-	if (prvdata->mbox_channels[index].channel != NULL) {
-		mbox_free_channel(prvdata->mbox_channels[index].channel);
-		prvdata->mbox_channels[index].channel = NULL;
-	}
-
-	mbox_client->dev = prvdata->dev;
-	channel = mbox_request_channel(mbox_client, index);
-	if (IS_ERR(channel)) {
-		dev_err(prvdata->dev,
-			"failed to find mailbox interface %d : %ld\n", index,
-			PTR_ERR(channel));
-		return -EIO;
-	}
-	prvdata->mbox_channels[index].channel = channel;
-
-	return rc;
-}
-EXPORT_SYMBOL(aoc_service_mbox_request_channel);
-
-void aoc_service_mbox_free_channel(struct aoc_service_dev *dev, int index)
-{
-	const struct device *parent;
-	struct aoc_prvdata *prvdata;
-	struct mbox_chan *channel;
-
-	parent = dev->dev.parent;
-	prvdata = dev_get_drvdata(parent);
-
-	if (prvdata->mbox_channels[index].channel != NULL) {
-		mbox_free_channel(prvdata->mbox_channels[index].channel);
-		prvdata->mbox_channels[index].channel = NULL;
-	}
-
-	/* Restore default mailbox channel. */
-	channel = mbox_request_channel(&(prvdata->mbox_channels[index].client),
-				       index);
-	if (!IS_ERR(channel)) {
-		prvdata->mbox_channels[index].channel = channel;
-	} else {
-		dev_err(prvdata->dev,
-			"failed to find mailbox interface %d : %ld\n", index,
-			PTR_ERR(channel));
-	}
-}
-EXPORT_SYMBOL(aoc_service_mbox_free_channel);
 
 static void aoc_pheap_alloc_cb(struct samsung_dma_buffer *buffer, void *ctx)
 {
