@@ -997,10 +997,6 @@ static int usb_cfg_ctl_set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_va
 		pr_err("ERR: %d incorrect index for USB config\n", err);
 	}
 
-	err = aoc_set_usb_config(chip);
-	if (err < 0)
-		pr_err("ERR:%d fail to update aoc usb config!\n", err);
-
 	mutex_unlock(&chip->audio_mutex);
 	return err;
 }
