@@ -6,6 +6,7 @@
  *  Howard.Yen <howardyen@google.com>
  */
 
+#include <linux/dmapool.h>
 #include <linux/dma-mapping.h>
 #include <linux/of.h>
 #include <linux/pm_wakeup.h>
@@ -587,6 +588,19 @@ static bool usb_offload_skip_urb(struct xhci_hcd *xhci, struct urb *urb)
 	return false;
 }
 
+static void alloc_container_ctx(struct xhci_hcd *xhci, struct xhci_container_ctx *ctx,
+				int type, gfp_t flags)
+{
+	ctx->bytes = dma_pool_zalloc(xhci->device_pool, flags, &ctx->dma);
+	if (!ctx->bytes)
+		xhci_err(xhci, "fail to allocate ctx->bytes\n");
+}
+
+static void free_container_ctx(struct xhci_hcd *xhci, struct xhci_container_ctx *ctx)
+{
+	dma_pool_free(xhci->device_pool, ctx->bytes, ctx->dma);
+}
+
 static struct xhci_vendor_ops ops = {
 	.vendor_init = usb_audio_offload_init,
 	.vendor_cleanup = usb_audio_offload_cleanup,
@@ -598,6 +612,8 @@ static struct xhci_vendor_ops ops = {
 	.free_transfer_ring = free_transfer_ring,
 	.sync_dev_ctx = sync_dev_ctx,
 	.usb_offload_skip_urb = usb_offload_skip_urb,
+	.alloc_container_ctx = alloc_container_ctx,
+	.free_container_ctx = free_container_ctx,
 };
 
 int xhci_vendor_helper_init(void)
