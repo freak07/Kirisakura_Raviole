@@ -257,6 +257,22 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 	},
 
 	{
+		.playback = {
+			.stream_name = "HAPTIC NoHost Playback",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S24_3LE |
+					SNDRV_PCM_FMTBIT_FLOAT_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.name = "HAPTIC NoHost PB",
+		.id = IDX_HAPTIC_NoHOST_RX,
+	},
+
+	{
 		.capture = {
 			.stream_name = "EP1 Capture",
 			.rates = SNDRV_PCM_RATE_8000_48000,
@@ -662,6 +678,20 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 		},
 		.name = "INCALL_TX",
 		.id = INCALL_TX,
+	},
+
+	{
+		.playback = {
+			.stream_name = "HAPTIC_RX Playback",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.name = "HAPTIC_RX",
+		.id = HAPTIC_RX,
 	},
 };
 
@@ -1213,6 +1243,31 @@ const struct snd_kcontrol_new incall_rx_ctrl[] = {
 	SOC_SINGLE_EXT("NoHost1", SND_SOC_NOPM, IDX_NOHOST1_RX, 1, 0, incall_rx_get, incall_rx_put),
 };
 
+static int haptic_rx_put(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+
+	u32 ep_idx = mc->shift;
+
+	return aoc_path_put(ep_idx, HAPTIC_RX, kcontrol, ucontrol);
+}
+
+static int haptic_rx_get(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 ep_idx = mc->shift;
+
+	return aoc_path_get(ep_idx, HAPTIC_RX, kcontrol, ucontrol);
+}
+
+const struct snd_kcontrol_new haptic_rx_ctrl[] = {
+	SOC_SINGLE_EXT("EP8", SND_SOC_NOPM, IDX_EP8_RX, 1, 0, haptic_rx_get, haptic_rx_put),
+};
+
 static int ep1_tx_put(struct snd_kcontrol *kcontrol,
 		      struct snd_ctl_elem_value *ucontrol)
 {
@@ -1510,6 +1565,8 @@ const struct snd_soc_dapm_widget aoc_widget[] = {
 	/* RX */
 	SND_SOC_DAPM_AIF_IN("NoHost1_RX", "NoHost1 Playback", 0,
 		SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_IN("HAPTIC_NoHost_RX", "HAPTIC NoHost Playback", 0,
+		SND_SOC_NOPM, 0, 0),
 	/* TX */
 	SND_SOC_DAPM_AIF_OUT("NoHost1_TX", "NoHost1 Capture", 0,
 		SND_SOC_NOPM, 0, 0),
@@ -1523,6 +1580,7 @@ const struct snd_soc_dapm_widget aoc_widget[] = {
 	SND_SOC_DAPM_AIF_OUT("BT_RX", "BT_RX", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("USB_RX", "USB_RX", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("INCALL_RX", "INCALL_RX", 0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("HAPTIC_RX", "HAPTIC_RX", 0, SND_SOC_NOPM, 0, 0),
 
 	SND_SOC_DAPM_AIF_IN("I2S_0_TX", "I2S_0_TX", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("I2S_1_TX", "I2S_1_TX", 0, SND_SOC_NOPM, 0, 0),
@@ -1562,6 +1620,10 @@ const struct snd_soc_dapm_widget aoc_widget[] = {
 
 	SND_SOC_DAPM_MIXER("INCALL_RX Mixer", SND_SOC_NOPM, 0, 0, incall_rx_ctrl,
 			   ARRAY_SIZE(incall_rx_ctrl)),
+
+	SND_SOC_DAPM_MIXER("HAPTIC_RX Mixer", SND_SOC_NOPM, 0, 0, haptic_rx_ctrl,
+			   ARRAY_SIZE(haptic_rx_ctrl)),
+
 	/* Record path */
 	SND_SOC_DAPM_MIXER("EP1 TX Mixer", SND_SOC_NOPM, 0, 0, ep1_tx_ctrl,
 			   ARRAY_SIZE(ep1_tx_ctrl)),
@@ -1695,6 +1757,12 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "INCALL_RX", NULL, "INCALL_RX Mixer" },
 	{ "HW_SINK", NULL, "INCALL_RX" },
 
+	{ "HAPTIC_RX Mixer", "EP8", "EP8_RX" },
+	{ "HAPTIC_RX", NULL, "HAPTIC_RX Mixer" },
+
+	{ "HAPTIC_RX", NULL, "HAPTIC_NoHost_RX" },
+	{ "HW_SINK", NULL, "HAPTIC_RX" },
+
 	{ "EP1_TX", NULL, "EP1 TX Mixer" },
 	{ "EP1 TX Mixer", "I2S_0_TX", "I2S_0_TX" },
 	{ "EP1 TX Mixer", "I2S_1_TX", "I2S_1_TX" },
@@ -1802,6 +1870,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "BT_RX Playback", NULL, "BT_RX" },
 	{ "USB_RX Playback", NULL, "USB_RX" },
 	{ "INCALL_RX Playback", NULL, "INCALL_RX" },
+	{ "HAPTIC_RX Playback", NULL, "HAPTIC_RX" },
 
 	/* Capture */
 	{ "I2S_0_TX", NULL, "I2S_0_TX Capture" },

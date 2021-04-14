@@ -30,7 +30,7 @@ static aoc_audio_sink[] = {
 	[PORT_USB_RX] = ASNK_USB,         [PORT_USB_TX] = -1,
 	[PORT_BT_RX] = ASNK_BT,           [PORT_BT_TX] = -1,
 	[PORT_INCALL_RX] = -1,            [PORT_INCALL_TX] = -1,
-	[PORT_INTERNAL_MIC] = -1,
+	[PORT_INTERNAL_MIC] = -1,	  [PORT_HAPTIC_RX] = ASNK_SPEAKER,
 };
 
 static int hw_id_to_sink(int hw_idx)
@@ -907,6 +907,10 @@ int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest)
 	uint32_t src_idx, dest_idx;
 	bool src_for_capture;
 
+	/* ignore nohost */
+	if (src & AOC_NOHOST)
+		return 0;
+
 	src_for_capture = src & AOC_TX;
 	src_idx = AOC_ID_TO_INDEX(src);
 	dest_idx = AOC_ID_TO_INDEX(dest);
@@ -925,6 +929,10 @@ int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest)
 {
 	uint32_t src_idx, dest_idx;
 	bool src_for_capture;
+
+	/* ignore nohost */
+	if (src & AOC_NOHOST)
+		return 0;
 
 	src_for_capture = src & AOC_TX;
 	src_idx = AOC_ID_TO_INDEX(src);
