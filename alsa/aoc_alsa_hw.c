@@ -92,7 +92,7 @@ static int aoc_audio_control(const char *cmd_channel, const uint8_t *cmd,
 	spin_lock(&chip->audio_lock);
 
 	/* Get the aoc audio control channel at runtime */
-	err = alloc_aoc_audio_service(cmd_channel, &dev);
+	err = alloc_aoc_audio_service(cmd_channel, &dev, NULL, NULL);
 	if (err < 0) {
 		spin_unlock(&chip->audio_lock);
 		return err;

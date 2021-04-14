@@ -166,7 +166,7 @@ static int snd_aoc_pcm_open(struct snd_soc_component *component,
 	pr_debug("chip open (%d)\n", chip->opened);
 
 	/* Find the corresponding aoc audio service */
-	err = alloc_aoc_audio_service(rtd->dai_link->name, &dev);
+	err = alloc_aoc_audio_service(rtd->dai_link->name, &dev, NULL, NULL);
 	if (err < 0) {
 		pr_err("ERR:%d fail to alloc service for %s", err, rtd->dai_link->name);
 		goto out;

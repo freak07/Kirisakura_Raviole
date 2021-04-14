@@ -21,13 +21,21 @@
 /* TODO: it may not be needed later, depending on aoc_ipc header revision */
 #include "aoc_ipc_core_internal.h"
 
+typedef enum {
+    AOC_SERVICE_EVENT_DOWN = 0,
+    AOC_SERVICE_EVENT_MAX,
+} aoc_aud_service_event_t;
+
+typedef void(*service_event_cb_t)(aoc_aud_service_event_t event, void *cookies);
+
 struct aoc_state_client_t {
 	bool inuse;
 	bool online;
 	bool exit;
 };
 
-int alloc_aoc_audio_service(const char *name, struct aoc_service_dev **dev);
+int alloc_aoc_audio_service(const char *name, struct aoc_service_dev **dev,
+		service_event_cb_t cb, void *cookies);
 int free_aoc_audio_service(const char *name, struct aoc_service_dev *dev);
 int8_t aoc_audio_service_num(void);
 __poll_t aoc_audio_state_poll(struct file *f, poll_table *wait,

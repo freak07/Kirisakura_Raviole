@@ -16,6 +16,23 @@
 #include "aoc_alsa.h"
 #include "aoc_alsa_drv.h"
 
+static void aoc_compr_reset_handler(aoc_aud_service_event_t evnt, void *cookies)
+{
+	struct aoc_alsa_stream *alsa_stream = (struct aoc_alsa_stream *)cookies;
+
+	if (!alsa_stream || !alsa_stream->cstream) {
+		pr_err("%s: no active compress offload stream pointer\n", __func__);
+		return;
+	}
+
+	if (evnt == AOC_SERVICE_EVENT_DOWN) {
+		pr_debug("%s: AoC service is removed, wakeup sleep thread\n", __func__);
+		alsa_stream->cstream->runtime->state = SNDRV_PCM_STATE_DISCONNECTED;
+		snd_compr_fragment_elapsed(alsa_stream->cstream);
+		return;
+	}
+}
+
 /* TODO: the handler has to be changed based on the compress offload */
 /*  the pointer should be modified based on the interrupt from AoC */
 static enum hrtimer_restart aoc_compr_hrtimer_irq_handler(struct hrtimer *timer)
@@ -142,18 +159,19 @@ static int aoc_compr_playback_open(struct snd_compr_stream *cstream)
 	pr_notice("alsa compr offload open (%d)\n", idx);
 	pr_debug("chip open (%d)\n", chip->opened);
 
-	/* Find the corresponding aoc audio service */
-	err = alloc_aoc_audio_service(rtd->dai_link->name, &dev);
-	if (err < 0) {
-		pr_err("ERR: fail to alloc service for %s",
-		       rtd->dai_link->name);
-		goto out;
-	}
-
 	alsa_stream = kzalloc(sizeof(struct aoc_alsa_stream), GFP_KERNEL);
 	if (alsa_stream == NULL) {
 		err = -ENOMEM;
 		pr_err("ERR: no memory for %s", rtd->dai_link->name);
+		goto out;
+	}
+
+	/* Find the corresponding aoc audio service */
+	err = alloc_aoc_audio_service(rtd->dai_link->name, &dev, aoc_compr_reset_handler,
+			alsa_stream);
+	if (err < 0) {
+		pr_err("ERR: fail to alloc service for %s",
+		       rtd->dai_link->name);
 		goto out;
 	}
 
@@ -313,9 +331,12 @@ static int aoc_compr_trigger(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstrea
 		pr_debug("%s: SNDRV_PCM_TRIGGER_STOP\n", __func__);
 		if (alsa_stream->running) {
 			err = aoc_audio_stop(alsa_stream);
-			if (err != 0)
+			if (err != 0) {
 				pr_err("failed to STOP alsa device (%d)\n",
 				       err);
+				/* return 0 to wake up sleep thread to unblock compress_poll() */
+				err = 0;
+			}
 			alsa_stream->running = 0;
 		}
 
