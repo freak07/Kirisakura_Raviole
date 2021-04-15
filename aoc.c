@@ -70,9 +70,16 @@
 
 #define MAX_RESET_REASON_STRING_LEN 128UL
 
+enum AOC_FW_STATE {
+	AOC_STATE_OFFLINE = 0,
+	AOC_STATE_FIRMWARE_LOADED,
+	AOC_STATE_STARTING,
+	AOC_STATE_ONLINE
+};
+static enum AOC_FW_STATE aoc_state;
+
 static struct platform_device *aoc_platform_device;
-static bool aoc_online;
-static bool aoc_is_starting;
+
 
 struct mbox_slot {
 	struct mbox_client client;
@@ -259,20 +266,20 @@ static inline phys_addr_t aoc_dram_translate_to_aoc(struct aoc_prvdata *p,
 	return AOC_BINARY_DRAM_BASE + offset;
 }
 
-static inline bool aoc_is_online(void)
+static inline bool aoc_fw_ready(void)
 {
 	return aoc_control != NULL && aoc_control->magic == AOC_MAGIC;
 }
 
 static inline int aoc_num_services(void)
 {
-	return aoc_is_online() ? le32_to_cpu(aoc_control->services) : 0;
+	return aoc_fw_ready() ? le32_to_cpu(aoc_control->services) : 0;
 }
 
 static inline aoc_service *service_at_index(struct aoc_prvdata *prvdata,
 					    unsigned index)
 {
-	if (!aoc_is_online() || index > aoc_num_services())
+	if (!aoc_fw_ready() || index > aoc_num_services())
 		return NULL;
 
 	return (((uint8_t *)prvdata->ipc_base) + aoc_control->services_offset +
@@ -281,7 +288,7 @@ static inline aoc_service *service_at_index(struct aoc_prvdata *prvdata,
 
 static inline struct aoc_service_dev *service_dev_at_index(struct aoc_prvdata *prvdata, unsigned index)
 {
-	if (!aoc_is_online() || index > aoc_num_services())
+	if (!aoc_fw_ready() || index > aoc_num_services())
 		return NULL;
 
 	return prvdata->services[index];
@@ -438,15 +445,18 @@ static void aoc_mbox_rx_callback(struct mbox_client *cl, void *mssg)
 	struct mbox_slot *slot = container_of(cl, struct mbox_slot, client);
 	struct aoc_prvdata *prvdata = slot->prvdata;
 
-	/* Transitioning from offline to online */
-	if (aoc_is_starting)
-		return;
-
-	if (aoc_online == false && aoc_is_online()) {
-		aoc_is_starting = true;
-		schedule_work(&prvdata->online_work);
-	} else {
+	switch (aoc_state) {
+	case AOC_STATE_FIRMWARE_LOADED:
+		if (aoc_fw_ready()) {
+			aoc_state = AOC_STATE_STARTING;
+			schedule_work(&prvdata->online_work);
+		}
+		break;
+	case AOC_STATE_ONLINE:
 		aoc_process_services(prvdata, slot->index);
+		break;
+	default:
+		break;
 	}
 }
 
@@ -700,6 +710,8 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 
 	write_reset_trampoline(AOC_BINARY_LOAD_ADDRESS + bootloader_offset);
 
+	aoc_state = AOC_STATE_FIRMWARE_LOADED;
+
 	dev_info(dev, "disabling SICD for 2 sec for aoc boot\n");
 	disable_power_mode(0, POWERMODE_TYPE_SYSTEM);
 	prvdata->ipc_base = aoc_dram_translate(prvdata, ipc_offset);
@@ -784,7 +796,7 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 	if (dev->dead)
 		return -ENODEV;
 
-	if (!aoc_online)
+	if (aoc_state != AOC_STATE_ONLINE)
 		return -EBUSY;
 
 	parent = dev->dev.parent;
@@ -804,7 +816,7 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 
 		set_bit(service_number, &read_blocked_mask);
 		ret = wait_event_interruptible(dev->read_queue,
-			!aoc_online || dev->dead ||
+			aoc_state != AOC_STATE_ONLINE || dev->dead ||
 				aoc_service_can_read_message(service, AOC_UP));
 		clear_bit(service_number, &read_blocked_mask);
 	}
@@ -812,7 +824,7 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 	if (dev->dead)
 		return -ENODEV;
 
-	if (!aoc_online)
+	if (aoc_state != AOC_STATE_ONLINE)
 		return -ENODEV;
 
 	/*
@@ -852,7 +864,7 @@ ssize_t aoc_service_read_timeout(struct aoc_service_dev *dev, uint8_t *buffer,
 	if (dev->dead)
 		return -ENODEV;
 
-	if (!aoc_online)
+	if (aoc_state != AOC_STATE_ONLINE)
 		return -EBUSY;
 
 	parent = dev->dev.parent;
@@ -873,7 +885,7 @@ ssize_t aoc_service_read_timeout(struct aoc_service_dev *dev, uint8_t *buffer,
 		set_bit(service_number, &read_blocked_mask);
 		ret = wait_event_interruptible_timeout(
 			dev->read_queue,
-			!aoc_online || dev->dead ||
+			aoc_state != AOC_STATE_ONLINE || dev->dead ||
 				aoc_service_can_read_message(service, AOC_UP),
 			timeout);
 		clear_bit(service_number, &read_blocked_mask);
@@ -882,7 +894,7 @@ ssize_t aoc_service_read_timeout(struct aoc_service_dev *dev, uint8_t *buffer,
 	if (dev->dead)
 		return -ENODEV;
 
-	if (!aoc_online)
+	if (aoc_state != AOC_STATE_ONLINE)
 		return -ENODEV;
 
 	if (ret < 0)
@@ -922,7 +934,7 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 	if (dev->dead)
 		return -ENODEV;
 
-	if (!aoc_online)
+	if (aoc_state != AOC_STATE_ONLINE)
 		return -ENODEV;
 
 	if (interrupt >= AOC_MBOX_CHANNELS)
@@ -950,7 +962,7 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 
 		set_bit(service_number, &write_blocked_mask);
 		ret = wait_event_interruptible(dev->write_queue,
-			!aoc_online || dev->dead ||
+			aoc_state != AOC_STATE_ONLINE || dev->dead ||
 				aoc_service_can_write_message(service, AOC_DOWN));
 		clear_bit(service_number, &write_blocked_mask);
 	}
@@ -958,7 +970,7 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 	if (dev->dead)
 		return -ENODEV;
 
-	if (!aoc_online)
+	if (aoc_state != AOC_STATE_ONLINE)
 		return -ENODEV;
 
 	/*
@@ -995,7 +1007,7 @@ ssize_t aoc_service_write_timeout(struct aoc_service_dev *dev, const uint8_t *bu
 	if (dev->dead)
 		return -ENODEV;
 
-	if (!aoc_online)
+	if (aoc_state != AOC_STATE_ONLINE)
 		return -ENODEV;
 
 	parent = dev->dev.parent;
@@ -1019,7 +1031,7 @@ ssize_t aoc_service_write_timeout(struct aoc_service_dev *dev, const uint8_t *bu
 		set_bit(service_number, &write_blocked_mask);
 		ret = wait_event_interruptible_timeout(
 			dev->write_queue,
-			!aoc_online || dev->dead ||
+			aoc_state != AOC_STATE_ONLINE || dev->dead ||
 				aoc_service_can_write_message(service, AOC_DOWN),
 			timeout);
 		clear_bit(service_number, &write_blocked_mask);
@@ -1028,7 +1040,7 @@ ssize_t aoc_service_write_timeout(struct aoc_service_dev *dev, const uint8_t *bu
 	if (dev->dead)
 		return -ENODEV;
 
-	if (!aoc_online)
+	if (aoc_state != AOC_STATE_ONLINE)
 		return -ENODEV;
 
 	if (ret < 0)
@@ -1244,11 +1256,6 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 		return rc;
 	}
 
-	rc = allocate_mailbox_channels(prvdata);
-	if (rc) {
-		dev_err(prvdata->dev, "failed to register mailbox channels rc = %d\n", rc);
-	}
-
 	rc = start_firmware_load(prvdata->dev);
 	if (rc) {
 		dev_err(prvdata->dev, "load aoc firmware failed: rc = %d\n", rc);
@@ -1276,7 +1283,7 @@ static ssize_t revision_show(struct device *dev, struct device_attribute *attr,
 {
 	u32 fw_rev, hw_rev;
 
-	if (!aoc_is_online())
+	if (!aoc_fw_ready())
 		return scnprintf(buf, PAGE_SIZE, "Offline\n");
 
 	fw_rev = le32_to_cpu(aoc_control->fw_version);
@@ -1292,7 +1299,7 @@ static uint64_t clock_offset(void)
 {
 	u64 clock_offset;
 
-	if (!aoc_is_online())
+	if (!aoc_fw_ready())
 		return 0;
 
 	memcpy_fromio(&clock_offset, &aoc_control->system_clock_offset,
@@ -1311,7 +1318,7 @@ static ssize_t aoc_clock_show(struct device *dev, struct device_attribute *attr,
 {
 	u64 counter;
 
-	if (!aoc_is_online())
+	if (!aoc_fw_ready())
 		return scnprintf(buf, PAGE_SIZE, "0\n");
 
 	counter = arch_timer_read_counter();
@@ -1329,7 +1336,7 @@ static ssize_t aoc_clock_and_kernel_boottime_show(struct device *dev,
 	u64 counter;
 	ktime_t kboottime;
 
-	if (!aoc_is_online())
+	if (!aoc_fw_ready())
 		return scnprintf(buf, PAGE_SIZE, "0 0\n");
 
 	counter = arch_timer_read_counter();
@@ -1344,7 +1351,7 @@ static DEVICE_ATTR_RO(aoc_clock_and_kernel_boottime);
 static ssize_t clock_offset_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
 {
-	if (!aoc_is_online())
+	if (!aoc_fw_ready())
 		return scnprintf(buf, PAGE_SIZE, "0\n");
 
 	return scnprintf(buf, PAGE_SIZE, "%lld\n", clock_offset());
@@ -1605,13 +1612,12 @@ static void aoc_device_release(struct device *dev)
 	kfree(the_dev);
 }
 
-static struct aoc_service_dev *register_service_device(struct aoc_prvdata *prvdata, int index)
+static struct aoc_service_dev *create_service_device(struct aoc_prvdata *prvdata, int index)
 {
 	struct device *parent = prvdata->dev;
 	char service_name[32];
 	aoc_service *s;
 	struct aoc_service_dev *dev;
-	int ret;
 
 	s = service_at_index(prvdata, index);
 	if (!s)
@@ -1635,11 +1641,6 @@ static struct aoc_service_dev *register_service_device(struct aoc_prvdata *prvda
 
 	init_waitqueue_head(&dev->read_queue);
 	init_waitqueue_head(&dev->write_queue);
-
-	ret = device_register(&dev->dev);
-	if (ret) {
-		dev = NULL;
-	}
 
 	return dev;
 }
@@ -1802,20 +1803,21 @@ static void aoc_did_become_online(struct work_struct *work)
 
 	prvdata->total_services = s;
 
-	aoc_online = true;
 
 	for (i = 0; i < s; i++) {
-		register_service_device(prvdata, i);
+		create_service_device(prvdata, i);
 	}
 
-	aoc_is_starting = false;
+	aoc_state = AOC_STATE_ONLINE;
+
+	for (i = 0; i < s; i++)
+		device_register(&prvdata->services[i]->dev);
 }
 
 static void aoc_take_offline(struct aoc_prvdata *prvdata)
 {
 	pr_notice("taking aoc offline\n");
-	free_mailbox_channels(prvdata);
-	aoc_online = false;
+	aoc_state = AOC_STATE_OFFLINE;
 
 	bus_for_each_dev(&aoc_bus_type, NULL, NULL, aoc_remove_device);
 
@@ -1834,7 +1836,7 @@ static void aoc_process_services(struct aoc_prvdata *prvdata, int offset)
 	int services;
 	int i;
 
-	if (!aoc_online)
+	if (aoc_state != AOC_STATE_ONLINE)
 		return;
 
 	services = aoc_num_services();
@@ -1933,10 +1935,12 @@ static irqreturn_t aoc_int_handler(int irq, void *dev)
 	aoc_clear_gpio_interrupt();
 
 	/* Transitioning from offline to online */
-	if (aoc_online == false && aoc_is_online()) {
-		aoc_online = true;
-		schedule_work(&aoc_online_work);
-	} else {
+	if (aoc_state == AOC_STATE_FIRMWARE_LOADED) {
+		if (aoc_fw_ready())
+			aoc_state = AOC_STATE_STARTING;
+			schedule_work(&aoc_online_work);
+		}
+	} else if (aoc_state == AOC_STATE_ONLINE) {
 		aoc_process_services(dev_get_drvdata(dev), 0);
 	}
 
@@ -2184,7 +2188,7 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lon
 
 	case AOC_IS_ONLINE:
 		{
-			int online = aoc_online;
+			int online = (aoc_state == AOC_STATE_ONLINE);
 			if (!copy_to_user((int *)arg, &online, _IOC_SIZE(cmd)))
 				ret = 0;
 		}
@@ -2296,6 +2300,7 @@ static void aoc_cleanup_resources(struct platform_device *pdev)
 
 	if (prvdata) {
 		aoc_take_offline(prvdata);
+		free_mailbox_channels(prvdata);
 
 		if (prvdata->domain) {
 			aoc_clear_sysmmu(prvdata);
