@@ -44,6 +44,7 @@
 	(strcmp(dev_name(&(_dev)->dev), CMD_INPUT_CHANNEL)) ? "output" : "input"
 
 #define AOC_COMPR_OFFLOAD_SERVICE "audio_playback6"
+#define AOC_COMPR_OFFLOAD_EOF_SERVICE "decoder_eof"
 
 #define AOC_CMD_DEBUG_ENABLE
 #define WAITING_TIME_MS 100
@@ -211,6 +212,7 @@ struct aoc_alsa_stream {
 	unsigned long timer_interval_ns;
 
 	struct aoc_service_dev *dev;
+	struct aoc_service_dev *dev_eof; /* Aoc service for EOF in compr offload */
 	int idx; /* PCM device number */
 	int entry_point_idx; /* Index of entry point, same as idx in playback */
 

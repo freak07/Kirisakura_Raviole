@@ -36,7 +36,7 @@ static void aoc_compr_reset_handler(aoc_aud_service_event_t evnt, void *cookies)
 void aoc_compr_offload_isr(struct aoc_service_dev *dev)
 {
 	struct aoc_alsa_stream *alsa_stream;
-	unsigned long consumed;
+	unsigned long consumed, n;
 
 	if (!dev) {
 		pr_err("ERR: NULL compress offload aoc service pointer\n");
@@ -59,6 +59,12 @@ void aoc_compr_offload_isr(struct aoc_service_dev *dev)
 	 * not what already played out .
 	 */
 
+	/* Check EOF (n>0), and then flush the buffer for next EOF */
+	n = aoc_ring_bytes_available_to_read(alsa_stream->dev_eof->service, AOC_UP);
+	if (n > 0 && !aoc_ring_flush_read_data(alsa_stream->dev_eof->service, AOC_UP, 0)) {
+		pr_err("ERR: decoder_eof ring buffer flush fail\n");
+	}
+
 	if (aoc_ring_bytes_available_to_read(dev->service, AOC_DOWN) == 0) {
 		pr_info("compress offload ring buffer is depleted\n");
 		snd_compr_drain_notify(alsa_stream->cstream);
@@ -71,7 +77,8 @@ void aoc_compr_offload_isr(struct aoc_service_dev *dev)
 	if (consumed == alsa_stream->prev_consumed)
 		return;
 
-	pr_debug("consumed = %lu, hw_ptr_base = %lu\n", consumed, alsa_stream->hw_ptr_base);
+	pr_debug("compr offload consumed = %lu, hw_ptr_base = %lu\n", consumed,
+		 alsa_stream->hw_ptr_base);
 
 	/* To deal with overlfow in Tx or Rx in int32_t */
 	if (consumed < alsa_stream->prev_consumed) {
@@ -215,6 +222,7 @@ static int aoc_compr_playback_open(struct snd_compr_stream *cstream)
 
 	struct aoc_alsa_stream *alsa_stream = NULL;
 	struct aoc_service_dev *dev = NULL;
+	struct aoc_service_dev *dev_eof = NULL;
 	int idx;
 	int err;
 
@@ -243,11 +251,18 @@ static int aoc_compr_playback_open(struct snd_compr_stream *cstream)
 		goto out;
 	}
 
+	err = alloc_aoc_audio_service(AOC_COMPR_OFFLOAD_EOF_SERVICE, &dev_eof, NULL, NULL);
+	if (err < 0) {
+		pr_err("ERR: fail to alloc service for " AOC_COMPR_OFFLOAD_EOF_SERVICE);
+		goto out;
+	}
+
 	/* Initialise alsa_stream */
 	alsa_stream->chip = chip;
 	alsa_stream->cstream = cstream;
 	alsa_stream->substream = NULL;
 	alsa_stream->dev = dev;
+	alsa_stream->dev_eof = dev_eof;
 	alsa_stream->idx = idx;
 
 	err = aoc_audio_open(alsa_stream);
@@ -287,7 +302,9 @@ out:
 	kfree(alsa_stream);
 	if (dev) {
 		free_aoc_audio_service(rtd->dai_link->name, dev);
+		free_aoc_audio_service(AOC_COMPR_OFFLOAD_EOF_SERVICE, dev_eof);
 		dev = NULL;
+		dev_eof = NULL;
 	}
 	chip->alsa_stream[idx] = NULL;
 	chip->opened &= ~(1 << idx);
@@ -317,6 +334,7 @@ static int aoc_compr_playback_free(struct snd_compr_stream *cstream)
 
 	pr_notice("alsa compr offload close\n");
 	free_aoc_audio_service(rtd->dai_link->name, alsa_stream->dev);
+	free_aoc_audio_service(AOC_COMPR_OFFLOAD_EOF_SERVICE, alsa_stream->dev_eof);
 
 	/*
 	 * Call stop if it's still running. This happens when app

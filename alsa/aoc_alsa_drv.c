@@ -53,6 +53,7 @@ static const char *const audio_service_names[] = {
 	"audio_incall_cap_0",
 	"audio_incall_cap_1",
 	"audio_incall_cap_2",
+	"decoder_eof",
 	NULL,
 };
 
