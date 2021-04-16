@@ -1373,12 +1373,12 @@ static ssize_t services_show(struct device *dev, struct device_attribute *attr,
 		struct aoc_ipc_service_header *hdr =
 			(struct aoc_ipc_service_header *)s;
 
-		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%d : name %s channel %d\n",
+		ret += scnprintf(buf + ret, PAGE_SIZE - ret, "%d : \"%s\" mbox %d\n",
 				 i, aoc_service_name(s), aoc_service_irq_index(s));
 		if (hdr->regions[0].slots > 0) {
 			ret += scnprintf(
 				buf + ret, PAGE_SIZE - ret,
-				"  Up   - Slots:%u Size:%u Tx:%u Rx:%u\n",
+				" Up Size:%ux%uB Tx:%u Rx:%u\n",
 				hdr->regions[0].slots, hdr->regions[0].size,
 				hdr->regions[0].tx, hdr->regions[0].rx);
 		}
@@ -1386,7 +1386,7 @@ static ssize_t services_show(struct device *dev, struct device_attribute *attr,
 		if (hdr->regions[1].slots > 0) {
 			ret += scnprintf(
 				buf + ret, PAGE_SIZE - ret,
-				"  Down - Slots:%u Size:%u Tx:%u Rx:%u\n",
+				" Down Size:%ux%uB Tx:%u Rx:%u\n",
 				hdr->regions[1].slots, hdr->regions[1].size,
 				hdr->regions[1].tx, hdr->regions[1].rx);
 		}
