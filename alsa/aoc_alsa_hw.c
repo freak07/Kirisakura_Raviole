@@ -74,11 +74,10 @@ static int hw_id_to_phone_mic_source(int hw_id)
 
 /* temp usage */
 static aoc_audio_stream_type[] = {
-	[0] = MMAPED,  [1] = NORMAL,   [2] = NORMAL,  [3] = NORMAL,  [4] = NORMAL,
-	[5] = NORMAL,  [6] = COMPRESS, [7] = NORMAL,  [8] = NORMAL,  [9] = MMAPED,
-	[10] = NORMAL, [11] = NORMAL,  [12] = NORMAL, [13] = NORMAL, [14] = NORMAL,
-	[15] = NORMAL, [16] = NORMAL,  [17] = NORMAL, [18] = INCALL, [19] = INCALL,
-	[20] = INCALL, [21] = INCALL,  [22] = INCALL,
+	[0] = MMAPED,	[1] = NORMAL,  [2] = NORMAL,  [3] = NORMAL,  [4] = NORMAL,  [5] = NORMAL,
+	[6] = COMPRESS, [7] = NORMAL,  [8] = NORMAL,  [9] = MMAPED,  [10] = NORMAL, [11] = NORMAL,
+	[12] = NORMAL,	[13] = NORMAL, [14] = NORMAL, [15] = NORMAL, [16] = NORMAL, [17] = NORMAL,
+	[18] = INCALL,	[19] = INCALL, [20] = INCALL, [21] = INCALL, [22] = INCALL, [23] = MMAPED,
 };
 
 int aoc_pcm_device_to_stream_type(int device)
