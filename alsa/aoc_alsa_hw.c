@@ -888,12 +888,14 @@ static int aoc_audio_path_bind(int src, int dst, int cmd, struct aoc_chip *chip)
 int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest)
 {
 	uint32_t src_idx, dest_idx;
+	bool src_for_capture;
 
+	src_for_capture = src & AOC_TX;
 	src_idx = AOC_ID_TO_INDEX(src);
 	dest_idx = AOC_ID_TO_INDEX(dest);
 
 	/* voice call capture or playback */
-	if (src_idx == 3 || src_idx == 4)
+	if ((src_idx == 3 && src_for_capture) || (src_idx == 4 && !src_for_capture))
 		return aoc_phonecall_path_open(chip, src_idx, dest_idx, dest & AOC_TX);
 
 	if (src_idx == IDX_VOIP)
@@ -905,12 +907,14 @@ int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest)
 int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest)
 {
 	uint32_t src_idx, dest_idx;
+	bool src_for_capture;
 
+	src_for_capture = src & AOC_TX;
 	src_idx = AOC_ID_TO_INDEX(src);
 	dest_idx = AOC_ID_TO_INDEX(dest);
 
 	/* voice call capture or playback */
-	if (src_idx == 3 || src_idx == 4)
+	if ((src_idx == 3 && src_for_capture) || (src_idx == 4 && !src_for_capture))
 		return aoc_phonecall_path_close(chip, src_idx, dest_idx, dest & AOC_TX);
 
 	if (src_idx == IDX_VOIP)
