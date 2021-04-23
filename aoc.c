@@ -753,7 +753,7 @@ phys_addr_t aoc_service_ring_base_phys_addr(struct aoc_service_dev *dev, aoc_dir
 
 	return ring_base - aoc_dram_virt_mapping + prvdata->dram_resource.start;
 }
-EXPORT_SYMBOL(aoc_service_ring_base_phys_addr);
+EXPORT_SYMBOL_GPL(aoc_service_ring_base_phys_addr);
 
 bool aoc_service_flush_read_data(struct aoc_service_dev *dev)
 {
@@ -777,7 +777,7 @@ bool aoc_service_flush_read_data(struct aoc_service_dev *dev)
 	aoc_service_advance_read_index(service, AOC_UP, slots);
 	return true;
 }
-EXPORT_SYMBOL(aoc_service_flush_read_data);
+EXPORT_SYMBOL_GPL(aoc_service_flush_read_data);
 
 ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 			 size_t count, bool block)
@@ -845,7 +845,7 @@ ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 
 	return msg_size;
 }
-EXPORT_SYMBOL(aoc_service_read);
+EXPORT_SYMBOL_GPL(aoc_service_read);
 
 ssize_t aoc_service_read_timeout(struct aoc_service_dev *dev, uint8_t *buffer,
 				 size_t count, long timeout)
@@ -915,7 +915,7 @@ ssize_t aoc_service_read_timeout(struct aoc_service_dev *dev, uint8_t *buffer,
 
 	return msg_size;
 }
-EXPORT_SYMBOL(aoc_service_read_timeout);
+EXPORT_SYMBOL_GPL(aoc_service_read_timeout);
 
 ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 			  size_t count, bool block)
@@ -988,7 +988,7 @@ ssize_t aoc_service_write(struct aoc_service_dev *dev, const uint8_t *buffer,
 
 	return count;
 }
-EXPORT_SYMBOL(aoc_service_write);
+EXPORT_SYMBOL_GPL(aoc_service_write);
 
 ssize_t aoc_service_write_timeout(struct aoc_service_dev *dev, const uint8_t *buffer,
 				  size_t count, long timeout)
@@ -1057,7 +1057,7 @@ ssize_t aoc_service_write_timeout(struct aoc_service_dev *dev, const uint8_t *bu
 
 	return count;
 }
-EXPORT_SYMBOL(aoc_service_write_timeout);
+EXPORT_SYMBOL_GPL(aoc_service_write_timeout);
 
 int aoc_service_can_read(struct aoc_service_dev *dev)
 {
@@ -1557,13 +1557,13 @@ int aoc_driver_register(struct aoc_driver *driver)
 	driver->drv.bus = &aoc_bus_type;
 	return driver_register(&driver->drv);
 }
-EXPORT_SYMBOL(aoc_driver_register);
+EXPORT_SYMBOL_GPL(aoc_driver_register);
 
 void aoc_driver_unregister(struct aoc_driver *driver)
 {
 	driver_unregister(&driver->drv);
 }
-EXPORT_SYMBOL(aoc_driver_unregister);
+EXPORT_SYMBOL_GPL(aoc_driver_unregister);
 
 static void aoc_clear_gpio_interrupt(void)
 {
@@ -1869,7 +1869,7 @@ void aoc_set_map_handler(struct aoc_service_dev *dev, aoc_map_handler handler,
 	prvdata->map_handler = handler;
 	prvdata->map_handler_ctx = ctx;
 }
-EXPORT_SYMBOL(aoc_set_map_handler);
+EXPORT_SYMBOL_GPL(aoc_set_map_handler);
 
 void aoc_remove_map_handler(struct aoc_service_dev *dev)
 {
@@ -1879,7 +1879,7 @@ void aoc_remove_map_handler(struct aoc_service_dev *dev)
 	prvdata->map_handler = NULL;
 	prvdata->map_handler_ctx = NULL;
 }
-EXPORT_SYMBOL(aoc_remove_map_handler);
+EXPORT_SYMBOL_GPL(aoc_remove_map_handler);
 
 static void aoc_pheap_alloc_cb(struct samsung_dma_buffer *buffer, void *ctx)
 {

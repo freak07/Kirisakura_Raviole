@@ -1400,4 +1400,4 @@ int snd_aoc_new_ctl(struct aoc_chip *chip)
 
 	return 0;
 }
-EXPORT_SYMBOL(snd_aoc_new_ctl);
+EXPORT_SYMBOL_GPL(snd_aoc_new_ctl);

@@ -75,7 +75,7 @@ int8_t aoc_audio_service_num(void)
 {
 	return n_services;
 }
-EXPORT_SYMBOL(aoc_audio_service_num);
+EXPORT_SYMBOL_GPL(aoc_audio_service_num);
 
 int alloc_aoc_audio_service(const char *name, struct aoc_service_dev **dev, service_event_cb_t cb,
 		void *cookies)
@@ -120,7 +120,7 @@ done:
 
 	return err;
 }
-EXPORT_SYMBOL(alloc_aoc_audio_service);
+EXPORT_SYMBOL_GPL(alloc_aoc_audio_service);
 
 int free_aoc_audio_service(const char *name, struct aoc_service_dev *dev)
 {
@@ -172,7 +172,7 @@ done:
 
 	return err;
 }
-EXPORT_SYMBOL(free_aoc_audio_service);
+EXPORT_SYMBOL_GPL(free_aoc_audio_service);
 
 __poll_t aoc_audio_state_poll(struct file *f, poll_table *wait,
 		struct aoc_state_client_t *client)
@@ -188,13 +188,13 @@ __poll_t aoc_audio_state_poll(struct file *f, poll_table *wait,
 
 	return 0;
 }
-EXPORT_SYMBOL(aoc_audio_state_poll);
+EXPORT_SYMBOL_GPL(aoc_audio_state_poll);
 
 bool aoc_audio_current_state(void)
 {
     return aoc_audio_online;
 }
-EXPORT_SYMBOL(aoc_audio_current_state);
+EXPORT_SYMBOL_GPL(aoc_audio_current_state);
 
 struct aoc_state_client_t *alloc_audio_state_client(void)
 {
@@ -211,13 +211,13 @@ struct aoc_state_client_t *alloc_audio_state_client(void)
 
 	return client;
 }
-EXPORT_SYMBOL(alloc_audio_state_client);
+EXPORT_SYMBOL_GPL(alloc_audio_state_client);
 
 void free_audio_state_client(struct aoc_state_client_t *client)
 {
 	kfree(client);
 }
-EXPORT_SYMBOL(free_audio_state_client);
+EXPORT_SYMBOL_GPL(free_audio_state_client);
 
 static int snd_aoc_alsa_probe(void)
 {
