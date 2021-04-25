@@ -36,12 +36,18 @@ int unregister_aoc_usb_notifier(struct notifier_block *nb)
 
 static int xhci_sync_dev_ctx(struct xhci_hcd *xhci, unsigned int slot_id)
 {
-	struct xhci_virt_device *dev = xhci->devs[slot_id];
-	struct xhci_container_ctx *out_ctx_ref = dev->out_ctx;
+	struct xhci_virt_device *dev;
+	struct xhci_container_ctx *out_ctx_ref;
 	struct xhci_slot_ctx *slot_ctx;
 	struct xhci_ep_ctx *ep_ctx;
 	struct get_dev_ctx_args args;
 	u8 *dev_ctx;
+
+	if (!xhci->devs[slot_id])
+		return -ENODEV;
+
+	dev = xhci->devs[slot_id];
+	out_ctx_ref = dev->out_ctx;
 
 	xhci_dbg(xhci, "slot_id=%u, out_ctx_ref->size=%u\n", slot_id,
 		 out_ctx_ref->size);
@@ -403,6 +409,7 @@ static void usb_audio_offload_cleanup(struct xhci_hcd *xhci)
 	struct xhci_vendor_data *vendor_data = xhci_to_priv(xhci)->vendor_data;
 
 	vendor_data->usb_audio_offload = false;
+	vendor_data->op_mode = USB_OFFLOAD_STOP;
 	if (vendor_data->irq_wq)
 		destroy_workqueue(vendor_data->irq_wq);
 	vendor_data->irq_wq = NULL;
