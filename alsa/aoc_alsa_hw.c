@@ -1032,8 +1032,7 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 		     sizeof(cmd));
 
 	/* TODO: the output of spatial module is stereo */
-	if (channels < 1 || channels > NUM_OF_BUILTIN_MIC ||
-	    (channels != 2 && chip->mic_spatial_module_enable)) {
+	if (channels < 1 || channels > NUM_OF_BUILTIN_MIC) {
 		pr_err("ERR: wrong channel number %u for capture\n", channels);
 		err = -EINVAL;
 		goto exit;
