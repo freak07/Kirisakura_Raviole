@@ -27,8 +27,13 @@ static void aoc_compr_reset_handler(aoc_aud_service_event_t evnt, void *cookies)
 
 	if (evnt == AOC_SERVICE_EVENT_DOWN) {
 		pr_debug("%s: AoC service is removed, wakeup sleep thread\n", __func__);
-		alsa_stream->cstream->runtime->state = SNDRV_PCM_STATE_DISCONNECTED;
-		snd_compr_fragment_elapsed(alsa_stream->cstream);
+		/*
+		 * We don't hold stream lock here before change stream's state because of avoiding
+		 * deadlock on stream lock and chip->audio_lock. The tasks without checking xrun
+		 * still return error since AOC isn't ready. Most of alsa stream tasks from
+		 * user-space will be returned by xrun state.
+		 */
+		snd_compr_stop_error(alsa_stream->cstream, SNDRV_PCM_STATE_XRUN);
 		return;
 	}
 }
