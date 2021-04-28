@@ -70,6 +70,9 @@
 
 #define MAX_RESET_REASON_STRING_LEN 128UL
 
+#define AOC_CP_APERTURE_START_OFFSET 0x5FDF80
+#define AOC_CP_APERTURE_END_OFFSET   0x5FFFFF
+
 enum AOC_FW_STATE {
 	AOC_STATE_OFFLINE = 0,
 	AOC_STATE_FIRMWARE_LOADED,
@@ -216,6 +219,13 @@ static int aoc_itmon_notifier(struct notifier_block *nb, unsigned long action,
 	if (itmon_info->target_addr == 0) {
 		dev_err(prvdata->dev,
 			"Possible repro of b/174577569, please upload a bugreport and /data/vendor/ssrdump to that bug\n");
+		return NOTIFY_STOP;
+	}
+
+	if ((itmon_info->target_addr >= aoc_sram_resource->start + AOC_CP_APERTURE_START_OFFSET) &&
+	    (itmon_info->target_addr <= aoc_sram_resource->start + AOC_CP_APERTURE_END_OFFSET)) {
+		dev_err(prvdata->dev,
+			"Valid memory access triggered ITMON error. Please file a bug with bugreport and contents of /data/vendor/ssrdump\n");
 		return NOTIFY_STOP;
 	}
 
