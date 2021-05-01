@@ -353,13 +353,13 @@ static int aoc_compr_playback_free(struct snd_compr_stream *cstream)
 	}
 	if (alsa_stream->chip)
 		alsa_stream->chip->alsa_stream[alsa_stream->idx] = NULL;
-	kfree(alsa_stream);
 	/*
 	 * Do not free up alsa_stream here, it will be freed up by
 	 * runtime->private_free callback we registered in *_open above
 	 * TODO: no such operation for compress offload
 	 */
 	chip->opened &= ~(1 << alsa_stream->idx);
+	kfree(alsa_stream);
 
 	mutex_unlock(&chip->audio_mutex);
 
