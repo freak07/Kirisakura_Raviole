@@ -58,6 +58,8 @@ struct aoc_usb_drvdata {
 	struct wakeup_source *ws;
 
 	struct notifier_block nb;
+
+	long service_timeout;
 };
 
 struct get_dev_ctx_args {

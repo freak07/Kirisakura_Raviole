@@ -8,6 +8,7 @@
 
 #include <linux/device.h>
 #include <linux/init.h>
+#include <linux/jiffies.h>
 #include <linux/module.h>
 #include <linux/slab.h>
 
@@ -40,13 +41,13 @@ static ssize_t aoc_usb_send_command(struct aoc_usb_drvdata *drvdata,
 
 	__pm_stay_awake(drvdata->ws);
 
-	ret = aoc_service_write(adev, in_cmd, in_size, BLOCKING);
+	ret = aoc_service_write_timeout(adev, in_cmd, in_size, drvdata->service_timeout);
 	if (ret != in_size) {
 		ret = -EIO;
 		goto out;
 	}
 
-	ret = aoc_service_read(adev, out_cmd, out_size, BLOCKING);
+	ret = aoc_service_read_timeout(adev, out_cmd, out_size, drvdata->service_timeout);
 	if (ret != out_size)
 		ret = -EIO;
 
@@ -262,6 +263,7 @@ static int aoc_usb_probe(struct aoc_service_dev *adev)
 	if (!drvdata->ws)
 		return -ENOMEM;
 
+	drvdata->service_timeout = msecs_to_jiffies(100);
 	drvdata->nb.notifier_call = aoc_usb_notify;
 	register_aoc_usb_notifier(&drvdata->nb);
 

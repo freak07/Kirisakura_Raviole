@@ -43,6 +43,13 @@ static int xhci_sync_dev_ctx(struct xhci_hcd *xhci, unsigned int slot_id)
 	struct get_dev_ctx_args args;
 	u8 *dev_ctx;
 
+	if (IS_ERR_OR_NULL(xhci) ||
+	    xhci->xhc_state & XHCI_STATE_DYING ||
+	    xhci->xhc_state & XHCI_STATE_REMOVING) {
+		xhci_err(xhci, "xHCI dying, ignore sync_dev_ctx\n");
+		return -ENODEV;
+	}
+
 	if (!xhci->devs[slot_id])
 		return -ENODEV;
 
@@ -162,14 +169,40 @@ static void xhci_reset_work(struct work_struct *ws)
 		container_of(ws, struct xhci_vendor_data, xhci_vendor_reset_ws);
 	struct xhci_hcd *xhci = vendor_data->xhci;
 
+	if (IS_ERR_OR_NULL(xhci) ||
+	    xhci->xhc_state & XHCI_STATE_DYING ||
+	    xhci->xhc_state & XHCI_STATE_REMOVING) {
+		xhci_err(xhci, "xHCI dying, drop offload reset work\n");
+		goto fail;
+	}
 	usb_remove_hcd(xhci->shared_hcd);
+
+	if (IS_ERR_OR_NULL(xhci) ||
+	    xhci->xhc_state & XHCI_STATE_DYING ||
+	    xhci->xhc_state & XHCI_STATE_REMOVING) {
+		xhci_err(xhci, "xHCI dying, ignore removing main_hcd\n");
+		goto fail;
+	}
 	usb_remove_hcd(xhci->main_hcd);
 
 	vendor_data->op_mode = USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY;
 
+	if (IS_ERR_OR_NULL(xhci) ||
+	    xhci->xhc_state & XHCI_STATE_DYING ||
+	    xhci->xhc_state & XHCI_STATE_REMOVING) {
+		xhci_err(xhci, "xHCI dying, ignore adding main_hcd\n");
+		goto fail;
+	}
 	rc = usb_add_hcd(xhci->main_hcd, xhci->main_hcd->irq, IRQF_SHARED);
 	if (rc) {
 		xhci_err(xhci, "add main hcd error: %d\n", rc);
+		goto fail;
+	}
+
+	if (IS_ERR_OR_NULL(xhci) ||
+	    xhci->xhc_state & XHCI_STATE_DYING ||
+	    xhci->xhc_state & XHCI_STATE_REMOVING) {
+		xhci_err(xhci, "xHCI dying, ignore adding shared_hcd\n");
 		goto fail;
 	}
 	rc = usb_add_hcd(xhci->shared_hcd, xhci->shared_hcd->irq, IRQF_SHARED);
@@ -258,6 +291,13 @@ static void xhci_vendor_irq_work(struct work_struct *work)
 	int event_loop = 0;
 	unsigned int slot_id = 1;
 	int ret;
+
+	if (IS_ERR_OR_NULL(xhci) ||
+	    xhci->xhc_state & XHCI_STATE_DYING ||
+	    xhci->xhc_state & XHCI_STATE_REMOVING) {
+		xhci_err(xhci, "xHCI dying, ignore irq work\n");
+		return;
+	}
 
 	ret = sync_dev_ctx(xhci, slot_id);
 	if (ret)
