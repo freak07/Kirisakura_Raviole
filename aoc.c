@@ -133,6 +133,9 @@ struct aoc_prvdata {
 	u32 enable_uart_tx;
 	u32 force_voltage_nominal;
 
+	u32 total_coredumps;
+	u32 total_restarts;
+
 #if IS_ENABLED(CONFIG_EXYNOS_ITMON)
 	struct notifier_block itmon_nb;
 #endif
@@ -1288,6 +1291,24 @@ static void acpm_aoc_reset_callback(unsigned int *cmd, unsigned int size)
 	wake_up(&prvdata->aoc_reset_wait_queue);
 }
 
+static ssize_t coredump_count_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n", prvdata->total_coredumps);
+}
+
+static DEVICE_ATTR_RO(coredump_count);
+
+static ssize_t restart_count_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n", prvdata->total_restarts);
+}
+
+static DEVICE_ATTR_RO(restart_count);
+
 static ssize_t revision_show(struct device *dev, struct device_attribute *attr,
 			     char *buf)
 {
@@ -1475,6 +1496,8 @@ static struct attribute *aoc_attrs[] = {
 	&dev_attr_firmware.attr,
 	&dev_attr_revision.attr,
 	&dev_attr_services.attr,
+	&dev_attr_coredump_count.attr,
+	&dev_attr_restart_count.attr,
 	&dev_attr_clock_offset.attr,
 	&dev_attr_aoc_clock.attr,
 	&dev_attr_aoc_clock_and_kernel_boottime.attr,
@@ -1990,6 +2013,8 @@ static void aoc_watchdog(struct work_struct *work)
 	char crash_info[RAMDUMP_SECTION_CRASH_INFO_SIZE];
 	int restart_rc;
 
+	prvdata->total_restarts++;
+
 	dev_err(prvdata->dev, "aoc watchdog triggered, generating coredump\n");
 	if (!sscd_pdata.sscd_report) {
 		dev_err(prvdata->dev, "aoc coredump failed: no sscd driver\n");
@@ -2062,11 +2087,13 @@ static void aoc_watchdog(struct work_struct *work)
 
 		msleep(sscd_retry_ms);
 	}
-	if (sscd_rc == 0)
+
+	if (sscd_rc == 0) {
+		prvdata->total_coredumps++;
 		dev_info(prvdata->dev, "aoc coredump done\n");
-	else
-		dev_err(prvdata->dev, "aoc coredump failed: sscd_rc = %d\n",
-			sscd_rc);
+	} else {
+		dev_err(prvdata->dev, "aoc coredump failed: sscd_rc = %d\n", sscd_rc);
+	}
 
 	vunmap(dram_cached);
 err_vmap:
