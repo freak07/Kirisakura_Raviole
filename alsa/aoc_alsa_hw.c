@@ -75,7 +75,7 @@ static int hw_id_to_phone_mic_source(int hw_id)
 /* temp usage */
 static aoc_audio_stream_type[] = {
 	[0] = MMAPED,	[1] = NORMAL,  [2] = NORMAL,  [3] = NORMAL,  [4] = NORMAL,  [5] = NORMAL,
-	[6] = COMPRESS, [7] = NORMAL,  [8] = NORMAL,  [9] = MMAPED,  [10] = NORMAL, [11] = NORMAL,
+	[6] = COMPRESS, [7] = NORMAL,  [8] = NORMAL,  [9] = MMAPED,  [10] = RAW, [11] = NORMAL,
 	[12] = NORMAL,	[13] = NORMAL, [14] = NORMAL, [15] = NORMAL, [16] = NORMAL, [17] = NORMAL,
 	[18] = INCALL,	[19] = INCALL, [20] = INCALL, [21] = INCALL, [22] = INCALL, [23] = MMAPED,
 };
@@ -1207,6 +1207,23 @@ static int aoc_mmap_capture_trigger(struct aoc_alsa_stream *alsa_stream, int rec
 	return 0;
 }
 
+static int aoc_raw_capture_trigger(struct aoc_alsa_stream *alsa_stream, int record_cmd)
+{
+	int err = 0;
+	int cmd_id;
+	struct aoc_chip *chip = alsa_stream->chip;
+
+	cmd_id = (record_cmd == START) ? CMD_AUDIO_INPUT_MIC_RAW_ENABLE_ID :
+					 CMD_AUDIO_INPUT_MIC_RAW_DISABLE_ID;
+
+	err = aoc_audio_control_simple_cmd(CMD_INPUT_CHANNEL, cmd_id, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in audio raw capture start/stop\n", err);
+		return err;
+	}
+	return 0;
+}
+
 /* Start or stop the stream */
 static int aoc_audio_capture_trigger(struct aoc_alsa_stream *alsa_stream, int record_cmd)
 {
@@ -1256,6 +1273,13 @@ static int aoc_audio_capture_trigger(struct aoc_alsa_stream *alsa_stream, int re
 		err = aoc_mmap_capture_trigger(alsa_stream, record_cmd);
 		if (err < 0)
 			pr_err("ERR:%d in aoc mmap capture start/stop\n", err);
+	}
+
+	/* For raw capture */
+	if (alsa_stream->stream_type == RAW) {
+		err = aoc_raw_capture_trigger(alsa_stream, record_cmd);
+		if (err < 0)
+			pr_err("ERR:%d in aoc raw capture start/stop\n", err);
 	}
 
 exit:
