@@ -9141,7 +9141,7 @@ static int __alloc_contig_migrate_range(struct compact_control *cc,
 			}
 			tries = 0;
 		} else if (++tries == max_tries) {
-			ret = ret < 0 ? ret : -EBUSY;
+			ret = -EBUSY;
 			break;
 		}
 
@@ -9158,6 +9158,13 @@ static int __alloc_contig_migrate_range(struct compact_control *cc,
 		if (!ret)
 			info->nr_migrated += cc->nr_migratepages;
 	}
+
+		/*
+		 * On -ENOMEM, migrate_pages() bails out right away. It is pointless
+		 * to retry again over this error, so do the same here.
+		 */
+		if (ret == -ENOMEM)
+			break;
 
 	lru_cache_enable();
 	if (ret < 0) {
