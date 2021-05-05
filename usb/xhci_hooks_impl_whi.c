@@ -135,8 +135,11 @@ static bool is_compatible_with_usb_audio_offload(struct usb_device *udev)
 	for (i = 0; i < config->desc.bNumInterfaces; i++) {
 		desc = &config->intf_cache[i]->altsetting->desc;
 		if (desc->bInterfaceClass == USB_CLASS_AUDIO) {
-			is_audio = true;
-			break;
+			/* TODO(b/187373354): design the feature supporting rule */
+			if (udev->speed <= USB_SPEED_HIGH) {
+				is_audio = true;
+				break;
+			}
 		}
 	}
 
