@@ -28,6 +28,7 @@ enum migrate_reason {
 	MR_NUMA_MISPLACED,
 	MR_CONTIG_RANGE,
 	MR_DEMOTION,
+	MR_LONGTERM_PIN,
 	MR_TYPES
 };
 
