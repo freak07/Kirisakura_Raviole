@@ -1414,15 +1414,16 @@ int aoc_lvm_enable_get(struct aoc_chip *chip, long *enable)
 	cmd.block = 14; /* ABLOCK_DCDOFF */
 	cmd.component = 0; /* LVM */
 	cmd.key = 16; /* ASP_LVM_PARAM_ENABLE */
-	pr_debug("lvm: %s\n", enable ? "enabled" : "disabled");
 
 	/* Send cmd to AOC */
-	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+		chip);
 	if (err < 0) {
-		pr_err("ERR:%d in lvm set\n", err);
+		pr_err("ERR:%d in lvm get\n", err);
 		return err;
 	}
 
+	pr_debug("lvm: %s\n", cmd.val ? "enabled" : "disabled");
 	if (enable)
 		*enable = cmd.val;
 
@@ -1462,15 +1463,16 @@ int aoc_decoder_ref_enable_get(struct aoc_chip *chip, long *enable)
 	cmd.block = 14;
 	cmd.component = 1;
 	cmd.key = 0;
-	pr_debug("Decoder ref: %s\n", enable ? "enabled" : "disabled");
 
 	/* Send cmd to AOC */
-	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+		chip);
 	if (err < 0) {
 		pr_err("ERR:%d in decoder ref get\n", err);
 		return err;
 	}
 
+	pr_debug("decoder ref: %s\n", cmd.val ? "enabled" : "disabled");
 	if (enable)
 		*enable = cmd.val;
 
