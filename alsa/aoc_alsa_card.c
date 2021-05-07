@@ -257,6 +257,8 @@ static const struct be_param_cache default_be_params[PORT_MAX] = {
 	MK_BE_PARAMS(USB_TX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
 	MK_BE_PARAMS(INCALL_RX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
 	MK_BE_PARAMS(INCALL_TX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
+	MK_TDM_BE_PARAMS(HAPTIC_RX, SNDRV_PCM_FORMAT_S32_LE,
+			4, 48000, 4, SNDRV_PCM_FORMAT_S32_LE)
 };
 
 static struct snd_soc_dai_link_component null_component = {
@@ -945,6 +947,7 @@ MK_HW_PARAM_CTRLS(USB_RX, "USB_RX");
 MK_HW_PARAM_CTRLS(USB_TX, "USB_TX");
 MK_HW_PARAM_CTRLS(INCALL_RX, "INCALL_RX");
 MK_HW_PARAM_CTRLS(INCALL_TX, "INCALL_TX");
+MK_TDM_HW_PARAM_CTRLS(HAPTIC_RX, "HAPTIC_RX");
 
 /*
  * The resource array that have ALSA controls, ops and fixup
@@ -969,6 +972,7 @@ static const struct dai_link_res_map be_res_map[PORT_MAX] = {
 	MK_BE_RES_ITEM(USB_TX, &aoc_i2s_ops, hw_params_fixup)
 	MK_BE_RES_ITEM(INCALL_RX, &aoc_i2s_ops, hw_params_fixup)
 	MK_BE_RES_ITEM(INCALL_TX, &aoc_i2s_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(HAPTIC_RX, &aoc_tdm_ops, hw_params_fixup)
 };
 
 static void put_component(struct snd_soc_dai_link_component *component,
@@ -1155,19 +1159,19 @@ static int of_parse_one_dai(struct device_node *node, struct device *dev,
 
 	ret = of_parse_dai_cpu(dev, node, dai);
 	if (ret) {
-		pr_err("%s: fail to parse cpu %d", __func__, ret);
+		pr_err("%s: fail to parse cpu %d for %s", __func__, ret, dai->name);
 		goto exit;
 	}
 
 	ret = of_parse_dai_platform(dev, node, dai);
 	if (ret) {
-		pr_err("%s: fail to parse platform %d", __func__, ret);
+		pr_err("%s: fail to parse platform %d for %s", __func__, ret, dai->name);
 		goto exit;
 	}
 
 	ret = of_parse_dai_codec(dev, node, dai);
 	if (ret) {
-		pr_err("%s: fail to parse codec %d", __func__, ret);
+		pr_err("%s: fail to parse codec %d for %s", __func__, ret, dai->name);
 		goto exit;
 	}
 
