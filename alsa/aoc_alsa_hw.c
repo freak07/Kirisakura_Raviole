@@ -101,17 +101,16 @@ static int aoc_audio_control(const char *cmd_channel, const uint8_t *cmd,
 	struct timespec64 tv0, tv1;
 	int err, count;
 	unsigned long time_expired;
-	unsigned long flags = 0;
 
 	if (!cmd_channel || !cmd)
 		return -EINVAL;
 
-	spin_lock_irqsave(&chip->audio_lock, flags);
+	spin_lock(&chip->audio_lock);
 
 	/* Get the aoc audio control channel at runtime */
 	err = alloc_aoc_audio_service(cmd_channel, &dev, NULL, NULL);
 	if (err < 0) {
-		spin_unlock_irqrestore(&chip->audio_lock, flags);
+		spin_unlock(&chip->audio_lock);
 		return err;
 	}
 
@@ -196,7 +195,7 @@ static int aoc_audio_control(const char *cmd_channel, const uint8_t *cmd,
 exit:
 	kfree(buffer);
 	free_aoc_audio_service(cmd_channel, dev);
-	spin_unlock_irqrestore(&chip->audio_lock, flags);
+	spin_unlock(&chip->audio_lock);
 
 	return err < 1 ? -EAGAIN : 0;
 }
