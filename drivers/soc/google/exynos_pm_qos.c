@@ -921,7 +921,7 @@ void exynos_pm_qos_update_request_timeout(struct exynos_pm_qos_request *req, s32
 		exynos_pm_qos_update_target(exynos_pm_qos_array[class]->constraints,
 					    &req->node, EXYNOS_PM_QOS_UPDATE_REQ, new_value);
 
-	schedule_delayed_work(&req->work, usecs_to_jiffies(timeout_us));
+	queue_delayed_work(system_power_efficient_wq, &req->work, usecs_to_jiffies(timeout_us));
 	trace_clock_set_rate(exynos_pm_qos_array[class]->name,
 			exynos_pm_qos_request(class), raw_smp_processor_id());
 }
