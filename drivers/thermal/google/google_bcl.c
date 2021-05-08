@@ -670,7 +670,7 @@ static int google_bcl_set_soc(void *data, int low, int high)
 	mutex_lock(&bcl_dev->state_trans_lock);
 	bcl_dev->trip_low_temp = low;
 	bcl_dev->trip_high_temp = high;
-	schedule_delayed_work(&bcl_dev->bcl_irq_work[PMIC_SOC], 0);
+	queue_delayed_work(system_power_efficient_wq, &bcl_dev->bcl_irq_work[PMIC_SOC], 0);
 
 	mutex_unlock(&bcl_dev->state_trans_lock);
 	return 0;
@@ -752,7 +752,7 @@ static int battery_supply_callback(struct notifier_block *nb,
 		return NOTIFY_OK;
 
 	if (!strcmp(psy->desc->name, bcl_psy->desc->name))
-		schedule_delayed_work(&bcl_dev->bcl_irq_work[PMIC_SOC], 0);
+		queue_delayed_work(system_power_efficient_wq, &bcl_dev->bcl_irq_work[PMIC_SOC], 0);
 
 	return NOTIFY_OK;
 }
@@ -3226,7 +3226,7 @@ static void google_set_intf_pmic_work(struct work_struct *work)
 	return;
 
 retry_init_work:
-	schedule_delayed_work(&bcl_dev->init_work, msecs_to_jiffies(THERMAL_DELAY_INIT_MS));
+	queue_delayed_work(system_power_efficient_wq, &bcl_dev->init_work, msecs_to_jiffies(THERMAL_DELAY_INIT_MS));
 }
 
 static int google_set_intf_pmic(struct bcl_device *bcl_dev)
@@ -3658,7 +3658,7 @@ static int google_bcl_probe(struct platform_device *pdev)
 	ret = google_init_fs(bcl_dev);
 	if (ret < 0)
 		goto bcl_soc_probe_exit;
-	schedule_delayed_work(&bcl_dev->init_work, msecs_to_jiffies(THERMAL_DELAY_INIT_MS));
+	queue_delayed_work(system_power_efficient_wq, &bcl_dev->init_work, msecs_to_jiffies(THERMAL_DELAY_INIT_MS));
 	bcl_dev->enabled = true;
 
 	return 0;
