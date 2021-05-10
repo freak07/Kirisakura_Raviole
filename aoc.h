@@ -122,6 +122,10 @@ enum AOC_FIRMWARE_INFORMATION {
 	kAOCForceVNOM = 0x1009,
 	kAOCDisableMM = 0x100A,
 	kAOCEnableUART = 0x100B,
+	kAOCPlaybackHeapAddress = 0x100C,
+	kAOCPlaybackHeapSize = 0x100D,
+	kAOCCaptureHeapAddress = 0x100E,
+	kAOCCaptureHeapSize = 0x100F,
 };
 
 #define module_aoc_driver(__aoc_driver)                                        \
