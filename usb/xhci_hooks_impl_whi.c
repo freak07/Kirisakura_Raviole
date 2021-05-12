@@ -23,6 +23,8 @@
 
 #define SRAM_BASE 0x19000000
 #define SRAM_SIZE 0x600000
+#define DRAM_BASE 0x94000000
+#define DRAM_SIZE 0x3000000
 
 static BLOCKING_NOTIFIER_HEAD(aoc_usb_notifier_list);
 
@@ -485,10 +487,16 @@ static void usb_audio_offload_cleanup(struct xhci_hcd *xhci)
 	xhci_to_priv(xhci)->vendor_data = NULL;
 }
 
-static bool is_dma_in_sram(dma_addr_t dma)
+/* TODO: There is an issue that data missing happened when transfer ring
+ * allocated in SRAM and working w/ high-speed mode 125us data packet interval.
+ * b/188012253 to track the issue.
+ */
+static bool is_dma_for_offload(dma_addr_t dma)
 {
-	if (dma >= SRAM_BASE && dma < SRAM_BASE + SRAM_SIZE)
+	if ((dma >= SRAM_BASE && dma < SRAM_BASE + SRAM_SIZE) ||
+	    (dma >= DRAM_BASE && dma < DRAM_BASE + DRAM_SIZE))
 		return true;
+
 	return false;
 }
 
@@ -504,7 +512,7 @@ static bool is_usb_offload_enabled(struct xhci_hcd *xhci,
 
 	if (global_enabled) {
 		ep_ring = vdev->eps[ep_index].ring;
-		if (is_dma_in_sram(ep_ring->first_seg->dma))
+		if (is_dma_for_offload(ep_ring->first_seg->dma))
 			return true;
 	}
 
