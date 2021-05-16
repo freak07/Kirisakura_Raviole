@@ -280,6 +280,9 @@ int aoc_mic_hw_gain_set(struct aoc_chip *chip, int state, int gain);
 int aoc_mic_dc_blocker_get(struct aoc_chip *chip);
 int aoc_mic_dc_blocker_set(struct aoc_chip *chip, int enable);
 
+int aoc_mic_record_gain_get(struct aoc_chip *chip, long *val);
+int aoc_mic_record_gain_set(struct aoc_chip *chip, long val);
+
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute);
 int aoc_incall_capture_enable_get(struct aoc_chip *chip, int stream, long *val);
 int aoc_incall_capture_enable_set(struct aoc_chip *chip, int stream, long val);

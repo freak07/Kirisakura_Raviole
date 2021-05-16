@@ -1473,6 +1473,51 @@ int aoc_incall_mic_sink_mute_set(struct aoc_chip *chip, int param, long mute)
 	return 0;
 }
 
+/* can we get dB gain directly */
+int aoc_mic_record_gain_get(struct aoc_chip *chip, long *val)
+{
+	int err;
+	int cmd_id, block, component, key, value;
+
+	cmd_id = CMD_AUDIO_INPUT_GET_PARAMETER_ID;
+	block = 136;
+	component = 30;
+	key = 16; /* for dB */
+
+	/* Send cmd to AOC */
+	err = aoc_audio_get_parameters(cmd_id, block, component, key, &value, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in in mic record gain get\n", err);
+		return err;
+	}
+
+	if (val)
+		*val = value;
+
+	return 0;
+}
+
+int aoc_mic_record_gain_set(struct aoc_chip *chip, long val)
+{
+	int err;
+	int cmd_id, block, component, key, value;
+
+	cmd_id = CMD_AUDIO_INPUT_SET_PARAMETER_ID;
+	block = 136;
+	component = 30;
+	key = 16; /* for dB */
+	value = val; /* TODO: db value in float? */
+
+	/* Send cmd to AOC */
+	err = aoc_audio_set_parameters(cmd_id, block, component, key, value, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in mic record gain set\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
 int aoc_lvm_enable_get(struct aoc_chip *chip, long *enable)
 {
 	int err;
