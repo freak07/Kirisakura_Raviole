@@ -196,8 +196,6 @@ extern int try_to_del_timer_sync(struct timer_list *timer);
 
 #define del_singleshot_timer_sync(t) del_timer_sync(t)
 
-extern bool timer_curr_running(struct timer_list *timer);
-
 extern void init_timers(void);
 extern void run_local_timers(void);
 struct hrtimer;
