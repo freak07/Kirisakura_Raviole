@@ -47,8 +47,10 @@ static int xhci_sync_dev_ctx(struct xhci_hcd *xhci, unsigned int slot_id)
 	struct get_dev_ctx_args args;
 	u8 *dev_ctx;
 
-	if (IS_ERR_OR_NULL(xhci) ||
-	    xhci->xhc_state & XHCI_STATE_DYING ||
+	if (IS_ERR_OR_NULL(xhci))
+		return -ENODEV;
+
+	if (xhci->xhc_state & XHCI_STATE_DYING ||
 	    xhci->xhc_state & XHCI_STATE_REMOVING) {
 		xhci_err(xhci, "xHCI dying, ignore sync_dev_ctx\n");
 		return -ENODEV;
@@ -175,10 +177,9 @@ static void xhci_reset_work(struct work_struct *ws)
 	struct xhci_vendor_data *vendor_data =
 		container_of(ws, struct xhci_vendor_data, xhci_vendor_reset_ws);
 	struct xhci_hcd *xhci = vendor_data->xhci;
-	struct device *dev = xhci_to_hcd(xhci)->self.sysdev;
 
 	if (mutex_lock_interruptible(&vendor_data->lock)) {
-		dev_err(dev, "xhci reset interrupted while waiting for lock\n");
+		pr_err("xhci reset interrupted while waiting for lock\n");
 		return;
 	}
 
@@ -190,8 +191,12 @@ static void xhci_reset_work(struct work_struct *ws)
 	 * just keep going this work, because later the cleanup will also remove
 	 * hcd again.
 	 */
-	if (IS_ERR_OR_NULL(xhci) ||
-	    xhci->xhc_state & XHCI_STATE_DYING ||
+	if (IS_ERR_OR_NULL(xhci)) {
+		pr_err("xHCI null, drop offload reset work\n");
+		goto fail;
+	}
+
+	if (xhci->xhc_state & XHCI_STATE_DYING ||
 	    xhci->xhc_state & XHCI_STATE_REMOVING) {
 		xhci_err(xhci, "xHCI dying, drop offload reset work\n");
 		goto fail;
@@ -296,8 +301,12 @@ static void xhci_vendor_irq_work(struct work_struct *work)
 	unsigned int slot_id = 1;
 	int ret;
 
-	if (IS_ERR_OR_NULL(xhci) ||
-	    xhci->xhc_state & XHCI_STATE_DYING ||
+	if (IS_ERR_OR_NULL(xhci)) {
+		pr_err("xHCI null, ignore irq work\n");
+		return;
+	}
+
+	if (xhci->xhc_state & XHCI_STATE_DYING ||
 	    xhci->xhc_state & XHCI_STATE_REMOVING) {
 		xhci_err(xhci, "xHCI dying, ignore irq work\n");
 		return;
