@@ -42,6 +42,7 @@ enum usb_offload_op_mode {
 struct xhci_vendor_data {
 	struct xhci_hcd *xhci;
 
+	bool usb_accessory_enabled;
 	bool usb_audio_offload;
 
 	enum usb_offload_op_mode op_mode;

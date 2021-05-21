@@ -270,6 +270,7 @@ static int xhci_udev_notify(struct notifier_block *self, unsigned long action,
 				xhci_sync_conn_stat(USB_CONNECTED);
 			}
 		}
+		vendor_data->usb_accessory_enabled = false;
 		break;
 	case USB_DEVICE_REMOVE:
 		if (is_compatible_with_usb_audio_offload(udev) &&
@@ -277,6 +278,7 @@ static int xhci_udev_notify(struct notifier_block *self, unsigned long action,
 		    USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY) {
 			xhci_sync_conn_stat(USB_DISCONNECTED);
 		}
+		vendor_data->usb_accessory_enabled = false;
 		break;
 	}
 
@@ -528,6 +530,34 @@ static bool is_usb_offload_enabled(struct xhci_hcd *xhci,
 	return false;
 }
 
+/* TODO: there is a issue if urb is submitted but not transfer
+ * after USB connection is disconnected immediately.
+ * b/189074283 is used to track the formal solution.
+ */
+static bool is_usb_bulk_transfer_enabled(struct xhci_hcd *xhci, struct urb *urb)
+{
+	struct xhci_vendor_data *vendor_data = xhci_to_priv(xhci)->vendor_data;
+	struct usb_endpoint_descriptor *desc = &urb->ep->desc;
+	int ep_type = usb_endpoint_type(desc);
+	struct usb_ctrlrequest *cmd;
+	bool skip_bulk = false;
+
+	cmd = (struct usb_ctrlrequest *) urb->setup_packet;
+
+	if (ep_type == USB_ENDPOINT_XFER_CONTROL) {
+		if (!usb_endpoint_dir_in(desc) && cmd->bRequest == 0x35) {
+			vendor_data->usb_accessory_enabled = true;
+		} else {
+			vendor_data->usb_accessory_enabled = false;
+		}
+	}
+
+	if (ep_type == USB_ENDPOINT_XFER_BULK && !usb_endpoint_dir_in(desc))
+		skip_bulk = vendor_data->usb_accessory_enabled;
+
+	return skip_bulk;
+}
+
 static irqreturn_t queue_irq_work(struct xhci_hcd *xhci)
 {
 	struct xhci_vendor_data *vendor_data = xhci_to_priv(xhci)->vendor_data;
@@ -671,6 +701,9 @@ static bool usb_offload_skip_urb(struct xhci_hcd *xhci, struct urb *urb)
 	xhci_dbg(xhci, "ep_index=%u, ep_type=%d\n", ep_index, ep_type);
 
 	if (is_usb_offload_enabled(xhci, vdev, ep_index))
+		return true;
+
+	if (is_usb_bulk_transfer_enabled(xhci, urb))
 		return true;
 
 	return false;
