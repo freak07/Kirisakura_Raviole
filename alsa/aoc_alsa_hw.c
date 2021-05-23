@@ -79,7 +79,7 @@ static aoc_audio_stream_type[] = {
 	[6] = COMPRESS, [7] = NORMAL,  [8] = NORMAL,  [9] = MMAPED,  [10] = RAW, [11] = NORMAL,
 	[12] = NORMAL,	[13] = NORMAL, [14] = NORMAL, [15] = NORMAL, [16] = NORMAL, [17] = NORMAL,
 	[18] = INCALL,	[19] = INCALL, [20] = INCALL, [21] = INCALL, [22] = INCALL, [23] = MMAPED,
-	[24] = NORMAL,	[25] = HIFI,	[26] = HIFI,
+	[24] = NORMAL,	[25] = HIFI,	[26] = HIFI,  [27] = ANDROID_AEC,
 };
 
 int aoc_pcm_device_to_stream_type(int device)
@@ -1807,6 +1807,36 @@ static int aoc_audio_hifi_stop(struct aoc_alsa_stream *alsa_stream)
 	return err;
 }
 
+static int aoc_audio_android_aec_start(struct aoc_alsa_stream *alsa_stream)
+{
+	int cmd_id, err = 0;
+	struct aoc_chip *chip = alsa_stream->chip;
+
+	cmd_id = CMD_AUDIO_OUTPUT_SPKR_ANDROID_AEC_START_ID;
+	err = aoc_audio_control_simple_cmd(CMD_OUTPUT_CHANNEL, cmd_id, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in android aec capture start\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
+static int aoc_audio_android_aec_stop(struct aoc_alsa_stream *alsa_stream)
+{
+	int cmd_id, err = 0;
+	struct aoc_chip *chip = alsa_stream->chip;
+
+	cmd_id = CMD_AUDIO_OUTPUT_SPKR_ANDROID_AEC_STOP_ID;
+	err = aoc_audio_control_simple_cmd(CMD_OUTPUT_CHANNEL, cmd_id, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in android aec capture stop\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
 int aoc_audio_incall_start(struct aoc_alsa_stream *alsa_stream)
 {
 	int stream, err = 0;
@@ -1814,6 +1844,9 @@ int aoc_audio_incall_start(struct aoc_alsa_stream *alsa_stream)
 
 	if (alsa_stream->stream_type == HIFI)
 		return aoc_audio_hifi_start(alsa_stream);
+
+	if (alsa_stream->stream_type == ANDROID_AEC)
+		return aoc_audio_android_aec_start(alsa_stream);
 
 	/* TODO: stream number inferred by pcm device idx, pb_0:18, cap_0:20, better way needed */
 	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
@@ -1839,6 +1872,9 @@ int aoc_audio_incall_stop(struct aoc_alsa_stream *alsa_stream)
 
 	if (alsa_stream->stream_type == HIFI)
 		return aoc_audio_hifi_stop(alsa_stream);
+
+	if (alsa_stream->stream_type == ANDROID_AEC)
+		return aoc_audio_android_aec_stop(alsa_stream);
 
 	/* TODO: stream number inferred by pcm device idx, pb_0:18, cap_0:20, better way needed */
 	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {

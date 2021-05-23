@@ -57,6 +57,7 @@ static const char *const audio_service_names[] = {
 	"audio_raw",
 	"audio_hifiin",
 	"audio_hifiout",
+	"audio_android_aec",
 	NULL,
 };
 
