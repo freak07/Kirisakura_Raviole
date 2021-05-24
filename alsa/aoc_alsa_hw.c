@@ -1526,6 +1526,54 @@ int aoc_decoder_ref_enable_set(struct aoc_chip *chip, long enable)
 	return 0;
 }
 
+int aoc_compr_offload_linear_gain_get(struct aoc_chip *chip, long *val)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_DEC_CH_GAIN cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_DEC_CH_GAIN_GET_ID, sizeof(cmd));
+
+	cmd.ch_bit_mask = 0x03;
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+
+	if (err < 0) {
+		pr_err("ERR:%d in decoder ref get\n", err);
+		return err;
+	}
+
+	if (val) {
+		val[0] = cmd.ch_gains[0];
+		val[1] = cmd.ch_gains[1];
+	}
+
+	return 0;
+}
+
+int aoc_compr_offload_linear_gain_set(struct aoc_chip *chip, long *val)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_DEC_CH_GAIN cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_DEC_CH_GAIN_SET_ID, sizeof(cmd));
+
+	cmd.ch_bit_mask = 0x03;
+
+	cmd.ch_gains[0] = val[0];
+	cmd.ch_gains[1] = val[1];
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in compr offload linear gain set\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
 int aoc_sidetone_enable(struct aoc_chip *chip, int enable)
 {
 	int err = 0;

@@ -15,6 +15,9 @@
 #define CTRL_VOL_MIN 0
 #define CTRL_VOL_MAX 1000
 
+#define COMPRE_OFFLOAD_GAIN_MIN 0
+#define COMPRE_OFFLOAD_GAIN_MAX 8388608 /* 2^23 = 8388608 */
+
 /*
  * Redefined the macro from soc.h so that the control value can be negative.
  * In orginal definition, xmin can be a negative value,  but the min control
@@ -615,6 +618,40 @@ static int compr_offload_volume_set(struct snd_kcontrol *kcontrol,
 
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
+}
+
+static int aoc_compr_offload_gain_ctl_get(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_compr_offload_linear_gain_get(chip, &ucontrol->value.integer.value[0]);
+	if (err < 0)
+		pr_err("ERR:%d compr offload linear gain get fail\n", err);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int aoc_compr_offload_gain_ctl_set(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_compr_offload_linear_gain_set(chip, &ucontrol->value.integer.value[0]);
+	if (err < 0)
+		pr_err("ERR:%d compr offload linear gain set fail\n", err);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
 }
 
 static int pcm_wait_time_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
@@ -1366,6 +1403,12 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		       NULL),
 	SOC_SINGLE_EXT("Compress Offload Volume", SND_SOC_NOPM, 0, 100, 0, compr_offload_volume_get,
 		       compr_offload_volume_set),
+
+	SOC_SINGLE_RANGE_EXT_TLV_modified("Compress Offload Gain (L and R)", SND_SOC_NOPM, 0,
+					  COMPRE_OFFLOAD_GAIN_MIN, COMPRE_OFFLOAD_GAIN_MAX, 2,
+					  aoc_compr_offload_gain_ctl_get,
+					  aoc_compr_offload_gain_ctl_set, NULL),
+
 	SOC_SINGLE_EXT("Voice Call Rx Volume", SND_SOC_NOPM, 0, 100, 0, NULL,
 		       NULL),
 	SOC_SINGLE_EXT("VOIP Rx Volume", SND_SOC_NOPM, 0, 100, 0, NULL, NULL),

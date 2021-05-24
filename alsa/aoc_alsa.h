@@ -332,6 +332,8 @@ int aoc_compr_offload_get_io_samples(struct aoc_alsa_stream *alsa_stream);
 int aoc_compr_offload_flush_buffer(struct aoc_alsa_stream *alsa_stream);
 int aoc_compr_pause(struct aoc_alsa_stream *alsa_stream);
 int aoc_compr_resume(struct aoc_alsa_stream *alsa_stream);
+int aoc_compr_offload_linear_gain_get(struct aoc_chip *chip, long *val);
+int aoc_compr_offload_linear_gain_set(struct aoc_chip *chip, long *val);
 
 int aoc_mic_loopback(struct aoc_chip *chip, int enable);
 
