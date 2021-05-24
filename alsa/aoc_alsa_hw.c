@@ -90,6 +90,10 @@ int aoc_pcm_device_to_stream_type(int device)
 	return aoc_audio_stream_type[device];
 }
 
+static bool aoc_pcm_is_mmap_raw(struct aoc_alsa_stream *alsa_stream)
+{
+	return (alsa_stream->stream_type == MMAPED || alsa_stream->stream_type == RAW);
+}
 /*
  * Sending commands to AoC for setting parameters and start/stop the streams
  */
@@ -1097,7 +1101,8 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 	/* TODO: more checks on mic id */
 	cmd.pdm_mask = 0; /* Default to usb/bt mic capturing */
 	if (chip->audio_capture_mic_source == BUILTIN_MIC) {
-		n_mic = (chip->mic_spatial_module_enable) ? N_MIC_IN_SPATIAL_MODULE : channels;
+		n_mic = (chip->mic_spatial_module_enable && !aoc_pcm_is_mmap_raw(alsa_stream))
+				 ? N_MIC_IN_SPATIAL_MODULE : channels;
 		for (i = 0; i < n_mic; i++) {
 			mic_id = chip->buildin_mic_id_list[i];
 			if (mic_id != -1) {
@@ -1154,7 +1159,7 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 
 	cmd.requested_format.chan = channels;
 
-	if (chip->mic_spatial_module_enable)
+	if (chip->mic_spatial_module_enable && !aoc_pcm_is_mmap_raw(alsa_stream))
 		cmd.mic_process_index = AP_MIC_PROCESS_SPATIAL;
 	else
 		cmd.mic_process_index = AP_MIC_PROCESS_RAW;
@@ -2063,7 +2068,7 @@ int aoc_audio_set_params(struct aoc_alsa_stream *alsa_stream, uint32_t channels,
 		}
 
 		/* To deal with recording with spatial module enabled */
-		if (chip->mic_spatial_module_enable) {
+		if (chip->mic_spatial_module_enable && !aoc_pcm_is_mmap_raw(alsa_stream)) {
 			err = aoc_audio_capture_spatial_module_trigger(chip, START);
 			if (err < 0)
 				pr_err("ERR:%d mic proc spatial module failed to start!\n", err);
@@ -2682,7 +2687,7 @@ int aoc_audio_close(struct aoc_alsa_stream *alsa_stream)
 
 	/* To deal with recording with spatial module enabled */
 	if (substream && substream->stream == SNDRV_PCM_STREAM_CAPTURE &&
-	    chip->mic_spatial_module_enable) {
+	    chip->mic_spatial_module_enable && !aoc_pcm_is_mmap_raw(alsa_stream)) {
 		err = aoc_audio_capture_spatial_module_trigger(chip, STOP);
 		if (err < 0)
 			pr_err("ERR:%d mic proc spatial module failed to stop!\n", err);
