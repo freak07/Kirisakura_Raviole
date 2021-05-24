@@ -325,7 +325,7 @@ static int snd_aoc_pcm_prepare(struct snd_soc_component *component,
 	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
 	struct aoc_service_dev *dev = alsa_stream->dev;
 	struct aoc_chip *chip = alsa_stream->chip;
-	int channels, source_mode, err;
+	int channels, source_mode, err, avail;
 
 	aoc_timer_stop_sync(alsa_stream);
 
@@ -381,6 +381,15 @@ static int snd_aoc_pcm_prepare(struct snd_soc_component *component,
 
 	pr_debug("buffer_size=%d, period_size=%d pos=%d frame_bits=%d\n", alsa_stream->buffer_size,
 		 alsa_stream->period_size, alsa_stream->pos, runtime->frame_bits);
+
+	/* Advance the write ptr in the DRAM ring buffer for mmap-based playback */
+	if (alsa_stream->stream_type == MMAPED &&
+	    alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		avail = aoc_ring_bytes_available_to_write(dev->service, AOC_DOWN);
+		if (!aoc_service_advance_write_index(dev->service, AOC_DOWN, avail)) {
+			dev_err(&(dev->dev), "ERR: in advancing pcm playback writer ptr\n");
+		}
+	}
 
 out:
 	mutex_unlock(&chip->audio_mutex);
