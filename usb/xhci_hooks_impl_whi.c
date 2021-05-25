@@ -369,7 +369,7 @@ out:
 
 static int xhci_vendor_init_irq_workqueue(struct xhci_vendor_data *vendor_data)
 {
-	vendor_data->irq_wq = alloc_workqueue("xhci_vendor_irq_work", 0, 0);
+	vendor_data->irq_wq = alloc_workqueue("xhci_vendor_irq_work", WQ_UNBOUND, 0);
 
 	if (!vendor_data->irq_wq) {
 		return -ENOMEM;
