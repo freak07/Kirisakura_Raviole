@@ -627,6 +627,51 @@ int aoc_incall_playback_enable_set(struct aoc_chip *chip, int stream, long val)
 	return 0;
 }
 
+int aoc_incall_playback_mic_channel_get(struct aoc_chip *chip, int stream, long *val)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_INCALL_MUSIC_CHAN cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_GET_INCALL_MUSIC_CHAN_ID, sizeof(cmd));
+
+	cmd.ring = stream;
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in get incall music stream %d mic channel\n", err, stream);
+		return err;
+	}
+
+	if (val)
+		*val = cmd.channel;
+
+	pr_info("incall playback stream %d: mic channel get :%d\n", stream, cmd.channel);
+
+	return 0;
+}
+
+int aoc_incall_playback_mic_channel_set(struct aoc_chip *chip, int stream, long val)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_INCALL_MUSIC_CHAN cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_SET_INCALL_MUSIC_CHAN_ID, sizeof(cmd));
+	cmd.ring = stream;
+	cmd.channel = val;
+
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in incall playback stream %d: mic channel set as %d\n", err, stream,
+		       cmd.channel);
+		return err;
+	}
+
+	pr_info("incall playback stream %d: mic channel :%d set\n", stream, cmd.channel);
+
+	return 0;
+}
+
 /* TODO: temporary solution for mic muting, has to be revised using DSP modules instead of mixer */
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute)
 {

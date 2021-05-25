@@ -392,6 +392,46 @@ static int incall_mic_sink_mute_ctl_get(struct snd_kcontrol *kcontrol,
 	return err;
 }
 
+static int incall_playback_mic_channel_ctl_set(struct snd_kcontrol *kcontrol,
+					       struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc = (struct soc_mixer_control *)kcontrol->private_value;
+	int stream = mc->shift;
+	int val, err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	val = ucontrol->value.integer.value[0];
+	err = aoc_incall_playback_mic_channel_set(chip, stream, val);
+	if (err < 0)
+		pr_err("ERR:%d incall playback mic source set fail for ring %d: mic %d\n", err,
+		       stream, val);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
+static int incall_playback_mic_channel_ctl_get(struct snd_kcontrol *kcontrol,
+					       struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc = (struct soc_mixer_control *)kcontrol->private_value;
+	int stream = mc->shift;
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	err = aoc_incall_playback_mic_channel_get(chip, stream, &ucontrol->value.integer.value[0]);
+	if (err < 0)
+		pr_err("ERR:%d incall playback mic source get fail for ring %d\n", err, stream);
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
 static int lvm_enable_ctl_set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
 	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
@@ -1355,6 +1395,13 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		       incall_mic_sink_mute_ctl_set),
 	SOC_SINGLE_EXT("Incall Sink Mute", SND_SOC_NOPM, 1, 1, 0, incall_mic_sink_mute_ctl_get,
 		       incall_mic_sink_mute_ctl_set),
+
+	/* Incall playback0 and playback1 mic source choice */
+	SOC_SINGLE_EXT("Incall Playback0 Mic Channel", SND_SOC_NOPM, 0, 2, 0, incall_playback_mic_channel_ctl_get,
+		       incall_playback_mic_channel_ctl_set),
+	SOC_SINGLE_EXT("Incall Playback1 Mic Channel", SND_SOC_NOPM, 1, 2, 0, incall_playback_mic_channel_ctl_get,
+		       incall_playback_mic_channel_ctl_set),
+
 
 	/* LVM enable 1/0 for comp offload */
 	SOC_SINGLE_EXT("LVM Enable", SND_SOC_NOPM, 0, 1, 0,
