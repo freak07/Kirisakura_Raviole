@@ -96,6 +96,9 @@
 
 #define NULL_PATH -1
 
+/* Define trigger aoc watchdog reason */
+#define ALSA_CTL_TIMEOUT "alsa_ctl_timeout"
+
 /* TODO: Copied from AoC repo and will be removed */
 enum bluetooth_mode {
 	AHS_BT_MODE_UNCONFIGURED = 0,

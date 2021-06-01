@@ -2226,6 +2226,24 @@ err_coredump:
 	else
 		dev_info(prvdata->dev, "aoc subsystem restart succeeded\n");
 }
+
+void aoc_trigger_watchdog(const char *reason)
+{
+	struct aoc_prvdata *prvdata;
+
+	if (!aoc_platform_device)
+		return;
+
+	prvdata = platform_get_drvdata(aoc_platform_device);
+	if (!prvdata)
+		return;
+
+	if (work_busy(&prvdata->watchdog_work))
+		return;
+
+	reset_store(prvdata->dev, NULL, reason, strlen(reason));
+}
+EXPORT_SYMBOL_GPL(aoc_trigger_watchdog);
 #endif
 
 static struct dma_heap *aoc_create_dma_buf_heap(struct aoc_prvdata *prvdata, const char *name,

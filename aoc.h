@@ -76,6 +76,7 @@ typedef int (*aoc_map_handler)(u32 handle, phys_addr_t p, size_t size,
 void aoc_set_map_handler(struct aoc_service_dev *dev, aoc_map_handler handler,
 			 void *ctx);
 void aoc_remove_map_handler(struct aoc_service_dev *dev);
+void aoc_trigger_watchdog(const char *reason);
 
 #define AOC_SERVICE_NAME_LENGTH 32
 

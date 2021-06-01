@@ -179,6 +179,7 @@ static int aoc_audio_control(const char *cmd_channel, const uint8_t *cmd,
 		       CMD_CHANNEL(dev), ((struct CMD_HDR *)cmd)->id);
 		print_hex_dump(KERN_ERR, ALSA_AOC_CMD " :mem ",
 			       DUMP_PREFIX_OFFSET, 16, 1, cmd, cmd_size, false);
+		aoc_trigger_watchdog(ALSA_CTL_TIMEOUT);
 	} else if (err == 4) {
 		pr_err(ALSA_AOC_CMD " ERR:%#x - cmd [%s] id %#06x\n",
 		       *(uint32_t *)buffer, CMD_CHANNEL(dev),
