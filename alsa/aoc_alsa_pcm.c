@@ -16,6 +16,30 @@
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
 
+static void aoc_pcm_reset_handler(aoc_aud_service_event_t evnt, void *cookies)
+{
+	struct aoc_alsa_stream *alsa_stream = (struct aoc_alsa_stream *)cookies;
+
+	if (!alsa_stream || !alsa_stream->substream) {
+		pr_err("%s: no active substream pointer\n", __func__);
+		return;
+	}
+
+	if (evnt == AOC_SERVICE_EVENT_DOWN) {
+		pr_debug("%s: AoC service is removed, wakeup sleep thread\n", __func__);
+		/*
+		 * We don't hold stream lock here before change stream's state because of avoiding
+		 * deadlock on stream lock and chip->audio_lock. The tasks without checking xrun
+		 * still return error since AOC isn't ready. Most of alsa stream tasks from
+		 * user-space will be returned by xrun state.
+		 */
+		alsa_stream->substream->runtime->status->state = SNDRV_PCM_STATE_XRUN;
+		wake_up(&alsa_stream->substream->runtime->sleep);
+		wake_up(&alsa_stream->substream->runtime->tsleep);
+		return;
+	}
+}
+
 /* Timer interrupt to read the ring buffer reader/writer positions */
 void aoc_timer_start(struct aoc_alsa_stream *alsa_stream)
 {
@@ -165,17 +189,18 @@ static int snd_aoc_pcm_open(struct snd_soc_component *component,
 	pr_debug("pcm device open (%d)\n", idx);
 	pr_debug("chip open (%d)\n", chip->opened);
 
-	/* Find the corresponding aoc audio service */
-	err = alloc_aoc_audio_service(rtd->dai_link->name, &dev, NULL, NULL);
-	if (err < 0) {
-		pr_err("ERR:%d fail to alloc service for %s", err, rtd->dai_link->name);
-		goto out;
-	}
-
 	alsa_stream = kzalloc(sizeof(struct aoc_alsa_stream), GFP_KERNEL);
 	if (alsa_stream == NULL) {
 		err = -ENOMEM;
 		pr_err("ERR: fail to alloc alsa_stream for %s", rtd->dai_link->name);
+		goto out;
+	}
+
+	/* Find the corresponding aoc audio service */
+	err = alloc_aoc_audio_service(rtd->dai_link->name, &dev, aoc_pcm_reset_handler,
+			alsa_stream);
+	if (err < 0) {
+		pr_err("ERR:%d fail to alloc service for %s", err, rtd->dai_link->name);
 		goto out;
 	}
 
