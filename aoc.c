@@ -43,6 +43,7 @@
 #include <linux/uio.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
+#include <linux/mutex.h>
 #include <soc/google/acpm_ipc_ctrl.h>
 #include <soc/google/exynos-cpupm.h>
 
@@ -79,6 +80,8 @@
 
 #define AOC_CP_APERTURE_START_OFFSET 0x5FDF80
 #define AOC_CP_APERTURE_END_OFFSET   0x5FFFFF
+
+static DEFINE_MUTEX(aoc_service_lock);
 
 enum AOC_FW_STATE {
 	AOC_STATE_OFFLINE = 0,
@@ -1913,9 +1916,12 @@ static void aoc_did_become_online(struct work_struct *work)
 		}
 	}
 
+	mutex_lock(&aoc_service_lock);
+
 	prvdata->services = devm_kcalloc(prvdata->dev, s, sizeof(struct aoc_service_dev *), GFP_KERNEL);
 	if (!prvdata->services) {
 		dev_err(prvdata->dev, "failed to allocate service array\n");
+	        mutex_unlock(&aoc_service_lock);
 		return;
 	}
 
@@ -1930,10 +1936,18 @@ static void aoc_did_become_online(struct work_struct *work)
 
 	for (i = 0; i < s; i++)
 		device_register(&prvdata->services[i]->dev);
+
+	mutex_unlock(&aoc_service_lock);
 }
 
 static void aoc_take_offline(struct aoc_prvdata *prvdata)
 {
+	mutex_lock(&aoc_service_lock);
+
+	/* check if devices/services are ready */
+	if (aoc_state == AOC_STATE_OFFLINE || !prvdata->services)
+		goto exit;
+
 	pr_notice("taking aoc offline\n");
 	aoc_state = AOC_STATE_OFFLINE;
 
@@ -1945,6 +1959,8 @@ static void aoc_take_offline(struct aoc_prvdata *prvdata)
 	devm_kfree(prvdata->dev, prvdata->services);
 	prvdata->services = NULL;
 	prvdata->total_services = 0;
+exit:
+	mutex_unlock(&aoc_service_lock);
 }
 
 static void aoc_process_services(struct aoc_prvdata *prvdata, int offset)
