@@ -236,6 +236,9 @@ static int aoc_itmon_notifier(struct notifier_block *nb, unsigned long action,
 	struct itmon_notifier *itmon_info = nb_data;
 
 	prvdata = container_of(nb, struct aoc_prvdata, itmon_nb);
+	if (itmon_info->port && (strncmp(itmon_info->port, "AOC", sizeof("AOC") - 1) == 0))
+		return NOTIFY_STOP;
+
 	if (itmon_info->target_addr == 0) {
 		dev_err(prvdata->dev,
 			"Possible repro of b/174577569, please upload a bugreport and /data/vendor/ssrdump to that bug\n");
