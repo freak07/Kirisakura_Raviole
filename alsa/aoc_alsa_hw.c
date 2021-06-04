@@ -23,15 +23,15 @@ static int cmd_count;
  * by sink-associated devices such as spker, headphone, bt, usb, mode
  */
 static aoc_audio_sink[] = {
-	[PORT_I2S_0_RX] = ASNK_HEADPHONE, [PORT_I2S_0_TX] = -1,
-	[PORT_I2S_1_RX] = ASNK_BT,        [PORT_I2S_1_TX] = -1,
-	[PORT_I2S_2_RX] = ASNK_USB,       [PORT_I2S_2_TX] = -1,
-	[PORT_TDM_0_RX] = ASNK_SPEAKER,   [PORT_TDM_0_TX] = -1,
-	[PORT_TDM_1_RX] = ASNK_MODEM,     [PORT_TDM_1_TX] = -1,
-	[PORT_USB_RX] = ASNK_USB,         [PORT_USB_TX] = -1,
-	[PORT_BT_RX] = ASNK_BT,           [PORT_BT_TX] = -1,
+	[PORT_I2S_0_RX] = SINK_HEADPHONE, [PORT_I2S_0_TX] = -1,
+	[PORT_I2S_1_RX] = SINK_BT,        [PORT_I2S_1_TX] = -1,
+	[PORT_I2S_2_RX] = SINK_USB,       [PORT_I2S_2_TX] = -1,
+	[PORT_TDM_0_RX] = SINK_SPEAKER,   [PORT_TDM_0_TX] = -1,
+	[PORT_TDM_1_RX] = SINK_MODEM,     [PORT_TDM_1_TX] = -1,
+	[PORT_USB_RX] = SINK_USB,         [PORT_USB_TX] = -1,
+	[PORT_BT_RX] = SINK_BT,           [PORT_BT_TX] = -1,
 	[PORT_INCALL_RX] = -1,            [PORT_INCALL_TX] = -1,
-	[PORT_INTERNAL_MIC] = -1,	  [PORT_HAPTIC_RX] = ASNK_SPEAKER,
+	[PORT_INTERNAL_MIC] = -1,	  [PORT_HAPTIC_RX] = SINK_SPEAKER,
 };
 
 static int hw_id_to_sink(int hw_idx)
@@ -806,8 +806,8 @@ int aoc_get_sink_mode(struct aoc_chip *chip, int sink)
 int aoc_set_sink_mode(struct aoc_chip *chip, int sink, int mode)
 {
 	int err;
-	struct CMD_AUDIO_OUTPUT_SINK cmd;
-	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SINK_ID, sizeof(cmd));
+	struct CMD_AUDIO_OUTPUT_SINK2 cmd;
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_SINK2_ID, sizeof(cmd));
 
 	cmd.sink = sink;
 	cmd.mode = mode;
@@ -936,7 +936,7 @@ static int aoc_audio_path_bind(int src, int dst, int cmd, struct aoc_chip *chip)
 
 	pr_info("%s: src:%d - sink:%d!\n", cmd == START ? "bind" : "unbind", src, dst);
 
-	AocCmdHdrSet(&(bind.parent), CMD_AUDIO_OUTPUT_BIND_ID, sizeof(bind));
+	AocCmdHdrSet(&(bind.parent), CMD_AUDIO_OUTPUT_BIND2_ID, sizeof(bind));
 	bind.bind = (cmd == START) ? 1 : 0;
 	bind.src = src;
 	bind.dst = dst;
@@ -1673,7 +1673,7 @@ int aoc_sidetone_enable(struct aoc_chip *chip, int enable)
 	int src, dest;
 
 	src = SIDETONE;
-	dest = ASNK_SPEAKER;
+	dest = SINK_SPEAKER;
 
 	pr_info("sidetone: %s \n", (enable) ? "Enabled" : "Disabled");
 
