@@ -45,7 +45,9 @@
 #include <linux/workqueue.h>
 #include <linux/mutex.h>
 #include <soc/google/acpm_ipc_ctrl.h>
+#include <soc/google/debug-snapshot.h>
 #include <soc/google/exynos-cpupm.h>
+#include <soc/google/exynos-pmu-if.h>
 
 #include <linux/gsa/gsa_aoc.h>
 
@@ -1307,8 +1309,13 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 	const int aoc_watchdog_value_ssr = 4100 * 100;
 	const int aoc_reset_timeout_ms = 1000;
 	const u32 aoc_watchdog_control_ssr = 0x2F;
+	const unsigned int custom_in_offset = 0x3AC4;
+	const unsigned int custom_out_offset = 0x3AC0;
 	int rc;
 	void __iomem *pcu;
+	unsigned int custom_in;
+	unsigned int custom_out;
+	int ret;
 
 	pcu = aoc_sram_translate(AOC_PCU_BASE);
 	if (!pcu)
@@ -1335,7 +1342,15 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 	dev_info(prvdata->dev, "waiting for aoc reset to finish\n");
 	if (wait_event_timeout(prvdata->aoc_reset_wait_queue, prvdata->aoc_reset_done,
 			       aoc_reset_timeout_ms) == 0) {
-		dev_err(prvdata->dev, "timed out waiting for aoc reset\n");
+		ret = exynos_pmu_read(custom_out_offset, &custom_out);
+		dev_err(prvdata->dev,
+				"AoC reset timeout custom_out=%d, ret=%d\n", custom_out, ret);
+		ret = exynos_pmu_read(custom_in_offset, &custom_in);
+		dev_err(prvdata->dev,
+				"AoC reset timeout custom_in=%d, ret=%d\n", custom_in, ret);
+
+		/* Trigger acpm ramdump since we timed out the aoc reset request */
+		dbg_snapshot_emergency_reboot("AoC Restart timed out");
 		return -ETIMEDOUT;
 	}
 	dev_info(prvdata->dev, "aoc reset finished\n");
