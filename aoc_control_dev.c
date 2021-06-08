@@ -429,11 +429,11 @@ static int aoc_control_remove(struct aoc_service_dev *sd)
 
 	pr_debug("remove service with name %s\n", dev_name(dev));
 
-	aoc_remove_map_handler(prvdata->service);
-
 	device_remove_groups(dev, aoc_stats_groups);
 
 	cancel_work_sync(&prvdata->discovery_work);
+
+	aoc_remove_map_handler(prvdata->service);
 
 	return 0;
 }

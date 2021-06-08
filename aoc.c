@@ -2120,10 +2120,12 @@ static void aoc_pheap_alloc_cb(struct samsung_dma_buffer *buffer, void *ctx)
 	phys = aoc_dram_translate_to_aoc(prvdata, phys);
 	size = sg->sgl[0].length;
 
+	mutex_lock(&aoc_service_lock);
 	if (prvdata->map_handler) {
 		prvdata->map_handler((u64)buffer->priv, phys, size, true,
 				     prvdata->map_handler_ctx);
 	}
+	mutex_unlock(&aoc_service_lock);
 }
 
 static void aoc_pheap_free_cb(struct samsung_dma_buffer *buffer, void *ctx)
@@ -2144,10 +2146,12 @@ static void aoc_pheap_free_cb(struct samsung_dma_buffer *buffer, void *ctx)
 	phys = aoc_dram_translate_to_aoc(prvdata, phys);
 	size = sg->sgl[0].length;
 
+	mutex_lock(&aoc_service_lock);
 	if (prvdata->map_handler) {
 		prvdata->map_handler((u64)buffer->priv, phys, size, false,
 				     prvdata->map_handler_ctx);
 	}
+	mutex_unlock(&aoc_service_lock);
 }
 
 #ifdef AOC_JUNO
