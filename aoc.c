@@ -76,7 +76,7 @@
 
 #define SENSOR_DIRECT_HEAP_SIZE SZ_4M
 #define PLAYBACK_HEAP_SIZE SZ_16K
-#define CAPTURE_HEAP_SIZE SZ_16K
+#define CAPTURE_HEAP_SIZE SZ_64K
 
 #define MAX_RESET_REASON_STRING_LEN 128UL
 
@@ -697,6 +697,9 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 	u32 enable_uart = prvdata->enable_uart_tx;
 	u32 board_id  = AOC_FWDATA_BOARDID_DFL;
 	u32 board_rev = AOC_FWDATA_BOARDREV_DFL;
+	phys_addr_t sensor_heap = aoc_dram_translate_to_aoc(prvdata, prvdata->sensor_heap_base);
+	phys_addr_t playback_heap = aoc_dram_translate_to_aoc(prvdata, prvdata->audio_playback_heap_base);
+	phys_addr_t capture_heap = aoc_dram_translate_to_aoc(prvdata, prvdata->audio_capture_heap_base);
 	unsigned int i;
 
 	struct aoc_fw_data fw_data[] = {
@@ -705,11 +708,11 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		{ .key = kAOCSRAMRepaired, .value = sram_was_repaired },
 		{ .key = kAOCCarveoutAddress, .value = carveout_base},
 		{ .key = kAOCCarveoutSize, .value = carveout_size},
-		{ .key = kAOCSensorDirectHeapAddress, .value = prvdata->sensor_heap_base},
+		{ .key = kAOCSensorDirectHeapAddress, .value = sensor_heap},
 		{ .key = kAOCSensorDirectHeapSize, .value = SENSOR_DIRECT_HEAP_SIZE },
-		{ .key = kAOCPlaybackHeapAddress, .value = prvdata->audio_playback_heap_base},
+		{ .key = kAOCPlaybackHeapAddress, .value = playback_heap},
 		{ .key = kAOCPlaybackHeapSize, .value = PLAYBACK_HEAP_SIZE },
-		{ .key = kAOCCaptureHeapAddress, .value = prvdata->audio_capture_heap_base},
+		{ .key = kAOCCaptureHeapAddress, .value = capture_heap},
 		{ .key = kAOCCaptureHeapSize, .value = CAPTURE_HEAP_SIZE },
 		{ .key = kAOCForceVNOM, .value = force_vnom },
 		{ .key = kAOCDisableMM, .value = disable_mm },
