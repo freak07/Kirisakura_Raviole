@@ -386,8 +386,7 @@ static int aoc_alsa_remove(struct aoc_service_dev *dev)
 	 * We should block the remove function until the ref
 	 * is 0, otherwise, it might cause "use after free".
 	 */
-	wait_event(service_lists[i].wait_head,
-		   service_lists[i].ref == 0);
+	wait_event(service_lists[i].wait_head, service_lists[i].ref == 0);
 
 	pr_info("alsa wait %s done\n", dev_name(&dev->dev));
 	spin_lock(&service_lock);

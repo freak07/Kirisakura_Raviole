@@ -43,6 +43,8 @@
 #define CMD_CHANNEL(_dev)                                                      \
 	(strcmp(dev_name(&(_dev)->dev), CMD_INPUT_CHANNEL)) ? "output" : "input"
 
+#define AOC_MMAP_PLAYBACK_SERVICE "audio_playback0"
+#define AOC_MMAP_CAPTURE_SERVICE "audio_capture1"
 #define AOC_COMPR_OFFLOAD_SERVICE "audio_playback6"
 #define AOC_COMPR_OFFLOAD_EOF_SERVICE "decoder_eof"
 
@@ -238,6 +240,8 @@ struct aoc_alsa_stream {
 	int open;
 	int running;
 	int draining;
+
+	struct work_struct free_aoc_service_work;
 };
 
 void aoc_timer_start(struct aoc_alsa_stream *alsa_stream);
