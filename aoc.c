@@ -857,7 +857,6 @@ phys_addr_t aoc_service_ring_base_phys_addr(struct aoc_service_dev *dev, aoc_dir
 
 	pr_debug("aoc DRAM starts at (virt): %pK, (phys):%llx, ring base (virt): %pK",
 		 aoc_dram_virt_mapping, prvdata->dram_resource.start, ring_base);
-	print_hex_dump(KERN_DEBUG, "aoc-mem ", DUMP_PREFIX_ADDRESS, 16, 1, ring_base, 16384, false);
 
 	if (out_size)
 		*out_size = aoc_service_ring_size(service, dir);
