@@ -34,16 +34,35 @@ struct ptrauth_keys_user {
 	struct ptrauth_key apga;
 };
 
-struct ptrauth_keys_kernel {
-	struct ptrauth_key apia;
-};
-
 #define __ptrauth_key_install_nosync(k, v)			\
 do {								\
 	struct ptrauth_key __pki_v = (v);			\
 	write_sysreg_s(__pki_v.lo, SYS_ ## k ## KEYLO_EL1);	\
 	write_sysreg_s(__pki_v.hi, SYS_ ## k ## KEYHI_EL1);	\
 } while (0)
+
+#ifdef CONFIG_ARM64_PTR_AUTH_KERNEL
+
+struct ptrauth_keys_kernel {
+	struct ptrauth_key apia;
+};
+
+static __always_inline void ptrauth_keys_init_kernel(struct ptrauth_keys_kernel *keys)
+{
+	if (system_supports_address_auth())
+		get_random_bytes(&keys->apia, sizeof(keys->apia));
+}
+
+static __always_inline void ptrauth_keys_switch_kernel(struct ptrauth_keys_kernel *keys)
+{
+	if (!system_supports_address_auth())
+		return;
+
+	__ptrauth_key_install_nosync(APIA, keys->apia);
+	isb();
+}
+
+#endif /* CONFIG_ARM64_PTR_AUTH_KERNEL */
 
 static inline void ptrauth_keys_install_user(struct ptrauth_keys_user *keys)
 {
@@ -70,21 +89,6 @@ static inline void ptrauth_keys_init_user(struct ptrauth_keys_user *keys)
 		get_random_bytes(&keys->apga, sizeof(keys->apga));
 
 	ptrauth_keys_install_user(keys);
-}
-
-static __always_inline void ptrauth_keys_init_kernel(struct ptrauth_keys_kernel *keys)
-{
-	if (system_supports_address_auth())
-		get_random_bytes(&keys->apia, sizeof(keys->apia));
-}
-
-static __always_inline void ptrauth_keys_switch_kernel(struct ptrauth_keys_kernel *keys)
-{
-	if (!system_supports_address_auth())
-		return;
-
-	__ptrauth_key_install_nosync(APIA, keys->apia);
-	isb();
 }
 
 extern int ptrauth_prctl_reset_keys(struct task_struct *tsk, unsigned long arg);
@@ -124,11 +128,6 @@ static __always_inline void ptrauth_enable(void)
 #define ptrauth_thread_switch_user(tsk)                                        \
 	ptrauth_keys_install_user(&(tsk)->thread.keys_user)
 
-#define ptrauth_thread_init_kernel(tsk)					\
-	ptrauth_keys_init_kernel(&(tsk)->thread.keys_kernel)
-#define ptrauth_thread_switch_kernel(tsk)				\
-	ptrauth_keys_switch_kernel(&(tsk)->thread.keys_kernel)
-
 #else /* CONFIG_ARM64_PTR_AUTH */
 #define ptrauth_enable()
 #define ptrauth_prctl_reset_keys(tsk, arg)	(-EINVAL)
@@ -137,9 +136,17 @@ static __always_inline void ptrauth_enable(void)
 #define ptrauth_strip_insn_pac(lr)	(lr)
 #define ptrauth_suspend_exit()
 #define ptrauth_thread_init_user()
-#define ptrauth_thread_init_kernel(tsk)
 #define ptrauth_thread_switch_user(tsk)
-#define ptrauth_thread_switch_kernel(tsk)
 #endif /* CONFIG_ARM64_PTR_AUTH */
+
+#ifdef CONFIG_ARM64_PTR_AUTH_KERNEL
+#define ptrauth_thread_init_kernel(tsk)					\
+	ptrauth_keys_init_kernel(&(tsk)->thread.keys_kernel)
+#define ptrauth_thread_switch_kernel(tsk)				\
+	ptrauth_keys_switch_kernel(&(tsk)->thread.keys_kernel)
+#else
+#define ptrauth_thread_init_kernel(tsk)
+#define ptrauth_thread_switch_kernel(tsk)
+#endif /* CONFIG_ARM64_PTR_AUTH_KERNEL */
 
 #endif /* __ASM_POINTER_AUTH_H */
