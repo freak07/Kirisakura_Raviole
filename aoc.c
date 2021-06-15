@@ -1310,6 +1310,7 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 	/* 4100 * 0.244 us * 100 = 100 ms */
 	const int aoc_watchdog_value_ssr = 4100 * 100;
 	const int aoc_reset_timeout_ms = 1000;
+	const int aoc_reset_tries = 3;
 	const u32 aoc_watchdog_control_ssr = 0x2F;
 	const unsigned int custom_in_offset = 0x3AC4;
 	const unsigned int custom_out_offset = 0x3AC0;
@@ -1318,6 +1319,8 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 	unsigned int custom_in;
 	unsigned int custom_out;
 	int ret;
+	bool aoc_reset_successful;
+	int i;
 
 	pcu = aoc_sram_translate(AOC_PCU_BASE);
 	if (!pcu)
@@ -1331,26 +1334,36 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 		return rc;
 	}
 
-	dev_info(prvdata->dev, "resetting aoc\n");
-	writel(AOC_PCU_WATCHDOG_KEY_UNLOCK, pcu + AOC_PCU_WATCHDOG_KEY_OFFSET);
-	if ((readl(pcu + AOC_PCU_WATCHDOG_CONTROL_OFFSET) &
-			AOC_PCU_WATCHDOG_CONTROL_KEY_ENABLED_MASK) == 0) {
-		dev_err(prvdata->dev, "unlock aoc watchdog failed\n");
-		return -EINVAL;
-	}
-	writel(aoc_watchdog_value_ssr, pcu + AOC_PCU_WATCHDOG_VALUE_OFFSET);
-	writel(aoc_watchdog_control_ssr, pcu + AOC_PCU_WATCHDOG_CONTROL_OFFSET);
+	aoc_reset_successful = false;
+	for (i = 0; i < aoc_reset_tries; i++) {
+		dev_info(prvdata->dev, "resetting aoc\n");
+		writel(AOC_PCU_WATCHDOG_KEY_UNLOCK, pcu + AOC_PCU_WATCHDOG_KEY_OFFSET);
+		if ((readl(pcu + AOC_PCU_WATCHDOG_CONTROL_OFFSET) &
+				AOC_PCU_WATCHDOG_CONTROL_KEY_ENABLED_MASK) == 0) {
+			dev_err(prvdata->dev, "unlock aoc watchdog failed\n");
+		}
+		writel(aoc_watchdog_value_ssr, pcu + AOC_PCU_WATCHDOG_VALUE_OFFSET);
+		writel(aoc_watchdog_control_ssr, pcu + AOC_PCU_WATCHDOG_CONTROL_OFFSET);
 
-	dev_info(prvdata->dev, "waiting for aoc reset to finish\n");
-	if (wait_event_timeout(prvdata->aoc_reset_wait_queue, prvdata->aoc_reset_done,
-			       aoc_reset_timeout_ms) == 0) {
-		ret = exynos_pmu_read(custom_out_offset, &custom_out);
-		dev_err(prvdata->dev,
+		dev_info(prvdata->dev, "waiting for aoc reset to finish\n");
+		if (wait_event_timeout(prvdata->aoc_reset_wait_queue, prvdata->aoc_reset_done,
+				       aoc_reset_timeout_ms) == 0) {
+			ret = exynos_pmu_read(custom_out_offset, &custom_out);
+			dev_err(prvdata->dev,
 				"AoC reset timeout custom_out=%d, ret=%d\n", custom_out, ret);
-		ret = exynos_pmu_read(custom_in_offset, &custom_in);
-		dev_err(prvdata->dev,
+			ret = exynos_pmu_read(custom_in_offset, &custom_in);
+			dev_err(prvdata->dev,
 				"AoC reset timeout custom_in=%d, ret=%d\n", custom_in, ret);
-
+			dev_err(prvdata->dev, "PCU_WATCHDOG_CONTROL = 0x%x\n",
+				readl(pcu + AOC_PCU_WATCHDOG_CONTROL_OFFSET));
+			dev_err(prvdata->dev, "PCU_WATCHDOG_VALUE = 0x%x\n",
+				readl(pcu + AOC_PCU_WATCHDOG_VALUE_OFFSET));
+		} else {
+			aoc_reset_successful = true;
+			break;
+		}
+	}
+	if (!aoc_reset_successful) {
 		/* Trigger acpm ramdump since we timed out the aoc reset request */
 		dbg_snapshot_emergency_reboot("AoC Restart timed out");
 		return -ETIMEDOUT;
