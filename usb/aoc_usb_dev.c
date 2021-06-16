@@ -41,6 +41,9 @@ static ssize_t aoc_usb_send_command(struct aoc_usb_drvdata *drvdata,
 
 	__pm_stay_awake(drvdata->ws);
 
+	if (aoc_service_flush_read_data(adev))
+		dev_err(&drvdata->adev->dev ,"Previous response left in channel\n");
+
 	ret = aoc_service_write_timeout(adev, in_cmd, in_size, drvdata->service_timeout);
 	if (ret != in_size) {
 		ret = -EIO;
