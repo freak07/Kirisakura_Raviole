@@ -154,6 +154,8 @@ static int aoc_usb_notify_conn_stat(struct aoc_usb_drvdata *drvdata, u32 *conn_s
 	int ret = 0;
 	struct CMD_USB_CONTROL_NOTIFY_CONN_STAT *cmd;
 
+	drvdata->usb_conn_state = *conn_state;
+
 	cmd = kzalloc(sizeof(struct CMD_USB_CONTROL_NOTIFY_CONN_STAT), GFP_KERNEL);
 	if (!cmd)
 		return -ENOMEM;
@@ -248,6 +250,28 @@ static int aoc_usb_notify(struct notifier_block *this,
 	return ret;
 }
 
+static enum usb_recover_state recover_state;
+static struct work_struct usb_recovery_ws;
+static void usb_recovery_work(struct work_struct *ws)
+{
+	pr_debug("%s: recover_state: %d\n", __func__, recover_state);
+
+	switch(recover_state) {
+	case RECOVER_HOST_OFF:
+		dwc3_otg_host_enable(false);
+		break;
+	case RECOVER_HOST_ON:
+		dwc3_otg_host_enable(true);
+		recover_state = RECOVERED;
+		break;
+	default:
+		pr_err("%s: unhandled recover_state: %d\n", __func__, recover_state);
+		break;
+	}
+
+	return;
+}
+
 bool aoc_usb_probe_done;
 static int aoc_usb_probe(struct aoc_service_dev *adev)
 {
@@ -274,12 +298,32 @@ static int aoc_usb_probe(struct aoc_service_dev *adev)
 
 	aoc_usb_probe_done = true;
 
+	/* Restart host if recover_state was triggered */
+	if (recover_state == RECOVER_HOST_OFF) {
+		dev_dbg(&drvdata->adev->dev, "restart usb device\n");
+		recover_state = RECOVER_HOST_ON;
+		schedule_work(&usb_recovery_ws);
+	} else {
+		recover_state = NONE;
+	}
+
 	return 0;
 }
 
 static int aoc_usb_remove(struct aoc_service_dev *adev)
 {
 	struct aoc_usb_drvdata *drvdata = dev_get_drvdata(&adev->dev);
+
+	/*
+	 * Trigger recovery if usb accessory is connected.
+	 * We only disable host at this moment, it will restart host
+	 * after aoc usb probe again.
+	 */
+	if (drvdata->usb_conn_state) {
+		dev_dbg(&drvdata->adev->dev, "need to recover usb device\n");
+		recover_state = RECOVER_HOST_OFF;
+		schedule_work(&usb_recovery_ws);
+	}
 
 	unregister_aoc_usb_notifier(&drvdata->nb);
 	wakeup_source_unregister(drvdata->ws);
@@ -309,6 +353,7 @@ static struct aoc_driver aoc_usb_driver = {
 static int __init aoc_usb_init(void)
 {
 	xhci_vendor_helper_init();
+	INIT_WORK(&usb_recovery_ws, usb_recovery_work);
 
 	return aoc_driver_register(&aoc_usb_driver);
 }

@@ -39,6 +39,13 @@ enum usb_offload_op_mode {
 	USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY
 };
 
+enum usb_recover_state {
+	NONE,
+	RECOVER_HOST_OFF,
+	RECOVER_HOST_ON,
+	RECOVERED
+};
+
 struct xhci_vendor_data {
 	struct xhci_hcd *xhci;
 
@@ -62,6 +69,7 @@ struct aoc_usb_drvdata {
 	struct notifier_block nb;
 
 	long service_timeout;
+	bool usb_conn_state;
 };
 
 struct get_dev_ctx_args {
@@ -92,5 +100,7 @@ extern int xhci_exynos_register_vendor_ops(struct xhci_vendor_ops *vendor_ops);
 
 int register_aoc_usb_notifier(struct notifier_block *nb);
 int unregister_aoc_usb_notifier(struct notifier_block *nb);
+
+extern int dwc3_otg_host_enable(bool enabled);
 
 #endif /* __LINUX_AOC_USB_H */
