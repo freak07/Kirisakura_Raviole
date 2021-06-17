@@ -2288,14 +2288,14 @@ static bool aoc_create_dma_buf_heaps(struct aoc_prvdata *prvdata)
 		return false;
 
 	base -= PLAYBACK_HEAP_SIZE;
-	prvdata->audio_playback_heap = aoc_create_dma_buf_heap(prvdata, "audio_playback_heap",
+	prvdata->audio_playback_heap = aoc_create_dma_buf_heap(prvdata, "aaudio_playback_heap",
 							       base, PLAYBACK_HEAP_SIZE);
 	prvdata->audio_playback_heap_base = base;
 	if (IS_ERR(prvdata->audio_playback_heap))
 		return false;
 
 	base -= CAPTURE_HEAP_SIZE;
-	prvdata->audio_capture_heap = aoc_create_dma_buf_heap(prvdata, "audio_capture_heap",
+	prvdata->audio_capture_heap = aoc_create_dma_buf_heap(prvdata, "aaudio_capture_heap",
 							      base, CAPTURE_HEAP_SIZE);
 	prvdata->audio_capture_heap_base = base;
 	if (IS_ERR(prvdata->audio_capture_heap))
