@@ -150,6 +150,7 @@ struct aoc_prvdata {
 	u32 disable_monitor_mode;
 	u32 enable_uart_tx;
 	u32 force_voltage_nominal;
+	u32 no_ap_resets;
 
 	u32 total_coredumps;
 	u32 total_restarts;
@@ -766,6 +767,9 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		dev_err(dev, "Forcing VDD_AOC to VNOM on this device. Power will be impacted\n");
 	else
 		dev_info(dev, "AoC using default DVFS on this device.\n");
+
+	if (prvdata->no_ap_resets)
+		dev_err(dev, "Resets by AP via sysfs are disabled\n");
 
 	if (!_aoc_fw_is_compatible(fw)) {
 		dev_err(dev, "firmware and drivers are incompatible\n");
@@ -1606,8 +1610,12 @@ static ssize_t reset_store(struct device *dev, struct device_attribute *attr,
 	reason_str[reason_str_len] = '\0';
 	dev_err(dev, "Reset requested from userspace, reason: %s", reason_str);
 
-	disable_irq_nosync(prvdata->watchdog_irq);
-	schedule_work(&prvdata->watchdog_work);
+	if (prvdata->no_ap_resets) {
+		dev_err(dev, "Reset request rejected, option disabled via persist options");
+	} else {
+		disable_irq_nosync(prvdata->watchdog_irq);
+		schedule_work(&prvdata->watchdog_work);
+	}
 	return count;
 }
 
@@ -2374,6 +2382,23 @@ static long aoc_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lon
 	}
 	break;
 
+	case AOC_IOCTL_DISABLE_AP_RESETS:
+	{
+		u32 disable_ap_resets;
+
+		BUILD_BUG_ON(sizeof(disable_ap_resets) != _IOC_SIZE(AOC_IOCTL_DISABLE_AP_RESETS));
+
+		if (copy_from_user(&disable_ap_resets, (u32 *)arg, _IOC_SIZE(cmd)))
+			break;
+
+		prvdata->no_ap_resets = disable_ap_resets;
+		if (prvdata->no_ap_resets != 0)
+			pr_info("AoC AP side resets disabled\n");
+
+		ret = 0;
+	}
+	break;
+
 	case AOC_IOCTL_FORCE_VNOM:
 	{
 		u32 force_vnom;
@@ -2599,6 +2624,7 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	prvdata->disable_monitor_mode = 0;
 	prvdata->enable_uart_tx = 0;
 	prvdata->force_voltage_nominal = 0;
+	prvdata->no_ap_resets = 0;
 
 	rc = find_gsa_device(prvdata);
 	if (rc) {
