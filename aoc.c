@@ -2149,6 +2149,9 @@ static void aoc_watchdog(struct work_struct *work)
 
 	prvdata->total_restarts++;
 
+	sscd_info.name = "aoc";
+	sscd_info.seg_count = 0;
+
 	dev_err(prvdata->dev, "aoc watchdog triggered, generating coredump\n");
 	if (!sscd_pdata.sscd_report) {
 		dev_err(prvdata->dev, "aoc coredump failed: no sscd driver\n");
@@ -2164,13 +2167,17 @@ static void aoc_watchdog(struct work_struct *work)
 
 	if (!ramdump_header->valid) {
 		dev_err(prvdata->dev, "aoc coredump failed: timed out\n");
-		goto err_coredump;
+		strscpy(crash_info, "AoC Watchdog : coredump timeout",
+			RAMDUMP_SECTION_CRASH_INFO_SIZE);
+		goto coredump_submit;
 	}
 
 	if (memcmp(ramdump_header, RAMDUMP_MAGIC, sizeof(RAMDUMP_MAGIC))) {
 		dev_err(prvdata->dev,
 			"aoc coredump failed: invalid magic (corruption or incompatible firmware?)\n");
-		goto err_coredump;
+		strscpy(crash_info, "AoC Watchdog : coredump corrupt",
+			RAMDUMP_SECTION_CRASH_INFO_SIZE);
+		goto coredump_submit;
 	}
 
 	num_pages = DIV_ROUND_UP(prvdata->dram_size, PAGE_SIZE);
@@ -2190,12 +2197,12 @@ static void aoc_watchdog(struct work_struct *work)
 		goto err_vmap;
 	}
 
-	sscd_info.name = "aoc";
 	if (ramdump_header->sections[RAMDUMP_SECTION_CRASH_INFO_INDEX].flags & RAMDUMP_FLAG_VALID)
 		strscpy(crash_info, (const char *)ramdump_header +
 			RAMDUMP_SECTION_CRASH_INFO_OFFSET, RAMDUMP_SECTION_CRASH_INFO_SIZE);
 	else
-		strscpy(crash_info, "Unknown", RAMDUMP_SECTION_CRASH_INFO_SIZE);
+		strscpy(crash_info, "AoC Watchdog : invalid crash info",
+			RAMDUMP_SECTION_CRASH_INFO_SIZE);
 
 	/* TODO(siqilin): Get paddr and vaddr base from firmware instead */
 	carveout_paddr_from_aoc = 0x98000000;
@@ -2206,6 +2213,8 @@ static void aoc_watchdog(struct work_struct *work)
 	sscd_info.segs[0].paddr = (void *)carveout_paddr_from_aoc;
 	sscd_info.segs[0].vaddr = (void *)carveout_vaddr_from_aoc;
 	sscd_info.seg_count = 1;
+
+coredump_submit:
 	/*
 	 * sscd_report() returns -EAGAIN if there are no readers to consume a
 	 * coredump. Retry sscd_report() with a sleep to handle the race condition
