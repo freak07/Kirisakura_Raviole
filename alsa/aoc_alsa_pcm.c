@@ -123,7 +123,7 @@ static struct snd_pcm_hardware snd_aoc_playback_hw = {
 	.period_bytes_min = 16,
 	.period_bytes_max = 7680,
 	.periods_min = 2,
-	.periods_max = 512,
+	.periods_max = 1024*6,
 };
 
 static enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
