@@ -54,7 +54,7 @@ void aoc_compr_offload_isr(struct aoc_service_dev *dev)
 		return;
 	}
 
-	pm_wakeup_ws_event(alsa_stream->chip->wakelock, 3000, true);
+	pm_wakeup_ws_event(alsa_stream->chip->wakelock, 1000, true);
 
 	/*
 	 * The number of bytes read/writtien should be the bytes in the buffer
