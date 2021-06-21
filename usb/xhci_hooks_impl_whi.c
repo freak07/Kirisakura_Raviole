@@ -10,6 +10,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
+#include <linux/of_reserved_mem.h>
 #include <linux/pm_wakeup.h>
 #include <linux/slab.h>
 #include <linux/usb.h>
@@ -462,6 +463,13 @@ static int usb_audio_offload_init(struct xhci_hcd *xhci)
 
 	ret = xhci_vendor_init_irq_workqueue(vendor_data);
 	if (ret) {
+		kfree(vendor_data);
+		return ret;
+	}
+
+	ret = of_reserved_mem_device_init(dev);
+	if (ret) {
+		dev_err(dev, "Cound not get reserved memory\n");
 		kfree(vendor_data);
 		return ret;
 	}

@@ -1886,6 +1886,11 @@ static void aoc_configure_sysmmu(struct aoc_prvdata *p)
 		      IOMMU_READ | IOMMU_WRITE))
 		dev_err(dev, "mapping carveout failed\n");
 
+	/* Map in the xhci_dma carveout */
+	if (iommu_map(domain, 0x9B000000, 0x97000000, SZ_4M,
+		      IOMMU_READ | IOMMU_WRITE))
+		dev_err(dev, "mapping xhci_dma carveout failed\n");
+
 	/* Use a 1MB mapping instead of individual mailboxes for now */
 	/* TODO: Turn the mailbox address ranges into dtb entries */
 	if (iommu_map(domain, 0x9E000000, 0x17600000, SZ_1M,
@@ -1916,6 +1921,7 @@ static void aoc_clear_sysmmu(struct aoc_prvdata *p)
 
 	/* Memory carveout */
 	iommu_unmap(domain, 0x98000000, p->dram_size);
+	iommu_unmap(domain, 0x9B000000, SZ_4M);
 
 	/* Device registers */
 	iommu_unmap(domain, 0x9E000000, SZ_1M);
