@@ -714,6 +714,7 @@ static void dd_insert_request(struct blk_mq_hw_ctx *hctx, struct request *rq,
 	u8 ioprio_class = IOPRIO_PRIO_CLASS(ioprio);
 	struct dd_per_prio *per_prio;
 	enum dd_prio prio;
+	LIST_HEAD(free);
 
 	lockdep_assert_held(&dd->lock);
 
@@ -730,8 +731,10 @@ static void dd_insert_request(struct blk_mq_hw_ctx *hctx, struct request *rq,
 		rq->elv.priv[0] = (void *)(uintptr_t)1;
 	}
 
-	if (blk_mq_sched_try_insert_merge(q, rq))
+	if (blk_mq_sched_try_insert_merge(q, rq, &free)) {
+		blk_mq_free_requests(&free);
 		return;
+	}
 
 	blk_mq_sched_request_inserted(rq);
 
