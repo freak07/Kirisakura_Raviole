@@ -382,6 +382,7 @@ static bool has_name_matching_driver(const char *service_name)
 static bool service_names_are_valid(struct aoc_prvdata *prv)
 {
 	int services, i, j;
+	const char *name;
 
 	services = aoc_num_services();
 	if (services == 0)
@@ -389,8 +390,8 @@ static bool service_names_are_valid(struct aoc_prvdata *prv)
 
 	/* All names have a valid length */
 	for (i = 0; i < services; i++) {
-		const char *name = aoc_service_name(service_at_index(prv, i));
 		size_t name_len;
+		name = aoc_service_name(service_at_index(prv, i));
 
 		if (!name) {
 			dev_err(prv->dev,
@@ -413,14 +414,25 @@ static bool service_names_are_valid(struct aoc_prvdata *prv)
 	for (i = 0; i < services; i++) {
 		char name1[AOC_SERVICE_NAME_LENGTH],
 			name2[AOC_SERVICE_NAME_LENGTH];
-		memcpy_fromio(name1, aoc_service_name(service_at_index(prv, i)),
-			      sizeof(name1));
+		name = aoc_service_name(service_at_index(prv, i));
+		if (!name) {
+			dev_err(prv->dev,
+				"failed to retrieve service name for service %d\n",
+				i);
+			return false;
+		}
+
+		memcpy_fromio(name1, name, sizeof(name1));
 
 		for (j = i + 1; j < services; j++) {
-			memcpy_fromio(
-				name2,
-				aoc_service_name(service_at_index(prv, j)),
-				sizeof(name2));
+			name = aoc_service_name(service_at_index(prv, j));
+			if (!name) {
+				dev_err(prv->dev,
+					"failed to retrieve service name for service %d\n",
+					j);
+				return false;
+			}
+			memcpy_fromio(name2, name, sizeof(name2));
 
 			if (strncmp(name1, name2, AOC_SERVICE_NAME_LENGTH) ==
 			    0) {
@@ -1778,6 +1790,7 @@ static struct aoc_service_dev *create_service_device(struct aoc_prvdata *prvdata
 {
 	struct device *parent = prvdata->dev;
 	char service_name[32];
+	const char *name;
 	aoc_service *s;
 	struct aoc_service_dev *dev;
 
@@ -1788,7 +1801,11 @@ static struct aoc_service_dev *create_service_device(struct aoc_prvdata *prvdata
 	dev = kzalloc(sizeof(struct aoc_service_dev), GFP_KERNEL);
 	prvdata->services[index] = dev;
 
-	memcpy_fromio(service_name, aoc_service_name(s), sizeof(service_name));
+	name = aoc_service_name(s);
+	if (!name)
+		return NULL;
+
+	memcpy_fromio(service_name, name, sizeof(service_name));
 
 	dev_set_name(&dev->dev, "%s", service_name);
 	dev->dev.parent = parent;
@@ -1938,6 +1955,8 @@ static void aoc_did_become_online(struct work_struct *work)
 	struct device *dev = prvdata->dev;
 	int i, s;
 
+	mutex_lock(&aoc_service_lock);
+
 	s = aoc_num_services();
 
 	aoc_req_assert(prvdata, false);
@@ -1948,28 +1967,25 @@ static void aoc_did_become_online(struct work_struct *work)
 
 	if (s > AOC_MAX_ENDPOINTS) {
 		dev_err(dev, "Firmware supports too many (%d) services\n", s);
-		return;
+		goto err;
 	}
 
 	if (!service_names_are_valid(prvdata)) {
 		pr_err("invalid service names found.  Ignoring\n");
-		return;
+		goto err;
 	}
 
 	for (i = 0; i < s; i++) {
 		if (!validate_service(prvdata, i)) {
 			pr_err("service %d invalid\n", i);
-			return;
+			goto err;
 		}
 	}
-
-	mutex_lock(&aoc_service_lock);
 
 	prvdata->services = devm_kcalloc(prvdata->dev, s, sizeof(struct aoc_service_dev *), GFP_KERNEL);
 	if (!prvdata->services) {
 		dev_err(prvdata->dev, "failed to allocate service array\n");
-	        mutex_unlock(&aoc_service_lock);
-		return;
+		goto err;
 	}
 
 	prvdata->total_services = s;
@@ -1984,16 +2000,15 @@ static void aoc_did_become_online(struct work_struct *work)
 	for (i = 0; i < s; i++)
 		device_register(&prvdata->services[i]->dev);
 
+err:
 	mutex_unlock(&aoc_service_lock);
 }
 
 static void aoc_take_offline(struct aoc_prvdata *prvdata)
 {
-	mutex_lock(&aoc_service_lock);
-
 	/* check if devices/services are ready */
 	if (aoc_state == AOC_STATE_OFFLINE || !prvdata->services)
-		goto exit;
+		return;
 
 	pr_notice("taking aoc offline\n");
 	aoc_state = AOC_STATE_OFFLINE;
@@ -2006,8 +2021,6 @@ static void aoc_take_offline(struct aoc_prvdata *prvdata)
 	devm_kfree(prvdata->dev, prvdata->services);
 	prvdata->services = NULL;
 	prvdata->total_services = 0;
-exit:
-	mutex_unlock(&aoc_service_lock);
 }
 
 static void aoc_process_services(struct aoc_prvdata *prvdata, int offset)
@@ -2153,8 +2166,8 @@ static void aoc_watchdog(struct work_struct *work)
 	unsigned long carveout_vaddr_from_aoc;
 	size_t i;
 	size_t num_pages;
-	struct page **dram_pages;
-	void *dram_cached;
+	struct page **dram_pages = NULL;
+	void *dram_cached = NULL;
 	int sscd_retries = 20;
 	const int sscd_retry_ms = 1000;
 	int sscd_rc;
@@ -2252,17 +2265,23 @@ coredump_submit:
 		dev_err(prvdata->dev, "aoc coredump failed: sscd_rc = %d\n", sscd_rc);
 	}
 
-	vunmap(dram_cached);
+	if (dram_cached)
+		vunmap(dram_cached);
 err_vmap:
 	kfree(dram_pages);
 err_kmalloc:
 err_coredump:
+	/* make sure there is no AoC startup work active */
+	cancel_work_sync(&prvdata->online_work);
+
+	mutex_lock(&aoc_service_lock);
 	aoc_take_offline(prvdata);
 	restart_rc = aoc_watchdog_restart(prvdata);
 	if (restart_rc)
 		dev_info(prvdata->dev, "aoc subsystem restart failed: rc = %d\n", restart_rc);
 	else
 		dev_info(prvdata->dev, "aoc subsystem restart succeeded\n");
+	mutex_unlock(&aoc_service_lock);
 }
 
 void aoc_trigger_watchdog(const char *reason)
