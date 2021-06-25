@@ -132,23 +132,40 @@ static int xhci_get_isoc_tr_info(u16 ep_id, u16 dir, struct xhci_ring *ep_ring)
 
 static bool is_compatible_with_usb_audio_offload(struct usb_device *udev)
 {
+	struct usb_endpoint_descriptor *epd;
 	struct usb_host_config *config;
-	struct usb_interface_descriptor *desc;
-	int i;
+	struct usb_host_interface *alt;
+	struct usb_interface_cache *intfc;
+	int i, j, k;
 	bool is_audio = false;
 
 	config = udev->config;
 	for (i = 0; i < config->desc.bNumInterfaces; i++) {
-		desc = &config->intf_cache[i]->altsetting->desc;
-		if (desc->bInterfaceClass == USB_CLASS_AUDIO) {
-			/* TODO(b/187373354): design the feature supporting rule */
-			if (udev->speed <= USB_SPEED_HIGH) {
-				is_audio = true;
-				break;
+		intfc = config->intf_cache[i];
+		for (j = 0; j < intfc->num_altsetting; j++) {
+			alt = &intfc->altsetting[j];
+
+			if (alt->desc.bInterfaceClass == USB_CLASS_VIDEO) {
+				is_audio = false;
+				goto out;
+			}
+
+			if (alt->desc.bInterfaceClass == USB_CLASS_AUDIO) {
+				for (k = 0; k < alt->desc.bNumEndpoints; k++) {
+					epd = &alt->endpoint[k].desc;
+					if (usb_endpoint_xfer_isoc(epd)) {
+					/* TODO(b/187373354): design the feature supporting rule */
+						if (udev->speed <= USB_SPEED_HIGH) {
+							is_audio = true;
+							break;
+						}
+					}
+				}
 			}
 		}
 	}
 
+out:
 	return is_audio;
 }
 
