@@ -131,7 +131,7 @@ bool _aoc_fw_is_release(const struct firmware *fw)
 bool _aoc_fw_is_signed(const struct firmware *fw)
 {
 	const struct aoc_auth_header *header = (const struct aoc_auth_header *)(fw->data);
-	if (le32_to_cpu(header->header.magic) != 0x00414F43) {
+	if (le32_to_cpu(header->header.magic) != 0x00434F41) {
 		return false;
 	}
 
