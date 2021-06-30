@@ -44,6 +44,8 @@ static ssize_t aoc_usb_send_command(struct aoc_usb_drvdata *drvdata,
 	if (aoc_service_flush_read_data(adev))
 		dev_err(&drvdata->adev->dev ,"Previous response left in channel\n");
 
+	dev_dbg(&drvdata->adev->dev, "send cmd id [%u]\n", ((struct CMD_CORE_GENERIC *)in_cmd)->parent.id);
+
 	ret = aoc_service_write_timeout(adev, in_cmd, in_size, drvdata->service_timeout);
 	if (ret != in_size) {
 		ret = -EIO;
@@ -112,6 +114,33 @@ static int aoc_usb_get_dcbaa_ptr(struct aoc_usb_drvdata *drvdata,
 	}
 
 	*aoc_dcbaa_ptr = cmd->aoc_dcbaa_ptr;
+
+	kfree(cmd);
+
+	return 0;
+}
+
+static int aoc_usb_set_dcbaa_ptr(struct aoc_usb_drvdata *drvdata,
+				 u64 *aoc_dcbaa_ptr)
+{
+	int ret = 0;
+	struct CMD_USB_CONTROL_GET_DCBAA_PTR *cmd;
+
+	// TODO(b/192858107): Create a CMD_USB_CONTROL_SET_DCBAA_PTR instead.
+	cmd = kzalloc(sizeof(struct CMD_USB_CONTROL_GET_DCBAA_PTR), GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	AocCmdHdrSet(&cmd->parent,
+		     CMD_USB_CONTROL_GET_DCBAA_PTR_ID,
+		     sizeof(*cmd));
+
+	cmd->aoc_dcbaa_ptr = *aoc_dcbaa_ptr;
+	ret = aoc_usb_send_command(drvdata, cmd, sizeof(*cmd), cmd, sizeof(*cmd));
+	if (ret < 0) {
+		kfree(cmd);
+		return ret;
+	}
 
 	kfree(cmd);
 
@@ -214,6 +243,43 @@ static int aoc_usb_get_isoc_tr_info(struct aoc_usb_drvdata *drvdata, void *args)
 	return 0;
 }
 
+static int aoc_usb_set_isoc_tr_info(struct aoc_usb_drvdata *drvdata, void *args)
+{
+	int ret;
+	struct get_isoc_tr_info_args *tr_info_args =
+		(struct get_isoc_tr_info_args *)args;
+	struct CMD_USB_CONTROL_GET_ISOC_TR_INFO *cmd;
+
+	// TODO(b/192858107): Create a CMD_USB_CONTROL_SET_ISOC_TR_INFO instead.
+	cmd = kzalloc(sizeof(struct CMD_USB_CONTROL_GET_ISOC_TR_INFO), GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	AocCmdHdrSet(&cmd->parent,
+		     CMD_USB_CONTROL_GET_ISOC_TR_INFO_ID,
+		     sizeof(*cmd));
+
+	cmd->ep_id = tr_info_args->ep_id;
+	cmd->dir = tr_info_args->dir;
+	cmd->type = tr_info_args->type;
+	cmd->num_segs = tr_info_args->num_segs;
+	cmd->seg_ptr = tr_info_args->seg_ptr;
+	cmd->max_packet = tr_info_args->max_packet;
+	cmd->cycle_state = tr_info_args->cycle_state;
+	cmd->num_trbs_free = tr_info_args->num_trbs_free;
+
+	dev_dbg(&drvdata->adev->dev, "%s: ep_id=%u, dir=%u\n", __func__, cmd->ep_id, cmd->dir);
+	ret = aoc_usb_send_command(drvdata, cmd, sizeof(*cmd), cmd, sizeof(*cmd));
+	if (ret < 0) {
+		kfree(cmd);
+		return ret;
+	}
+
+	kfree(cmd);
+
+	return 0;
+}
+
 static int aoc_usb_notify(struct notifier_block *this,
 			  unsigned long code, void *data)
 {
@@ -232,11 +298,17 @@ static int aoc_usb_notify(struct notifier_block *this,
 	case GET_DCBAA_PTR:
 		ret = aoc_usb_get_dcbaa_ptr(drvdata, data);
 		break;
+	case SET_DCBAA_PTR:
+		ret = aoc_usb_set_dcbaa_ptr(drvdata, data);
+		break;
 	case SETUP_DONE:
 		ret = aoc_usb_setup_done(drvdata);
 		break;
 	case GET_ISOC_TR_INFO:
 		ret = aoc_usb_get_isoc_tr_info(drvdata, data);
+		break;
+	case SET_ISOC_TR_INFO:
+		ret = aoc_usb_set_isoc_tr_info(drvdata, data);
 		break;
 	case SYNC_CONN_STAT:
 		ret = aoc_usb_notify_conn_stat(drvdata, data);

@@ -100,6 +100,13 @@ static int xhci_get_dcbaa_ptr(u64 *aoc_dcbaa_ptr)
 	return 0;
 }
 
+static int xhci_set_dcbaa_ptr(u64 aoc_dcbaa_ptr)
+{
+	blocking_notifier_call_chain(&aoc_usb_notifier_list, SET_DCBAA_PTR,
+					 &aoc_dcbaa_ptr);
+	return 0;
+}
+
 static int xhci_setup_done(void)
 {
 	blocking_notifier_call_chain(&aoc_usb_notifier_list, SETUP_DONE, NULL);
@@ -127,6 +134,25 @@ static int xhci_get_isoc_tr_info(u16 ep_id, u16 dir, struct xhci_ring *ep_ring)
 	ep_ring->first_seg->dma = tr_info.seg_ptr;
 	ep_ring->cycle_state = tr_info.cycle_state;
 	ep_ring->num_trbs_free = tr_info.num_trbs_free;
+
+	return 0;
+}
+
+static int xhci_set_isoc_tr_info(u16 ep_id, u16 dir, struct xhci_ring *ep_ring)
+{
+	struct get_isoc_tr_info_args tr_info;
+
+	tr_info.ep_id = ep_id;
+	tr_info.dir = dir;
+	tr_info.num_segs = ep_ring->num_segs;
+	tr_info.max_packet = ep_ring->bounce_buf_len;
+	tr_info.type = ep_ring->type;
+	tr_info.seg_ptr = ep_ring->first_seg->dma;
+	tr_info.cycle_state = ep_ring->cycle_state;
+	tr_info.num_trbs_free = ep_ring->num_trbs_free;
+
+	blocking_notifier_call_chain(&aoc_usb_notifier_list, SET_ISOC_TR_INFO,
+				     &tr_info);
 
 	return 0;
 }
@@ -183,7 +209,7 @@ static int sync_dev_ctx(struct xhci_hcd *xhci, unsigned int slot_id)
 	struct xhci_vendor_data *vendor_data = xhci_to_priv(xhci)->vendor_data;
 	int ret = 0;
 
-	if (vendor_data->op_mode != USB_OFFLOAD_STOP)
+	if (vendor_data->op_mode == USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY)
 		ret = xhci_sync_dev_ctx(xhci, slot_id);
 
 	return ret;
@@ -284,7 +310,9 @@ static int xhci_udev_notify(struct notifier_block *self, unsigned long action,
 				 "Compatible with usb audio offload\n");
 			xhci_reset_for_usb_audio_offload(udev);
 			if (vendor_data->op_mode ==
-			    USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY) {
+			    USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY ||
+				vendor_data->op_mode ==
+			    USB_OFFLOAD_DRAM) {
 				xhci_sync_conn_stat(USB_CONNECTED);
 			}
 		}
@@ -292,8 +320,10 @@ static int xhci_udev_notify(struct notifier_block *self, unsigned long action,
 		break;
 	case USB_DEVICE_REMOVE:
 		if (is_compatible_with_usb_audio_offload(udev) &&
-		    vendor_data->op_mode ==
-		    USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY) {
+		    (vendor_data->op_mode ==
+		     USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY ||
+			 vendor_data->op_mode ==
+			 USB_OFFLOAD_DRAM)) {
 			xhci_sync_conn_stat(USB_DISCONNECTED);
 		}
 		vendor_data->usb_accessory_enabled = false;
@@ -389,15 +419,13 @@ static int xhci_vendor_init_irq_workqueue(struct xhci_vendor_data *vendor_data)
 {
 	vendor_data->irq_wq = alloc_workqueue("xhci_vendor_irq_work", WQ_UNBOUND, 0);
 
-	if (!vendor_data->irq_wq) {
+	if (!vendor_data->irq_wq)
 		return -ENOMEM;
-	}
 
 	INIT_WORK(&vendor_data->xhci_vendor_irq_work, xhci_vendor_irq_work);
 
 	return 0;
 }
-
 
 static struct xhci_ring *
 xhci_initialize_ring_info_for_remote_isoc(struct xhci_hcd *xhci,
@@ -477,7 +505,7 @@ static int usb_audio_offload_init(struct xhci_hcd *xhci)
 	mutex_init(&vendor_data->lock);
 	INIT_WORK(&vendor_data->xhci_vendor_reset_ws, xhci_reset_work);
 	usb_register_notify(&xhci_udev_nb);
-	vendor_data->op_mode = USB_OFFLOAD_STOP;
+	vendor_data->op_mode = USB_OFFLOAD_DRAM;
 	vendor_data->xhci = xhci;
 
 	xhci_to_priv(xhci)->vendor_data = vendor_data;
@@ -548,8 +576,13 @@ static bool is_usb_offload_enabled(struct xhci_hcd *xhci,
 
 	if (global_enabled) {
 		ep_ring = vdev->eps[ep_index].ring;
-		if (is_dma_for_offload(ep_ring->first_seg->dma))
-			return true;
+		if (vendor_data->op_mode == USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY) {
+			if (is_dma_for_offload(ep_ring->first_seg->dma))
+				return true;
+		} else if (vendor_data->op_mode == USB_OFFLOAD_DRAM) {
+			if (ep_ring->type == TYPE_ISOC)
+				return true;
+		}
 	}
 
 	return false;
@@ -590,6 +623,9 @@ static irqreturn_t queue_irq_work(struct xhci_hcd *xhci)
 	struct xhci_transfer_event *event;
 	u32 trb_comp_code;
 
+	if (vendor_data->op_mode != USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY)
+		return IRQ_NONE;
+
 	if (is_usb_offload_enabled(xhci, NULL, 0)) {
 		event = &xhci->event_ring->dequeue->trans_event;
 		trb_comp_code = GET_COMP_CODE(le32_to_cpu(event->transfer_len));
@@ -623,7 +659,21 @@ static struct xhci_device_context_array *alloc_dcbaa(struct xhci_hcd *xhci,
 		}
 		xhci_setup_done();
 
-		xhci_dbg(xhci, "write dcbaa_ptr=%llx\n", xhci->dcbaa->dma);
+		xhci_dbg(xhci, "Get dcbaa_ptr=%llx\n", xhci->dcbaa->dma);
+	} else if (vendor_data->op_mode == USB_OFFLOAD_DRAM) {
+		xhci->dcbaa = dma_alloc_coherent(dev, sizeof(*xhci->dcbaa),
+						 &dma, flags);
+		if (!xhci->dcbaa)
+			return NULL;
+
+		xhci->dcbaa->dma = dma;
+		if (xhci_set_dcbaa_ptr(xhci->dcbaa->dma) != 0) {
+			xhci_err(xhci, "Set DCBAA pointer failed\n");
+			return NULL;
+		}
+		xhci_setup_done();
+
+		xhci_dbg(xhci, "Set dcbaa_ptr=%llx to AoC\n", xhci->dcbaa->dma);
 	} else {
 		xhci->dcbaa = dma_alloc_coherent(dev, sizeof(*xhci->dcbaa),
 						 &dma, flags);
@@ -658,9 +708,22 @@ static struct xhci_ring *alloc_transfer_ring(struct xhci_hcd *xhci,
 		u32 endpoint_type, enum xhci_ring_type ring_type,
 		unsigned int max_packet, gfp_t mem_flags)
 {
-	return xhci_initialize_ring_info_for_remote_isoc(xhci, endpoint_type,
+	struct xhci_vendor_data *vendor_data = xhci_to_priv(xhci)->vendor_data;
+	struct xhci_ring *ep_ring;
+	u16 dir;
+
+	if (vendor_data->op_mode == USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY) {
+		ep_ring = xhci_initialize_ring_info_for_remote_isoc(xhci, endpoint_type,
 							 ring_type, max_packet,
 							 mem_flags);
+	} else {
+		ep_ring = xhci_ring_alloc(xhci, 1, 1, ring_type, max_packet, mem_flags);
+		dir = endpoint_type == ISOC_IN_EP ? 0 : 1;
+
+		xhci_set_isoc_tr_info(0, dir, ep_ring);
+	}
+
+	return ep_ring;
 }
 
 static void free_transfer_ring(struct xhci_hcd *xhci,
@@ -677,10 +740,10 @@ static void free_transfer_ring(struct xhci_hcd *xhci,
 	ep_type = CTX_TO_EP_TYPE(le32_to_cpu(ep_ctx->ep_info2));
 
 	if (ring) {
-		xhci_dbg(xhci, "ep_index=%u, ep_type=%u, ring type=%u\n", ep_index,
+		xhci_dbg(xhci, "%s: ep_index=%u, ep_type=%u, ring type=%u\n", __func__, ep_index,
 			 ep_type, ring->type);
 
-		if (vendor_data->op_mode != USB_OFFLOAD_STOP &&
+		if (vendor_data->op_mode == USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY &&
 			ring->type == TYPE_ISOC) {
 			kfree(ring->first_seg);
 			kfree(virt_dev->eps[ep_index].ring);
@@ -694,10 +757,10 @@ static void free_transfer_ring(struct xhci_hcd *xhci,
 	}
 
 	if (new_ring) {
-		xhci_dbg(xhci, "ep_index=%u, ep_type=%u, new_ring type=%u\n", ep_index,
+		xhci_dbg(xhci, "%s: ep_index=%u, ep_type=%u, new_ring type=%u\n", __func__, ep_index,
 			 ep_type, new_ring->type);
 
-		if (vendor_data->op_mode != USB_OFFLOAD_STOP &&
+		if (vendor_data->op_mode == USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY &&
 			new_ring->type == TYPE_ISOC) {
 			kfree(new_ring->first_seg);
 			kfree(virt_dev->eps[ep_index].new_ring);
@@ -723,7 +786,7 @@ static bool usb_offload_skip_urb(struct xhci_hcd *xhci, struct urb *urb)
 		ep_index = (unsigned int)(usb_endpoint_num(desc)*2) +
 			   (usb_endpoint_dir_in(desc) ? 1 : 0) - 1;
 
-	xhci_dbg(xhci, "ep_index=%u, ep_type=%d\n", ep_index, ep_type);
+	xhci_dbg(xhci, "%s: ep_index=%u, ep_type=%d\n", __func__, ep_index, ep_type);
 
 	if (is_usb_offload_enabled(xhci, vdev, ep_index))
 		return true;

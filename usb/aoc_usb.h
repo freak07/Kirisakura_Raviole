@@ -23,9 +23,11 @@ extern bool aoc_usb_probe_done;
 enum aoc_usb_msg {
 	SYNC_DEVICE_CONTEXT,
 	GET_DCBAA_PTR,
+	SET_DCBAA_PTR,
 	GET_TR_DEQUEUE_PTR,
 	SETUP_DONE,
 	GET_ISOC_TR_INFO,
+	SET_ISOC_TR_INFO,
 	SYNC_CONN_STAT
 };
 
@@ -36,7 +38,8 @@ enum aoc_usb_state {
 
 enum usb_offload_op_mode {
 	USB_OFFLOAD_STOP,
-	USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY
+	USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY,
+	USB_OFFLOAD_DRAM
 };
 
 enum usb_recover_state {
