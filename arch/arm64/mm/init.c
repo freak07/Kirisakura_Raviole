@@ -286,7 +286,7 @@ int pfn_valid(unsigned long pfn)
 	if (!early_section(__pfn_to_section(pfn)))
 		return pfn_section_valid(__pfn_to_section(pfn), pfn);
 #endif
-	return memblock_is_map_memory(addr);
+	return memblock_is_memory(addr);
 }
 EXPORT_SYMBOL(pfn_valid);
 
