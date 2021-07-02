@@ -2006,6 +2006,8 @@ err:
 
 static void aoc_take_offline(struct aoc_prvdata *prvdata)
 {
+	int rc;
+
 	/* check if devices/services are ready */
 	if (aoc_state == AOC_STATE_OFFLINE || !prvdata->services)
 		return;
@@ -2021,6 +2023,14 @@ static void aoc_take_offline(struct aoc_prvdata *prvdata)
 	devm_kfree(prvdata->dev, prvdata->services);
 	prvdata->services = NULL;
 	prvdata->total_services = 0;
+
+	/* TODO: GSA_AOC_SHUTDOWN needs to be 4, but the current header defines
+	 * as 2.  Change this when the header is updated
+	 */
+	gsa_send_aoc_cmd(prvdata->gsa_dev, 4);
+	rc = gsa_unload_aoc_fw_image(prvdata->gsa_dev);
+	if (rc)
+		dev_err(prvdata->dev, "GSA unload firmware failed: %d\n", rc);
 }
 
 static void aoc_process_services(struct aoc_prvdata *prvdata, int offset)
