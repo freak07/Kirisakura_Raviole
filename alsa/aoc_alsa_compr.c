@@ -16,6 +16,8 @@
 #include "aoc_alsa.h"
 #include "aoc_alsa_drv.h"
 
+static void aoc_stop_work_handler(struct work_struct *work);
+
 static void aoc_compr_reset_handler(aoc_aud_service_event_t evnt, void *cookies)
 {
 	struct aoc_alsa_stream *alsa_stream = (struct aoc_alsa_stream *)cookies;
@@ -33,7 +35,10 @@ static void aoc_compr_reset_handler(aoc_aud_service_event_t evnt, void *cookies)
 		 * still return error since AOC isn't ready. Most of alsa stream tasks from
 		 * user-space will be returned by xrun state.
 		 */
-		snd_compr_stop_error(alsa_stream->cstream, SNDRV_PCM_STATE_XRUN);
+		alsa_stream->cstream->runtime->state = SNDRV_PCM_STATE_XRUN;
+		wake_up(&alsa_stream->cstream->runtime->sleep);
+
+		schedule_work(&alsa_stream->free_aoc_service_work);
 		return;
 	}
 }
@@ -215,6 +220,37 @@ static int aoc_compr_prepare(struct aoc_alsa_stream *alsa_stream)
 	return 0;
 }
 
+static void aoc_stop_work_handler(struct work_struct *work)
+{
+	struct aoc_alsa_stream *alsa_stream =
+		container_of(work, struct aoc_alsa_stream, free_aoc_service_work);
+	struct aoc_chip *chip;
+	int err;
+
+	if (!alsa_stream)
+		return;
+
+	chip = alsa_stream->chip;
+	if (mutex_lock_interruptible(&chip->audio_mutex)) {
+		pr_err("ERR: interrupted while waiting for lock\n");
+		return;
+	}
+
+	if (alsa_stream->running) {
+		err = aoc_audio_stop(alsa_stream);
+		if (err != 0) {
+			pr_err("failed to STOP alsa device (%d)\n",
+			       err);
+		}
+		alsa_stream->running = 0;
+	}
+
+	aoc_timer_stop(alsa_stream);
+	aoc_compr_prepare(alsa_stream);
+	mutex_unlock(&chip->audio_mutex);
+	return;
+}
+
 static int aoc_compr_playback_open(struct snd_compr_stream *cstream)
 {
 	struct snd_soc_pcm_runtime *rtd =
@@ -246,6 +282,8 @@ static int aoc_compr_playback_open(struct snd_compr_stream *cstream)
 		pr_err("ERR: no memory for %s", rtd->dai_link->name);
 		goto out;
 	}
+
+	INIT_WORK(&alsa_stream->free_aoc_service_work, aoc_stop_work_handler);
 
 	/* Find the corresponding aoc audio service */
 	err = alloc_aoc_audio_service(rtd->dai_link->name, &dev, aoc_compr_reset_handler,
@@ -332,6 +370,7 @@ static int aoc_compr_playback_free(struct snd_compr_stream *cstream)
 	pr_debug("dai name %s, cstream %pK\n", rtd->dai_link->name, cstream);
 	aoc_timer_stop_sync(alsa_stream);
 
+	cancel_work_sync(&alsa_stream->free_aoc_service_work);
 	if (mutex_lock_interruptible(&chip->audio_mutex)) {
 		pr_err("ERR: interrupted while waiting for lock\n");
 		return -EINTR;
