@@ -1246,16 +1246,31 @@ static int aoc_mmap_capture_trigger(struct aoc_alsa_stream *alsa_stream, int rec
 {
 	int err = 0;
 	int cmd_id;
+	struct CMD_AUDIO_INPUT_MMAP_ENABLE_2 cmd;
 	struct aoc_chip *chip = alsa_stream->chip;
 
-	cmd_id = (record_cmd == START) ? CMD_AUDIO_INPUT_MIC_MMAP_ENABLE_ID :
+	if (alsa_stream->channels > 2) {
+		pr_err("ERR: mmap capture channel number %d (only mono or stereo allowed)\n",
+		       alsa_stream->channels);
+		return -EINVAL;
+	}
+
+	cmd_id = (record_cmd == START) ? CMD_AUDIO_INPUT_MMAP_ENABLE_2_ID :
 					       CMD_AUDIO_INPUT_MIC_MMAP_DISABLE_ID;
 
-	err = aoc_audio_control_simple_cmd(CMD_INPUT_CHANNEL, cmd_id, chip);
+	if (record_cmd == START) {
+		AocCmdHdrSet(&(cmd.parent), cmd_id, sizeof(cmd));
+		cmd.chan = alsa_stream->channels;
+		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	} else
+		err = aoc_audio_control_simple_cmd(CMD_INPUT_CHANNEL, cmd_id, chip);
+
 	if (err < 0) {
-		pr_err("ERR:%d in audio mmap capture start/stop\n", err);
+		pr_err("ERR:%d in audio mmap capture %s\n", err,
+		       (record_cmd == START) ? "start" : "stop");
 		return err;
 	}
+
 	return 0;
 }
 
@@ -1263,16 +1278,31 @@ static int aoc_raw_capture_trigger(struct aoc_alsa_stream *alsa_stream, int reco
 {
 	int err = 0;
 	int cmd_id;
+	struct CMD_AUDIO_INPUT_RAW_ENABLE_2 cmd;
 	struct aoc_chip *chip = alsa_stream->chip;
 
-	cmd_id = (record_cmd == START) ? CMD_AUDIO_INPUT_MIC_RAW_ENABLE_ID :
-					 CMD_AUDIO_INPUT_MIC_RAW_DISABLE_ID;
+	if (alsa_stream->channels > 2) {
+		pr_err("ERR: raw capture channel number %d (only mono or stereo allowed)\n",
+		       alsa_stream->channels);
+		return -EINVAL;
+	}
 
-	err = aoc_audio_control_simple_cmd(CMD_INPUT_CHANNEL, cmd_id, chip);
+	cmd_id = (record_cmd == START) ? CMD_AUDIO_INPUT_RAW_ENABLE_2_ID :
+					       CMD_AUDIO_INPUT_MIC_RAW_DISABLE_ID;
+
+	if (record_cmd == START) {
+		AocCmdHdrSet(&(cmd.parent), cmd_id, sizeof(cmd));
+		cmd.chan = alsa_stream->channels;
+		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	} else
+		err = aoc_audio_control_simple_cmd(CMD_INPUT_CHANNEL, cmd_id, chip);
+
 	if (err < 0) {
-		pr_err("ERR:%d in audio raw capture start/stop\n", err);
+		pr_err("ERR:%d in audio raw capture %s\n", err,
+		       (record_cmd == START) ? "start" : "stop");
 		return err;
 	}
+
 	return 0;
 }
 
