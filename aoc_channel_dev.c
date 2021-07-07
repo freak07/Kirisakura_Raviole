@@ -52,6 +52,7 @@ static DEFINE_MUTEX(s_open_files_lock);
 
 #define AOCC_MAX_MSG_SIZE 1024
 #define AOCC_MAX_PENDING_MSGS 32
+#define AOCC_BLOCK_CHANNEL_THRESHOLD (AOCC_MAX_PENDING_MSGS - 3)
 static atomic_t channel_index_counter = ATOMIC_INIT(1);
 
 /* Driver methods */
@@ -200,7 +201,7 @@ static int aocc_demux_kthread(void *data)
 					      &entry->pending_aoc_messages);
 				atomic_inc(&entry->pending_msg_count);
 				if (atomic_read(&entry->pending_msg_count) >
-				    (AOCC_MAX_PENDING_MSGS - 1) &&
+				    AOCC_BLOCK_CHANNEL_THRESHOLD &&
 				    !entry->is_channel_blocked) {
 					rc = aocc_send_cmd_msg(service,
 						AOCC_CMD_BLOCK_CHANNEL, channel);
@@ -565,7 +566,7 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 	list_del(&node->msg_list);
 	atomic_dec(&private->pending_msg_count);
 	if (atomic_read(&private->pending_msg_count) <
-	    (AOCC_MAX_PENDING_MSGS - 1) && private->is_channel_blocked) {
+	    AOCC_BLOCK_CHANNEL_THRESHOLD && private->is_channel_blocked) {
 		rc = aocc_send_cmd_msg(private->aocc_device_entry->service,
 				       AOCC_CMD_UNBLOCK_CHANNEL, private->channel_index);
 		if (rc >= 0)
