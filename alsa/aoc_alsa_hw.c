@@ -45,7 +45,7 @@ static int hw_id_to_sink(int hw_idx)
 static int ep_id_to_source(int ep_idx)
 {
 	/* TODO: refactor needed. Haptics pcm dev id: 7, its entrypoint is 10(HAPTICS) */
-	return (ep_idx == 7) ? HAPTICS : ep_idx;
+	return (ep_idx == IDX_EP8) ? HAPTICS : (ep_idx == IDX_HIFI) ? USB_HIFI : ep_idx;
 }
 
 static int hw_id_to_phone_mic_source(int hw_id)
