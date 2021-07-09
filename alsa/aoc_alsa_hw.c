@@ -253,6 +253,70 @@ int aoc_audio_volume_set(struct aoc_chip *chip, uint32_t volume, int src,
 	return err;
 }
 
+static int aoc_audio_capture_mic_input(struct aoc_chip *chip,
+				 int input_cmd, int mic_input_source)
+{
+	int err;
+	struct CMD_HDR cmd0; /* For ap mic input STOP */
+	struct CMD_AUDIO_INPUT_AP_INPUT_START cmd1;
+
+	if (input_cmd == START) {
+		AocCmdHdrSet(&(cmd1.parent),
+			     CMD_AUDIO_INPUT_AP_INPUT_START_ID,
+			     sizeof(cmd1));
+
+		cmd1.mic_input_source = mic_input_source;
+		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd1,
+					sizeof(cmd1), NULL, chip);
+		if (err < 0)
+			pr_err("ERR:%d audio capture mic input start fail!\n", err);
+
+	} else {
+		AocCmdHdrSet(&cmd0, CMD_AUDIO_INPUT_AP_INPUT_STOP_ID,
+			     sizeof(cmd0));
+
+		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd0,
+					sizeof(cmd0), NULL, chip);
+		if (err < 0)
+			pr_err("ERR:%d audio capture mic input stop fail!\n", err);
+	}
+
+	return err;
+}
+
+int aoc_audio_capture_mic_prepare(struct aoc_chip *chip)
+{
+	int err = 0;
+	int mic_input_source;
+
+	switch (chip->audio_capture_mic_source) {
+	case BUILTIN_MIC:
+		mic_input_source = AP_INPUT_PROCESSOR_MIC_INPUT_INDEX;
+		break;
+	case USB_MIC:
+		mic_input_source = AP_INPUT_PROCESSOR_USB_INPUT_INDEX;
+		break;
+	case BT_MIC:
+		mic_input_source = AP_INPUT_PROCESSOR_BT_INPUT_INDEX;
+		break;
+	default:
+		pr_err("ERR in mic input source for audio capture mic source=%d\n",
+		       chip->audio_capture_mic_source);
+		err = EINVAL;
+		goto exit;
+	}
+
+	// CMD_AUDIO_INPUT_AP_INPUT_START_ID with mic_input_source
+	pr_info("mic_input_source = %d\n", mic_input_source);
+
+	err = aoc_audio_capture_mic_input(chip, START, mic_input_source);
+	if (err < 0)
+		pr_err("ERR:%d in audio capture mic input setup start\n", err);
+
+exit:
+	return err;
+}
+
 int aoc_set_builtin_mic_power_state(struct aoc_chip *chip, int iMic, int state)
 {
 	int err;
@@ -1144,8 +1208,6 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 {
 	int i, mic_id, n_mic, err = 0;
 	struct CMD_AUDIO_INPUT_MIC_RECORD_AP_SET_PARAMS cmd;
-	struct CMD_HDR cmd_mic_start;
-
 	struct aoc_chip *chip = alsa_stream->chip;
 
 	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_MIC_RECORD_AP_SET_PARAMS_ID,
@@ -1231,16 +1293,10 @@ static int aoc_audio_capture_set_params(struct aoc_alsa_stream *alsa_stream,
 		goto exit;
 	}
 
-	/* Start the pdm mic */
-	AocCmdHdrSet(&cmd_mic_start, CMD_AUDIO_INPUT_MIC_RECORD_AP_START_PREPARE_ID,
-		     sizeof(cmd_mic_start));
-
-	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd_mic_start, sizeof(cmd_mic_start),
-				NULL, chip);
-	if (err < 0) {
-		pr_err("ERR:%d in capture start prepare\n", err);
-		goto exit;
-	}
+	/* Start the pdm/usb/bt mic */
+	err = aoc_audio_capture_mic_prepare(chip);
+	if (err < 0)
+		pr_err("ERR:%d in audio capture mic prepare\n", err);
 
 	pr_debug("Flush aoc ring buffer\n");
 	if (!aoc_ring_flush_read_data(alsa_stream->dev->service, AOC_UP, 0)) {
@@ -1267,37 +1323,6 @@ static int aoc_audio_capture_spatial_module_trigger(struct aoc_chip *chip,
 				NULL, chip);
 	if (err < 0)
 		pr_err("ERR:%d in spatial module trigger\n", err);
-
-	return err;
-}
-
-static int aoc_audio_capture_mic_input(struct aoc_chip *chip,
-				 int input_cmd, int mic_input_source)
-{
-	int err;
-	struct CMD_HDR cmd0; /* For ap mic input STOP */
-	struct CMD_AUDIO_INPUT_AP_INPUT_START cmd1;
-
-	if (input_cmd == START) {
-		AocCmdHdrSet(&(cmd1.parent),
-			     CMD_AUDIO_INPUT_AP_INPUT_START_ID,
-			     sizeof(cmd1));
-
-		cmd1.mic_input_source = mic_input_source;
-		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd1,
-					sizeof(cmd1), NULL, chip);
-		if (err < 0)
-			pr_err("ERR:%d audio capture mic input start fail!\n", err);
-
-	} else {
-		AocCmdHdrSet(&cmd0, CMD_AUDIO_INPUT_AP_INPUT_STOP_ID,
-			     sizeof(cmd0));
-
-		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd0,
-					sizeof(cmd0), NULL, chip);
-		if (err < 0)
-			pr_err("ERR:%d audio capture mic input stop fail!\n", err);
-	}
 
 	return err;
 }
@@ -1372,42 +1397,18 @@ static int aoc_audio_capture_trigger(struct aoc_alsa_stream *alsa_stream, int re
 	int err = 0;
 	struct CMD_HDR cmd;
 	struct aoc_chip *chip = alsa_stream->chip;
-	int mic_input_source = 0;
 
 	pr_info("%s: %d", __func__, record_cmd);
 
-	if (chip->audio_capture_mic_source == BUILTIN_MIC) {
-		AocCmdHdrSet(&cmd,
-			     (record_cmd == START) ? CMD_AUDIO_INPUT_MIC_RECORD_AP_START_DATA_ID :
-							   CMD_AUDIO_INPUT_MIC_RECORD_AP_STOP_ID,
-			     sizeof(cmd));
+	AocCmdHdrSet(&cmd,
+		     (record_cmd == START) ? CMD_AUDIO_INPUT_MIC_RECORD_AP_START_DATA_ID :
+						   CMD_AUDIO_INPUT_MIC_RECORD_AP_STOP_ID,
+		     sizeof(cmd));
 
-		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL,
-					chip);
-		if (err < 0) {
-			pr_err("ERR:%d in audio input mic record start/stop\n", err);
-			goto exit;
-		}
-
-	} else {
-		switch (chip->audio_capture_mic_source) {
-		case USB_MIC:
-			mic_input_source = AP_INPUT_PROCESSOR_USB_INPUT_INDEX;
-			break;
-		case BT_MIC:
-			mic_input_source = AP_INPUT_PROCESSOR_BT_INPUT_INDEX;
-			break;
-		default:
-			pr_err("ERR in mic input source for audio capture mic source=%d\n",
-			       chip->audio_capture_mic_source);
-			err = EINVAL;
-			goto exit;
-		}
-		err = aoc_audio_capture_mic_input(chip, record_cmd, mic_input_source);
-		if (err < 0) {
-			pr_err("ERR:%d in audio capture mic input setup start/stop\n", err);
-			goto exit;
-		}
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in audio input mic record start/stop\n", err);
+		goto exit;
 	}
 
 	/* For mmap capture */
