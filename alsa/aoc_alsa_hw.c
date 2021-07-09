@@ -2753,9 +2753,31 @@ int aoc_compr_offload_flush_buffer(struct aoc_alsa_stream *alsa_stream)
 	return err;
 }
 
+static int aoc_compr_reset_gain_and_delay(struct aoc_alsa_stream *alsa_stream)
+{
+	int err = 0;
+	int cmd_id = CMD_AUDIO_OUTPUT_DEC_RESET_CURRENT_GAIN_ID;
+	struct aoc_chip *chip = alsa_stream->chip;
+
+	err = aoc_audio_control_simple_cmd(CMD_OUTPUT_CHANNEL, cmd_id, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in aoc compr reset gain\n", err);
+		return err;
+	}
+
+	mdelay(10); /* to allow the reset finished in aoc*/
+
+	return 0;
+}
+
 int aoc_compr_pause(struct aoc_alsa_stream *alsa_stream)
 {
 	int err;
+
+	/* reset the gain in aoc for compr offload playback and then wait for 10 ms */
+	err = aoc_compr_reset_gain_and_delay(alsa_stream);
+	if (err < 0)
+		pr_err("ERR:%d aoc compr reset gain ramp fail\n", err);
 
 	err = aoc_audio_stop(alsa_stream);
 	if (err < 0)
