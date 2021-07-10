@@ -72,13 +72,20 @@ struct aoc_usb_drvdata {
 	struct notifier_block nb;
 
 	long service_timeout;
-	bool usb_conn_state;
+	unsigned int usb_conn_state;
 };
 
 struct get_dev_ctx_args {
 	unsigned int slot_id;
 	size_t length;
 	u8 *dev_ctx;
+};
+
+struct conn_stat_args {
+	u16 bus_id;
+	u16 dev_num;
+	u16 slot_id;
+	u32 conn_stat;
 };
 
 struct get_isoc_tr_info_args {

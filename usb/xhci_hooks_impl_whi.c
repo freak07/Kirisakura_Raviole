@@ -113,9 +113,17 @@ static int xhci_setup_done(void)
 	return 0;
 }
 
-static int xhci_sync_conn_stat(u32 conn_state)
+static int xhci_sync_conn_stat(unsigned int bus_id, unsigned int dev_num, unsigned int slot_id,
+			       unsigned int conn_stat)
 {
-	blocking_notifier_call_chain(&aoc_usb_notifier_list, SYNC_CONN_STAT, &conn_state);
+	struct conn_stat_args args;
+
+	args.bus_id = bus_id;
+	args.dev_num = dev_num;
+	args.slot_id = slot_id;
+	args.conn_stat = conn_stat;
+	blocking_notifier_call_chain(&aoc_usb_notifier_list, SYNC_CONN_STAT, &args);
+
 	return 0;
 }
 
@@ -313,7 +321,8 @@ static int xhci_udev_notify(struct notifier_block *self, unsigned long action,
 			    USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY ||
 				vendor_data->op_mode ==
 			    USB_OFFLOAD_DRAM) {
-				xhci_sync_conn_stat(USB_CONNECTED);
+				xhci_sync_conn_stat(udev->bus->busnum, udev->devnum, udev->slot_id,
+						    USB_CONNECTED);
 			}
 		}
 		vendor_data->usb_accessory_enabled = false;
@@ -324,7 +333,8 @@ static int xhci_udev_notify(struct notifier_block *self, unsigned long action,
 		     USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY ||
 			 vendor_data->op_mode ==
 			 USB_OFFLOAD_DRAM)) {
-			xhci_sync_conn_stat(USB_DISCONNECTED);
+			xhci_sync_conn_stat(udev->bus->busnum, udev->devnum, udev->slot_id,
+					    USB_DISCONNECTED);
 		}
 		vendor_data->usb_accessory_enabled = false;
 		break;
