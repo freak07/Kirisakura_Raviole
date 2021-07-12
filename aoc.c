@@ -65,6 +65,7 @@
 #include "aoc_ipc_core_internal.h"
 
 #define MAX_FIRMWARE_LENGTH 128
+#define AP_RESET_REASON_LENGTH 32
 #define AOC_S2MPU_CTRL0 0x0
 
 #define AOC_MAX_MINOR (1U)
@@ -135,6 +136,8 @@ struct aoc_prvdata {
 	int watchdog_irq;
 	struct work_struct watchdog_work;
 	bool aoc_reset_done;
+	bool ap_triggered_reset;
+	char ap_reset_reason[AP_RESET_REASON_LENGTH];
 	wait_queue_head_t aoc_reset_wait_queue;
 	unsigned int acpm_async_id;
 	int total_services;
@@ -1626,6 +1629,8 @@ static ssize_t reset_store(struct device *dev, struct device_attribute *attr,
 		dev_err(dev, "Reset request rejected, option disabled via persist options");
 	} else {
 		disable_irq_nosync(prvdata->watchdog_irq);
+		strlcpy(prvdata->ap_reset_reason, reason_str, AP_RESET_REASON_LENGTH);
+		prvdata->ap_triggered_reset = true;
 		schedule_work(&prvdata->watchdog_work);
 	}
 	return count;
@@ -2193,6 +2198,13 @@ static void aoc_watchdog(struct work_struct *work)
 	if (!sscd_pdata.sscd_report) {
 		dev_err(prvdata->dev, "aoc coredump failed: no sscd driver\n");
 		goto err_coredump;
+	}
+
+	if (prvdata->ap_triggered_reset) {
+		prvdata->ap_triggered_reset = false;
+		snprintf(crash_info, RAMDUMP_SECTION_CRASH_INFO_SIZE - 1,
+			"AP Triggered Reset: %s", prvdata->ap_reset_reason);
+		goto coredump_submit;
 	}
 
 	ramdump_timeout = jiffies + (5 * HZ);
