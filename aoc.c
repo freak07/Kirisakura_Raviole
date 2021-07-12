@@ -1330,7 +1330,7 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 	const int aoc_watchdog_value_ssr = 4100 * 100;
 	const int aoc_reset_timeout_ms = 1000;
 	const int aoc_reset_tries = 3;
-	const u32 aoc_watchdog_control_ssr = 0x2F;
+	const u32 aoc_watchdog_control_ssr = 0x3F;
 	const unsigned int custom_in_offset = 0x3AC4;
 	const unsigned int custom_out_offset = 0x3AC0;
 	int rc;
