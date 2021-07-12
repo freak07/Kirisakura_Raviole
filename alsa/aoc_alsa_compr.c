@@ -13,10 +13,24 @@
 #include <linux/platform_device.h>
 #include <linux/version.h>
 
+#include <trace/hooks/snd_compr.h>
+
 #include "aoc_alsa.h"
 #include "aoc_alsa_drv.h"
 
 static void aoc_stop_work_handler(struct work_struct *work);
+
+static void vh_ep_use_pause_in_drain(void *data, bool *use_pause_in_drain, bool *leave_draining)
+{
+	*use_pause_in_drain = true;
+	*leave_draining = true;
+}
+
+static int aoc_compr_vh_snd_compr_init()
+{
+	return register_trace_android_vh_snd_compr_use_pause_in_drain(vh_ep_use_pause_in_drain,
+									NULL);
+}
 
 static void aoc_compr_reset_handler(aoc_aud_service_event_t evnt, void *cookies)
 {
@@ -769,6 +783,7 @@ int aoc_compr_init(void)
 		return err;
 	}
 
+	aoc_compr_vh_snd_compr_init();
 	return 0;
 }
 
