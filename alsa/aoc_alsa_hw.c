@@ -864,6 +864,22 @@ int aoc_set_usb_config(struct aoc_chip *chip)
 	return err;
 }
 
+int aoc_set_usb_config_v2(struct aoc_chip *chip)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_USB_CONFIG_V2 cmd = chip->usb_sink_cfg_v2;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_USB_CONFIG_V2_ID, sizeof(cmd));
+
+	cmd.rx_enable = true;
+	cmd.tx_enable = true;
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0)
+		pr_err("Err:%d in aoc set usb config v2!\n", err);
+
+	return err;
+}
+
 static int
 aoc_audio_playback_trigger_source(struct aoc_alsa_stream *alsa_stream, int cmd,
 				  int src)

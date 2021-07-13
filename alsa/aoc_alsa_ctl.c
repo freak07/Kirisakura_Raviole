@@ -1115,6 +1115,130 @@ static int usb_cfg_ctl_set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_va
 	return err;
 }
 
+static int usb_cfg_v2_ctl_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 idx = (u32)mc->shift;
+	int val;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	switch (idx) {
+	case USB_BUS_ID:
+		val = chip->usb_sink_cfg_v2.bus_id;
+		break;
+	case USB_DEV_ID:
+		val = chip->usb_sink_cfg_v2.dev_num;
+		break;
+	case USB_TX_EP_ID:
+		val = chip->usb_sink_cfg_v2.tx_ep_num;
+		break;
+	case USB_TX_FORMAT:
+		val = chip->usb_sink_cfg_v2.tx_format;
+		break;
+	case USB_TX_SR:
+		val = chip->usb_sink_cfg_v2.tx_sr;
+		break;
+	case USB_TX_CH:
+		val = chip->usb_sink_cfg_v2.tx_ch;
+		break;
+	case USB_TX_BW:
+		val = chip->usb_sink_cfg_v2.tx_width;
+		break;
+	case USB_RX_EP_ID:
+		val = chip->usb_sink_cfg_v2.rx_ep_num;
+		break;
+	case USB_RX_FORMAT:
+		val = chip->usb_sink_cfg_v2.rx_format;
+		break;
+	case USB_RX_SR:
+		val = chip->usb_sink_cfg_v2.rx_sr;
+		break;
+	case USB_RX_CH:
+		val = chip->usb_sink_cfg_v2.rx_ch;
+		break;
+	case USB_RX_BW:
+		val = chip->usb_sink_cfg_v2.rx_width;
+		break;
+	case USB_CFG_TO_AOC:
+		val = 0;
+		break;
+	default:
+		val = -1;
+		pr_err("ERR: incorrect index for USB config v2 in %s\n", __func__);
+	}
+
+	ucontrol->value.enumerated.item[0] = val;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int usb_cfg_v2_ctl_set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc = (struct soc_mixer_control *)kcontrol->private_value;
+	u32 idx = (u32)mc->shift;
+	int err = 0;
+	int val = ucontrol->value.enumerated.item[0];
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	switch (idx) {
+	case USB_BUS_ID:
+		chip->usb_sink_cfg_v2.bus_id = val;
+		break;
+	case USB_DEV_ID:
+		chip->usb_sink_cfg_v2.dev_num = val;
+		break;
+	case USB_TX_EP_ID:
+		chip->usb_sink_cfg_v2.tx_ep_num = val;
+		break;
+	case USB_TX_FORMAT:
+		chip->usb_sink_cfg_v2.tx_format = val;
+		break;
+	case USB_TX_SR:
+		chip->usb_sink_cfg_v2.tx_sr = val;
+		break;
+	case USB_TX_CH:
+		chip->usb_sink_cfg_v2.tx_ch = val;
+		break;
+	case USB_TX_BW:
+		chip->usb_sink_cfg_v2.tx_width = val;
+		break;
+	case USB_RX_EP_ID:
+		chip->usb_sink_cfg_v2.rx_ep_num = val;
+		break;
+	case USB_RX_FORMAT:
+		chip->usb_sink_cfg_v2.rx_format = val;
+		break;
+	case USB_RX_SR:
+		chip->usb_sink_cfg_v2.rx_sr = val;
+		break;
+	case USB_RX_CH:
+		chip->usb_sink_cfg_v2.rx_ch = val;
+		break;
+	case USB_RX_BW:
+		chip->usb_sink_cfg_v2.rx_width = val;
+		break;
+	case USB_CFG_TO_AOC:
+		err = aoc_set_usb_config_v2(chip);
+		if (err < 0)
+			pr_err("ERR:%d fail to update aoc usb config v2!\n", err);
+		break;
+	default:
+		err = -EINVAL;
+		pr_err("ERR: %d incorrect index for USB config v2\n", err);
+	}
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
 static int aoc_dsp_state_ctl_get(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
@@ -1348,6 +1472,33 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		       usb_cfg_ctl_get, usb_cfg_ctl_set),
 	SOC_SINGLE_EXT("USB Config To AoC", SND_SOC_NOPM, USB_CFG_TO_AOC, 1, 0,
 		       usb_cfg_ctl_get, usb_cfg_ctl_set),
+
+	SOC_SINGLE_EXT("USB Bus ID v2", SND_SOC_NOPM, USB_BUS_ID, 100, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
+	SOC_SINGLE_EXT("USB Dev ID v2", SND_SOC_NOPM, USB_DEV_ID, 100, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
+	SOC_SINGLE_EXT("USB Playback EP ID v2", SND_SOC_NOPM, USB_TX_EP_ID, 100, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
+	SOC_SINGLE_EXT("USB Playback FORMAT v2", SND_SOC_NOPM, USB_TX_FORMAT, 100, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
+	SOC_SINGLE_EXT("USB Playback SR v2", SND_SOC_NOPM, USB_TX_SR, 48000, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
+	SOC_SINGLE_EXT("USB Playback CH v2", SND_SOC_NOPM, USB_TX_CH, 2, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
+	SOC_SINGLE_EXT("USB Playback BW v2", SND_SOC_NOPM, USB_TX_BW, 32, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
+	SOC_SINGLE_EXT("USB Capture EP ID v2", SND_SOC_NOPM, USB_RX_EP_ID, 100, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
+	SOC_SINGLE_EXT("USB Capture FORMAT v2", SND_SOC_NOPM, USB_RX_FORMAT, 100, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
+	SOC_SINGLE_EXT("USB Capture SR v2", SND_SOC_NOPM, USB_RX_SR, 48000, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
+	SOC_SINGLE_EXT("USB Capture CH v2", SND_SOC_NOPM, USB_RX_CH, 2, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
+	SOC_SINGLE_EXT("USB Capture BW v2", SND_SOC_NOPM, USB_RX_BW, 32, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
+	SOC_SINGLE_EXT("USB Config To AoC v2", SND_SOC_NOPM, USB_CFG_TO_AOC, 1, 0,
+		       usb_cfg_v2_ctl_get, usb_cfg_v2_ctl_set),
 
 	SOC_ENUM_EXT("Audio Sink 0 Processing State", sink_0_state_enum,
 		     aoc_sink_state_ctl_get, NULL),

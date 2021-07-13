@@ -123,12 +123,15 @@ enum TelephonyModes {
 
 /* AoC USB Config parameters */
 enum {
+	USB_BUS_ID,
 	USB_DEV_ID,
 	USB_TX_EP_ID,
+	USB_TX_FORMAT,
 	USB_TX_SR,
 	USB_TX_CH,
 	USB_TX_BW,
 	USB_RX_EP_ID,
+	USB_RX_FORMAT,
 	USB_RX_SR,
 	USB_RX_CH,
 	USB_RX_BW,
@@ -218,6 +221,7 @@ struct aoc_chip {
 
 	struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG a2dp_encoder_cfg;
 	struct CMD_AUDIO_OUTPUT_USB_CONFIG usb_sink_cfg;
+	struct CMD_AUDIO_OUTPUT_USB_CONFIG_V2 usb_sink_cfg_v2;
 	struct CMD_AUDIO_OUTPUT_GET_SIDETONE sidetone_cfg;
 };
 
@@ -336,6 +340,7 @@ int aoc_get_sink_mode(struct aoc_chip *chip, int sink);
 int aoc_set_sink_mode(struct aoc_chip *chip, int sink, int mode);
 
 int aoc_set_usb_config(struct aoc_chip *chip);
+int aoc_set_usb_config_v2(struct aoc_chip *chip);
 
 int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 		    uint32_t count);
