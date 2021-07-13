@@ -49,6 +49,7 @@
 #define COMPR_OFFLOAD_TIMER_INTERVAL_NANOSECS 5000e6
 #define AOC_COMPR_HRTIMER_IRQ_HANDLER_BYPASS
 #define DEFAULT_PCM_WAIT_TIME_IN_MSECS 10000
+#define DEFAULT_VOICE_PCM_WAIT_TIME_IN_MSECS 500
 #define COMPR_OFFLOAD_GAIN_RESET_TIME_DELAY_IN_MSECS 150
 
 /* Default mic and sink for audio capturing/playback */
@@ -214,6 +215,7 @@ struct aoc_chip {
 	struct mutex audio_mutex;
 	spinlock_t audio_lock;
 	long pcm_wait_time_in_ms;
+	long voice_pcm_wait_time_in_ms;
 
 	struct AUDIO_OUTPUT_BT_A2DP_ENC_CFG a2dp_encoder_cfg;
 	struct CMD_AUDIO_OUTPUT_USB_CONFIG usb_sink_cfg;

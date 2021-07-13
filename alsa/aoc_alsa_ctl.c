@@ -761,6 +761,38 @@ static int pcm_wait_time_set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_
 	return 0;
 }
 
+static int voice_pcm_wait_time_get(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = chip->voice_pcm_wait_time_in_ms;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int voice_pcm_wait_time_set(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int val = ucontrol->value.integer.value[0];
+
+	if (val < 0 || val > DEFAULT_PCM_WAIT_TIME_IN_MSECS)
+		return -EINVAL;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	chip->voice_pcm_wait_time_in_ms = val;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static int audio_capture_mic_source_get(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
@@ -1691,6 +1723,9 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 
 	SOC_SINGLE_EXT("PCM Stream Wait Time in MSec", SND_SOC_NOPM, 0, 10000, 0, pcm_wait_time_get,
 		       pcm_wait_time_set),
+
+	SOC_SINGLE_EXT("Voice PCM Stream Wait Time in MSec", SND_SOC_NOPM, 0, 10000, 0,
+		voice_pcm_wait_time_get, voice_pcm_wait_time_set),
 
 	{
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
