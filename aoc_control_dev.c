@@ -257,6 +257,12 @@ DECLARE_STAT("V_NOM", voltage_nominal);
 DECLARE_STAT("V_UD", voltage_underdrive);
 DECLARE_STAT("V_SUD", voltage_super_underdrive);
 DECLARE_STAT("V_UUD", voltage_ultra_underdrive);
+DECLARE_STAT("RING_W", ring_buffer_wakeup);
+DECLARE_STAT("HOST_W", host_ipc_wakeup);
+DECLARE_STAT("USF_W", usf_wakeup);
+DECLARE_STAT("AUD_W", audio_wakeup);
+DECLARE_STAT("LOG_W", logging_wakeup);
+DECLARE_STAT("WORD_W", hotword_wakeup);
 
 static struct attribute *aoc_stats_attrs[] = {
 	&dev_attr_a32_build_info.attr,
@@ -294,6 +300,12 @@ static struct attribute *aoc_stats_attrs[] = {
 	&dev_attr_voltage_underdrive.attr,
 	&dev_attr_voltage_super_underdrive.attr,
 	&dev_attr_voltage_ultra_underdrive.attr,
+	&dev_attr_ring_buffer_wakeup.attr,
+	&dev_attr_host_ipc_wakeup.attr,
+	&dev_attr_usf_wakeup.attr,
+	&dev_attr_audio_wakeup.attr,
+	&dev_attr_logging_wakeup.attr,
+	&dev_attr_hotword_wakeup.attr,
 	NULL
 };
 
