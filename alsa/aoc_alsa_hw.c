@@ -2002,6 +2002,7 @@ int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 	struct aoc_service_dev *dev = alsa_stream->dev;
 	void *tmp;
 	int avail;
+	uint32_t block_size;
 
 	avail = aoc_ring_bytes_available_to_write(dev->service, AOC_DOWN);
 	if (unlikely(avail < count)) {
@@ -2010,22 +2011,37 @@ int aoc_audio_write(struct aoc_alsa_stream *alsa_stream, void *src,
 		err = -EFAULT;
 		goto out;
 	}
-	if (alsa_stream->substream)
-		tmp = alsa_stream->substream->runtime->dma_area;
-	else
-		tmp = alsa_stream->cstream->runtime->buffer;
 
-	err = copy_from_user(tmp, src, count);
-	if (err != 0) {
-		pr_err("ERR: %d bytes not read from user space\n", err);
-		err = -EFAULT;
-		goto out;
+	if (alsa_stream->substream) {
+		tmp = alsa_stream->substream->runtime->dma_area;
+		block_size = count;
+	} else {
+		tmp = alsa_stream->cstream->runtime->buffer;
+		block_size = alsa_stream->offload_temp_data_buf_size;
 	}
 
-	err = aoc_service_write(dev, tmp, count, NONBLOCKING);
-	if (err != count) {
-		pr_err("ERR: unwritten data - %d bytes\n", count - err);
-		err = -EFAULT;
+	while (count > 0) {
+		if (count < block_size)
+			block_size = count;
+
+		if (alsa_stream->cstream)
+			pr_debug("compr offload, count: %d, blocksize: %d\n", count, block_size);
+
+		err = copy_from_user(tmp, src, block_size);
+		if (err != 0) {
+			pr_err("ERR: %d bytes not read from user space\n", err);
+			err = -EFAULT;
+			goto out;
+		}
+
+		err = aoc_service_write(dev, tmp, block_size, NONBLOCKING);
+		if (err != block_size) {
+			pr_err("ERR: unwritten data - %d bytes\n", block_size - err);
+			err = -EFAULT;
+		}
+
+		count -= block_size;
+		src += block_size;
 	}
 
 out:

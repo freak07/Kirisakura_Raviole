@@ -73,6 +73,7 @@
 
 #define AOC_AUDIO_SINK_BLOCK_ID_BASE 16
 #define AOC_COMPR_OFFLOAD_DEFAULT_SR 48000
+#define COMPR_OFFLOAD_KERNEL_TMP_BUF_SIZE PAGE_SIZE
 
 /* TODO: may not needed*/
 #define PLAYBACK_WATERMARK_DEFAULT 48000
@@ -231,6 +232,7 @@ struct aoc_alsa_stream {
 	struct snd_compr_stream *cstream; /* compress offload stream */
 	int compr_offload_codec;
 	long compr_pcm_io_sample_base;
+	int offload_temp_data_buf_size;
 	struct timer_list timer; /* For advancing the hw ptr */
 	struct hrtimer hr_timer; /* For advancing the hw ptr */
 	unsigned long timer_interval_ns;

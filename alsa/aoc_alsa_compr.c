@@ -596,24 +596,26 @@ static int aoc_compr_set_params(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cst
 	struct snd_compr_runtime *runtime = cstream->runtime;
 	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
 
-	uint8_t *buffer;
+	uint8_t *temp_data_buf;
 	int buffer_size;
 
 	pr_debug("%s, fragment size = %d, number of fragment = %d\n", __func__,
 		 params->buffer.fragment_size, params->buffer.fragments);
 
-	/* Memory allocation in runtime, based on segment size and the number of segment */
+	/* DRAM compr offload buffer size in runtime */
 	buffer_size = params->buffer.fragment_size * params->buffer.fragments;
 
 	pr_debug("%s buffer size: %d\n", __func__, buffer_size);
 
-	buffer = kmalloc_array(buffer_size, sizeof(*buffer), GFP_KERNEL);
-	if (!buffer) {
-		pr_err("ERR: no memory\n");
+	alsa_stream->offload_temp_data_buf_size = COMPR_OFFLOAD_KERNEL_TMP_BUF_SIZE;
+	temp_data_buf = kmalloc_array(alsa_stream->offload_temp_data_buf_size,
+				      sizeof(*temp_data_buf), GFP_KERNEL);
+	if (!temp_data_buf) {
+		pr_err("ERR: not enough memory allocated for compress offload\n");
 		return -ENOMEM;
 	}
 
-	runtime->buffer = buffer;
+	runtime->buffer = temp_data_buf;
 	alsa_stream->buffer_size = buffer_size;
 	alsa_stream->period_size = params->buffer.fragment_size;
 	alsa_stream->params_rate = params->codec.sample_rate;
