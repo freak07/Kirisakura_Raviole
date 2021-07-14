@@ -2029,6 +2029,13 @@ static void aoc_take_offline(struct aoc_prvdata *prvdata)
 	prvdata->services = NULL;
 	prvdata->total_services = 0;
 
+	/* wakeup AOC before calling GSA */
+	aoc_req_assert(prvdata, true);
+	rc = aoc_req_wait(prvdata, true);
+	if (rc) {
+		dev_err(prvdata->dev, "timed out waiting for aoc_ack\n");
+	}
+
 	/* TODO: GSA_AOC_SHUTDOWN needs to be 4, but the current header defines
 	 * as 2.  Change this when the header is updated
 	 */
