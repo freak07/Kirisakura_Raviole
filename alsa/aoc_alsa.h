@@ -42,6 +42,10 @@
 #define AOC_COMPR_OFFLOAD_SERVICE "audio_playback6"
 #define AOC_COMPR_OFFLOAD_EOF_SERVICE "decoder_eof"
 
+enum uc_device_id { UC_AUDIO_RECORD = 8, UC_MMAP_RECORD = 9, UC_LOW_LATENCY_AUDIO_RECORD = 10 };
+#define AOC_CAPUTRE_DEVICE_MASK                                                                    \
+	(1 << UC_AUDIO_RECORD | 1 << UC_MMAP_RECORD | 1 << UC_LOW_LATENCY_AUDIO_RECORD)
+
 #define AOC_CMD_DEBUG_ENABLE
 #define WAITING_TIME_MS 100
 
@@ -165,7 +169,7 @@ enum { NORMAL = 0, MMAPED, RAW, INCALL, HIFI, ANDROID_AEC, COMPRESS };
 
 enum { BUILTIN_MIC0 = 0, BUILTIN_MIC1, BUILTIN_MIC2, BUILTIN_MIC3 };
 enum { MIC_LOW_POWER_GAIN = 0, MIC_HIGH_POWER_GAIN, MIC_CURRENT_GAIN };
-enum { DEFAULT_MIC = 0, BUILTIN_MIC, USB_MIC, BT_MIC, IN_CALL_MUSIC };
+enum { DEFAULT_MIC = 0, BUILTIN_MIC, USB_MIC, BT_MIC, IN_CALL_MUSIC, NO_MIC=IN_CALL_MUSIC };
 enum { INCALL_CAPTURE_OFF = 0, INCALL_CAPTURE_UL, INCALL_CAPTURE_DL, INCALL_CAPTURE_UL_DL };
 enum { NONBLOCKING = 0, BLOCKING = 1 };
 enum { STOP = 0, START };
@@ -305,6 +309,8 @@ int aoc_mic_dc_blocker_set(struct aoc_chip *chip, int enable);
 int aoc_mic_record_gain_get(struct aoc_chip *chip, long *val);
 int aoc_mic_record_gain_set(struct aoc_chip *chip, long val);
 int aoc_audio_capture_mic_prepare(struct aoc_chip *chip);
+int aoc_audio_capture_mic_close(struct aoc_chip *chip);
+int aoc_audio_capture_active_stream_num(struct aoc_chip *chip);
 
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute);
 int aoc_incall_capture_enable_get(struct aoc_chip *chip, int stream, long *val);

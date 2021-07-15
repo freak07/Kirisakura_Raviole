@@ -330,6 +330,31 @@ exit:
 	return err;
 }
 
+int aoc_audio_capture_mic_close(struct aoc_chip *chip)
+{
+	int err = 0;
+
+	err = aoc_audio_capture_mic_input(chip, STOP, 0);
+	if (err < 0) {
+		pr_err("ERR:%d in audio capture mic input stop\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
+int aoc_audio_capture_active_stream_num(struct aoc_chip *chip)
+{
+	int count = 0;
+	int64_t x = chip->opened & AOC_CAPUTRE_DEVICE_MASK;
+
+	while (x > 0) {
+		count++;
+		x = x & (x - 1);
+	}
+	return count;
+}
+
 int aoc_set_builtin_mic_power_state(struct aoc_chip *chip, int iMic, int state)
 {
 	int err;
@@ -1450,15 +1475,18 @@ static int aoc_audio_capture_trigger(struct aoc_alsa_stream *alsa_stream, int re
 
 	pr_info("%s: %d", __func__, record_cmd);
 
-	AocCmdHdrSet(&cmd,
-		     (record_cmd == START) ? CMD_AUDIO_INPUT_MIC_RECORD_AP_START_DATA_ID :
-						   CMD_AUDIO_INPUT_MIC_RECORD_AP_STOP_ID,
-		     sizeof(cmd));
+	if (alsa_stream->stream_type == MMAPED) {
+		AocCmdHdrSet(&cmd,
+			     (record_cmd == START) ? CMD_AUDIO_INPUT_MIC_RECORD_AP_START_DATA_ID :
+							   CMD_AUDIO_INPUT_MIC_RECORD_AP_STOP_ID,
+			     sizeof(cmd));
 
-	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
-	if (err < 0) {
-		pr_err("ERR:%d in audio input mic record start/stop\n", err);
-		goto exit;
+		err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL,
+					chip);
+		if (err < 0) {
+			pr_err("ERR:%d in audio input mic record start/stop\n", err);
+			goto exit;
+		}
 	}
 
 	/* For mmap capture */

@@ -811,6 +811,7 @@ static int audio_capture_mic_source_set(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
 	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int n, err = 0;
 
 	if (mutex_lock_interruptible(&chip->audio_mutex))
 		return -EINTR;
@@ -819,8 +820,20 @@ static int audio_capture_mic_source_set(struct snd_kcontrol *kcontrol,
 	if (chip->audio_capture_mic_source == DEFAULT_MIC)
 		chip->audio_capture_mic_source = BUILTIN_MIC;
 
+	pr_info("mic source set: %d\n", chip->audio_capture_mic_source);
+
+	n = aoc_audio_capture_active_stream_num(chip);
+	if (chip->audio_capture_mic_source == NO_MIC && n <= 1)
+		err = aoc_audio_capture_mic_close(chip);
+	else if (n > 0)
+		err = aoc_audio_capture_mic_prepare(chip);
+
+	if (err < 0)
+		pr_err("ERR:%d in audio capture mic source set\n", err);
+
 	mutex_unlock(&chip->audio_mutex);
-	return 0;
+
+	return err;
 }
 
 static int voice_call_mic_source_get(struct snd_kcontrol *kcontrol,
@@ -1457,7 +1470,7 @@ static SOC_ENUM_SINGLE_DECL(incall_capture_stream2_enum, 1, 2, incall_capture_st
 
 /* audio capture mic source */
 static const char *audio_capture_mic_source_texts[] = { "Default", "Builtin_MIC", "USB_MIC",
-						       "BT_MIC" };
+						       "BT_MIC", "No MIC" };
 static SOC_ENUM_SINGLE_DECL(audio_capture_mic_source_enum, 1, 0, audio_capture_mic_source_texts);
 
 /* Voice call mic source */
