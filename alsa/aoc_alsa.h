@@ -328,6 +328,9 @@ int aoc_get_dsp_state(struct aoc_chip *chip);
 int aoc_get_asp_mode(struct aoc_chip *chip, int block, int component, int key);
 int aoc_set_asp_mode(struct aoc_chip *chip, int block, int component, int key, int val);
 
+int aoc_get_audio_dsp_mode(struct aoc_chip *chip, long *val);
+int aoc_set_audio_dsp_mode(struct aoc_chip *chip, long val);
+
 int aoc_get_builtin_mic_process_mode(struct aoc_chip *chip);
 
 int aoc_get_sink_state(struct aoc_chip *chip, int sink);

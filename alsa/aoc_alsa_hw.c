@@ -780,6 +780,50 @@ int aoc_set_asp_mode(struct aoc_chip *chip, int block, int component, int key,
 	return err;
 }
 
+int aoc_get_audio_dsp_mode(struct aoc_chip *chip, long *val)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_DSP_MODE cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_DSP_MODE_GET_ID, sizeof(cmd));
+
+	pr_debug("Get audio asp mode\n");
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), (uint8_t *)&cmd,
+				chip);
+	if (err < 0) {
+		pr_err("ERR:%d in getting audio dsp mode", err);
+		return err;
+	}
+
+	if (val)
+		*val = cmd.mode;
+
+	return 0;
+}
+
+int aoc_set_audio_dsp_mode(struct aoc_chip *chip, long val)
+{
+	int err;
+	struct CMD_AUDIO_OUTPUT_DSP_MODE cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_OUTPUT_DSP_MODE_SET_ID, sizeof(cmd));
+
+	cmd.mode = val;
+
+	pr_info("Set audio dsp mode: %ld\n", val);
+
+	/* Send cmd to AOC */
+	err = aoc_audio_control(CMD_OUTPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0) {
+		pr_err("ERR:%d in audio dsp mode set:  val=%ld\n", err, val);
+		return err;
+	}
+
+	return 0;
+}
+
 int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int sink)
 {
 	int err;

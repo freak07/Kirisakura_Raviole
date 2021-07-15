@@ -958,6 +958,36 @@ static int aoc_asp_mode_ctl_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int aoc_audio_dsp_mode_ctl_get(struct snd_kcontrol *kcontrol,
+				      struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	aoc_get_audio_dsp_mode(chip, (long *)&(ucontrol->value.enumerated.item[0]));
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int aoc_audio_dsp_mode_ctl_set(struct snd_kcontrol *kcontrol,
+				      struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	aoc_set_audio_dsp_mode(chip, ucontrol->value.enumerated.item[0]);
+
+	pr_debug("Audio dsp mode set: %d", ucontrol->value.enumerated.item[0]);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static int
 aoc_builtin_mic_process_mode_ctl_get(struct snd_kcontrol *kcontrol,
 				     struct snd_ctl_elem_value *ucontrol)
@@ -1360,6 +1390,10 @@ static SOC_ENUM_SINGLE_DECL(sink_3_state_enum, 1, 3,
 static SOC_ENUM_SINGLE_DECL(sink_4_state_enum, 1, 4,
 			    sink_processing_state_texts);
 
+/* audio dsp state switch */
+static const char *audio_dsp_state_switch_texts[] = { "Ambient", "Record", "Telephony"};
+static SOC_ENUM_SINGLE_DECL(audio_dsp_state_switch_enum, 1, 0, audio_dsp_state_switch_texts);
+
 /* incall capture stream state */
 static const char *incall_capture_stream_texts[] = { "Off", "UL", "DL", "UL_DL" };
 static SOC_ENUM_SINGLE_DECL(incall_capture_stream0_enum, 1, 0, incall_capture_stream_texts);
@@ -1445,6 +1479,10 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
 	SOC_ENUM_EXT("AoC Modem Downlink ASRC Mode", block_19_15_1_state_enum,
 		     aoc_asp_mode_ctl_get, aoc_asp_mode_ctl_set),
+
+	SOC_ENUM_EXT("Audio DSP Mode", audio_dsp_state_switch_enum,
+		     aoc_audio_dsp_mode_ctl_get, aoc_audio_dsp_mode_ctl_set),
+
 
 	SOC_ENUM_EXT("BUILTIN MIC Process Mode", builtin_mic_process_mode_enum,
 		     aoc_builtin_mic_process_mode_ctl_get, NULL),
