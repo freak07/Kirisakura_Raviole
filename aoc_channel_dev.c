@@ -35,6 +35,10 @@ static long sent_msg_count = 0;
 module_param(received_msg_count, long, S_IRUGO);
 module_param(sent_msg_count, long, S_IRUGO);
 
+struct chan_prvdata {
+	struct wakeup_source *wakelock;
+};
+
 struct aocc_device_entry {
 	struct device *aocc_device;
 	struct aoc_service_dev *service;
@@ -133,6 +137,7 @@ static int aocc_demux_kthread(void *data)
 	ssize_t retval = 0;
 	int rc = 0;
 	struct aoc_service_dev *service = (struct aoc_service_dev *)data;
+	struct chan_prvdata *service_prvdata = service->prvdata;
 
 	pr_info("Demux handler started!");
 
@@ -179,6 +184,9 @@ static int aocc_demux_kthread(void *data)
 		received_msg_count++;
 		node->msg_size = retval;
 		channel = node->channel_index;
+
+		/* Take a wakelock to allow the queue to drain */
+		pm_wakeup_ws_event(service_prvdata->wakelock, 200, true);
 
 		/* Find the open file with the correct matching ID. */
 		mutex_lock(&s_open_files_lock);
@@ -727,6 +735,7 @@ static void aocc_sh_mem_doorbell_probe(struct aoc_service_dev *dev)
 
 static int aocc_probe(struct aoc_service_dev *dev)
 {
+	struct chan_prvdata *prvdata;
 	int ret = 0;
 	struct sched_param param = {
 		.sched_priority = 10,
@@ -734,7 +743,14 @@ static int aocc_probe(struct aoc_service_dev *dev)
 
 	pr_notice("probe service with name %s\n", dev_name(&dev->dev));
 
+	prvdata = devm_kzalloc(&dev->dev, sizeof(*prvdata), GFP_KERNEL);
+	if (!prvdata)
+		return -ENOMEM;
+
 	if (strcmp(dev_name(&dev->dev), "usf_sh_mem_doorbell") != 0) {
+		prvdata->wakelock = wakeup_source_register(&dev->dev, dev_name(&dev->dev));
+		dev->prvdata = prvdata;
+
 		ret = create_character_device(dev);
 
 		s_demux_task = kthread_run(&aocc_demux_kthread, dev,
@@ -755,6 +771,7 @@ static int aocc_remove(struct aoc_service_dev *dev)
 {
 	struct aocc_device_entry *entry;
 	struct aocc_device_entry *tmp;
+	struct chan_prvdata *prvdata;
 
 	if (dev != sh_mem_doorbell_service_dev) {
 		kthread_stop(s_demux_task);
@@ -764,6 +781,12 @@ static int aocc_remove(struct aoc_service_dev *dev)
 	if (dev == sh_mem_doorbell_service_dev) {
 		sh_mem_doorbell_service_dev->handler = NULL;
 		sh_mem_doorbell_service_dev = NULL;
+	} else {
+		prvdata = dev->prvdata;
+		if (prvdata->wakelock) {
+			wakeup_source_unregister(prvdata->wakelock);
+			prvdata->wakelock = NULL;
+		}
 	}
 
 	mutex_lock(&aocc_devices_lock);
