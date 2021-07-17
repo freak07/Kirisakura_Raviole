@@ -31,12 +31,6 @@
 #include "../aoc-interface.h"
 #include "google-aoc-enum.h"
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
-#define EXTRA_ARG_LINUX_5_9 struct snd_soc_component *component,
-#else
-#define EXTRA_ARG_LINUX_5_9
-#endif
-
 #define ALSA_AOC_CMD "alsa-aoc"
 #define CMD_INPUT_CHANNEL "audio_input_control"
 #define CMD_OUTPUT_CHANNEL "audio_output_control"

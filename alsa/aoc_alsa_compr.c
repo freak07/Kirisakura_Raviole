@@ -410,7 +410,7 @@ static int aoc_compr_playback_free(struct snd_compr_stream *cstream)
 	return 0;
 }
 
-static int aoc_compr_open(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream)
+static int aoc_compr_open(struct snd_soc_component *component, struct snd_compr_stream *cstream)
 {
 	int ret = 0;
 	if (cstream->direction == SND_COMPRESS_PLAYBACK)
@@ -419,7 +419,7 @@ static int aoc_compr_open(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream)
 	return ret;
 }
 
-static int aoc_compr_free(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream)
+static int aoc_compr_free(struct snd_soc_component *component, struct snd_compr_stream *cstream)
 {
 	int ret = 0;
 	if (cstream->direction == SND_COMPRESS_PLAYBACK)
@@ -428,7 +428,8 @@ static int aoc_compr_free(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream)
 	return ret;
 }
 
-static int aoc_compr_trigger(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream, int cmd)
+static int aoc_compr_trigger(struct snd_soc_component *component, struct snd_compr_stream *cstream,
+			     int cmd)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
 	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
@@ -516,7 +517,7 @@ out:
 	return err;
 }
 
-static int aoc_compr_pointer(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream,
+static int aoc_compr_pointer(struct snd_soc_component *component, struct snd_compr_stream *cstream,
 			     struct snd_compr_tstamp *arg)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
@@ -541,7 +542,8 @@ static int aoc_compr_pointer(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstrea
 	return 0;
 }
 
-static int aoc_compr_ack(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream, size_t count)
+static int aoc_compr_ack(struct snd_soc_component *component, struct snd_compr_stream *cstream,
+			 size_t count)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
 
@@ -566,8 +568,8 @@ static int aoc_compr_playback_copy(struct snd_compr_stream *cstream,
 	return count;
 }
 
-static int aoc_compr_copy(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream, char __user *buf,
-			  size_t count)
+static int aoc_compr_copy(struct snd_soc_component *component, struct snd_compr_stream *cstream,
+			  char __user *buf, size_t count)
 {
 	int ret = 0;
 
@@ -577,7 +579,7 @@ static int aoc_compr_copy(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream, 
 	return ret;
 }
 
-static int aoc_compr_get_caps(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream,
+static int aoc_compr_get_caps(struct snd_soc_component *component, struct snd_compr_stream *cstream,
 			      struct snd_compr_caps *arg)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
@@ -588,7 +590,8 @@ static int aoc_compr_get_caps(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstre
 	return ret;
 }
 
-static int aoc_compr_get_codec_caps(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream,
+static int aoc_compr_get_codec_caps(struct snd_soc_component *component,
+				    struct snd_compr_stream *cstream,
 				    struct snd_compr_codec_caps *codec)
 {
 	pr_debug("%s, %d\n", __func__, codec->codec);
@@ -607,7 +610,8 @@ static int aoc_compr_get_codec_caps(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream 
 	return 0;
 }
 
-static int aoc_compr_set_metadata(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream,
+static int aoc_compr_set_metadata(struct snd_soc_component *component,
+				  struct snd_compr_stream *cstream,
 				  struct snd_compr_metadata *metadata)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
@@ -618,7 +622,8 @@ static int aoc_compr_set_metadata(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *c
 	return ret;
 }
 
-static int aoc_compr_get_metadata(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream,
+static int aoc_compr_get_metadata(struct snd_soc_component *component,
+				  struct snd_compr_stream *cstream,
 				  struct snd_compr_metadata *metadata)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
@@ -629,8 +634,8 @@ static int aoc_compr_get_metadata(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *c
 	return ret;
 }
 
-static int aoc_compr_set_params(EXTRA_ARG_LINUX_5_9 struct snd_compr_stream *cstream,
-				struct snd_compr_params *params)
+static int aoc_compr_set_params(struct snd_soc_component *component,
+				struct snd_compr_stream *cstream, struct snd_compr_params *params)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
 	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
@@ -685,7 +690,7 @@ static const struct snd_compr_ops snd_aoc_compr_ops = {
 	.get_codec_caps = aoc_compr_get_codec_caps,
 };
 
-static int aoc_compr_new(EXTRA_ARG_LINUX_5_9 struct snd_soc_pcm_runtime *rtd)
+static int aoc_compr_new(struct snd_soc_component *component, struct snd_soc_pcm_runtime *rtd)
 {
 	pr_debug("%s, %pK", __func__, rtd);
 
