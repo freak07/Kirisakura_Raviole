@@ -2007,7 +2007,11 @@ int aoc_audio_read(struct aoc_alsa_stream *alsa_stream, void *dest,
 	int err = 0;
 	void *tmp;
 	struct aoc_service_dev *dev = alsa_stream->dev;
-	int avail;
+	uint32_t avail;
+
+	tmp = (void *)(alsa_stream->substream->runtime->dma_area);
+
+	memset(tmp, 0, count);
 
 	avail = aoc_ring_bytes_available_to_read(dev->service, AOC_UP);
 
@@ -2017,17 +2021,15 @@ int aoc_audio_read(struct aoc_alsa_stream *alsa_stream, void *dest,
 	}
 
 	/* Only read bytes available in the ring buffer */
-	count = avail < count ? avail : count;
-	if (count == 0)
-		return 0;
-
-	tmp = (void *)(alsa_stream->substream->runtime->dma_area);
-	err = aoc_service_read(dev, (void *)tmp, count, NONBLOCKING);
-	if (unlikely(err != count)) {
-		pr_err("ERR: %d bytes not read from ring buffer\n",
-		       count - err);
-		err = -EFAULT;
-		goto out;
+	avail = min(avail, count);
+	if (avail) {
+		err = aoc_service_read(dev, (void *)tmp, avail, NONBLOCKING);
+		if (unlikely(err != avail)) {
+			pr_err("ERR: %d bytes not read from ring buffer\n",
+			       count - err);
+			err = -EFAULT;
+			goto out;
+		}
 	}
 
 	err = copy_to_user(dest, tmp, count);
