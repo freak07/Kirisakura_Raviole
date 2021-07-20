@@ -1367,6 +1367,16 @@ static int aoc_audio_capture_spatial_module_trigger(struct aoc_chip *chip,
 	return err;
 }
 
+int aoc_spatial_module_start(struct aoc_chip *chip)
+{
+	return aoc_audio_capture_spatial_module_trigger(chip, START);
+}
+
+int aoc_spatial_module_stop(struct aoc_chip *chip)
+{
+	return aoc_audio_capture_spatial_module_trigger(chip, STOP);
+}
+
 static int aoc_mmap_capture_trigger(struct aoc_alsa_stream *alsa_stream, int record_cmd)
 {
 	int err = 0;

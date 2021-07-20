@@ -936,6 +936,11 @@ static int mic_spatial_module_enable_set(struct snd_kcontrol *kcontrol,
 
 	chip->mic_spatial_module_enable = ucontrol->value.integer.value[0];
 
+	if (chip->mic_spatial_module_enable)
+		aoc_spatial_module_start(chip);
+	else
+		aoc_spatial_module_stop(chip);
+
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
 }

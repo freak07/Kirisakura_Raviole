@@ -338,6 +338,9 @@ int aoc_set_audio_dsp_mode(struct aoc_chip *chip, long val);
 int aoc_get_builtin_mic_process_mode(struct aoc_chip *chip);
 int aoc_set_builtin_mic_process_mode(struct aoc_chip *chip, long mode);
 
+int aoc_spatial_module_start(struct aoc_chip *chip);
+int aoc_spatial_module_stop(struct aoc_chip *chip);
+
 int aoc_get_sink_state(struct aoc_chip *chip, int sink);
 int aoc_get_sink_channel_bitmap(struct aoc_chip *chip, int sink);
 int aoc_get_sink_mode(struct aoc_chip *chip, int sink);
