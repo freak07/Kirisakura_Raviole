@@ -68,7 +68,7 @@ static int _sglist_zero(struct scatterlist *sgl, unsigned int nents,
 
 static int _buffer_zero(struct samsung_dma_buffer *buffer)
 {
-	pgprot_t pgprot = PAGE_KERNEL;
+	pgprot_t pgprot = pgprot_writecombine(PAGE_KERNEL);
 
 	return _sglist_zero(buffer->sg_table.sgl, buffer->sg_table.orig_nents, pgprot);
 }
@@ -209,7 +209,7 @@ struct dma_heap *ion_physical_heap_create(phys_addr_t base, size_t size,
 
 	page = pfn_to_page(PFN_DOWN(base));
 
-	ret = _pages_zero(page, size, PAGE_KERNEL);
+	ret = _pages_zero(page, size, pgprot_writecombine(PAGE_KERNEL));
 	if (ret)
 		return ERR_PTR(ret);
 
