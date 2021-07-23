@@ -80,15 +80,25 @@ static struct aoc_driver aoc_chan_driver = {
 
 /* Message definitions. */
 /* TODO: These should be synchronized with EFW source. b/140593553 */
+/*
+ * Maximum channel index for a 31-bit channel index value. It's set at half of
+ * the actual maximum to avoid a race condition where two threads could pass the
+ * maximum channel index check and then each allocate and increment the channel
+ * index and push it over the maximum 31-bit value.
+ */
+#define AOCC_MAX_CHANNEL_INDEX ((1 << 30) - 1)
+struct aoc_channel_message {
+	uint32_t channel_index : 31;
+	uint32_t non_wake_up : 1;
+	char payload[AOCC_MAX_MSG_SIZE - sizeof(uint32_t)];
+} __attribute__((packed));
+
 struct aoc_message_node {
 	struct list_head msg_list;
 	size_t msg_size;
 	union {
 		char msg_buffer[AOCC_MAX_MSG_SIZE];
-		struct {
-			int channel_index;
-			char payload[AOCC_MAX_MSG_SIZE - sizeof(int)];
-		} __packed;
+		struct aoc_channel_message msg;
 	};
 };
 
@@ -144,6 +154,7 @@ static int aocc_demux_kthread(void *data)
 	while (!kthread_should_stop()) {
 		int handler_found = 0;
 		int channel = 0;
+		bool take_wake_lock = false;
 		struct file_prvdata *entry;
 		struct aoc_message_node *node =
 			kmalloc(sizeof(struct aoc_message_node), GFP_KERNEL);
@@ -183,16 +194,16 @@ static int aocc_demux_kthread(void *data)
 
 		received_msg_count++;
 		node->msg_size = retval;
-		channel = node->channel_index;
-
-		/* Take a wakelock to allow the queue to drain */
-		pm_wakeup_ws_event(service_prvdata->wakelock, 200, true);
+		channel = node->msg.channel_index;
 
 		/* Find the open file with the correct matching ID. */
 		mutex_lock(&s_open_files_lock);
 		list_for_each_entry(entry, &s_open_files, open_files_list) {
 			if (channel == entry->channel_index) {
 				handler_found = 1;
+				if (!node->msg.non_wake_up) {
+					take_wake_lock = true;
+				}
 
 				if (atomic_read(&entry->pending_msg_count) >
 				    AOCC_MAX_PENDING_MSGS) {
@@ -224,6 +235,11 @@ static int aocc_demux_kthread(void *data)
 			}
 		}
 		mutex_unlock(&s_open_files_lock);
+
+		/* Take a wakelock to allow the queue to drain. */
+		if (take_wake_lock) {
+			pm_wakeup_ws_event(service_prvdata->wakelock, 200, true);
+		}
 
 		if (!handler_found) {
 			pr_warn_ratelimited("Could not find handler for channel %d",
@@ -399,7 +415,7 @@ static int aocc_open(struct inode *inode, struct file *file)
 	}
 
 	/* Check if our simple allocation scheme has overflowed */
-	if (atomic_read(&channel_index_counter) == 0) {
+	if (atomic_read(&channel_index_counter) >= AOCC_MAX_CHANNEL_INDEX) {
 		pr_err("Too many channels have been opened.");
 		rc = -EMFILE;
 		mutex_unlock(&aocc_devices_lock);
@@ -565,7 +581,7 @@ static ssize_t aocc_read(struct file *file, char __user *buf, size_t count,
 	}
 
 	/* copy message payload to userspace, minus the channel ID */
-	retval = copy_to_user(buf, node->payload, node->msg_size - sizeof(int));
+	retval = copy_to_user(buf, node->msg.payload, node->msg_size - sizeof(uint32_t));
 
 	/* copy_to_user returns bytes that couldn't be copied */
 	retval = node->msg_size - retval;
