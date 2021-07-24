@@ -722,6 +722,10 @@ static struct xhci_ring *alloc_transfer_ring(struct xhci_hcd *xhci,
 	struct xhci_ring *ep_ring;
 	u16 dir;
 
+	if ((mem_flags & __GFP_DIRECT_RECLAIM) == 0)
+		xhci_warn(xhci, "%s: DMA memory might be from different region, gfp_flag=0x%x\n",
+			  __func__, mem_flags);
+
 	if (vendor_data->op_mode == USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY) {
 		ep_ring = xhci_initialize_ring_info_for_remote_isoc(xhci, endpoint_type,
 							 ring_type, max_packet,
@@ -810,6 +814,7 @@ static bool usb_offload_skip_urb(struct xhci_hcd *xhci, struct urb *urb)
 static void alloc_container_ctx(struct xhci_hcd *xhci, struct xhci_container_ctx *ctx,
 				int type, gfp_t flags)
 {
+	flags |= __GFP_DIRECT_RECLAIM;
 	ctx->bytes = dma_pool_zalloc(xhci->device_pool, flags, &ctx->dma);
 	if (!ctx->bytes)
 		xhci_err(xhci, "fail to allocate ctx->bytes\n");
