@@ -786,6 +786,33 @@ int aoc_get_builtin_mic_process_mode(struct aoc_chip *chip)
 	return err < 0 ? err : cmd.mic_process_index;
 }
 
+int aoc_set_builtin_mic_process_mode(struct aoc_chip *chip, long mode)
+{
+	int err;
+	struct CMD_AUDIO_INPUT_GET_AP_MIC_INDEX cmd;
+
+	AocCmdHdrSet(&(cmd.parent), CMD_AUDIO_INPUT_SET_AP_MIC_INDEX_ID, sizeof(cmd));
+
+	switch (mode) {
+	case 0:
+		cmd.mic_process_index = AP_MIC_PROCESS_RAW;
+		break;
+	case 1:
+		cmd.mic_process_index = AP_MIC_PROCESS_SPATIAL;
+		break;
+	default:
+		cmd.mic_process_index = AP_MIC_PROCESS_RAW;
+	}
+
+	err = aoc_audio_control(CMD_INPUT_CHANNEL, (uint8_t *)&cmd, sizeof(cmd), NULL, chip);
+	if (err < 0) {
+		pr_err("ERR: %d in set builtin_mic_process_mode!\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
 int aoc_get_dsp_state(struct aoc_chip *chip)
 {
 	int err;
