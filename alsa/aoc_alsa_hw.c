@@ -2768,7 +2768,8 @@ static int aoc_compr_reset_gain_and_delay(struct aoc_alsa_stream *alsa_stream)
 		return err;
 	}
 
-	mdelay(10); /* to allow the reset finished in aoc*/
+	/* To allow the reset finished in aoc */
+	msleep(COMPR_OFFLOAD_GAIN_RESET_TIME_DELAY_IN_MSECS);
 
 	return 0;
 }
