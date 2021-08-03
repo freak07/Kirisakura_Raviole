@@ -165,6 +165,12 @@ static int xhci_set_isoc_tr_info(u16 ep_id, u16 dir, struct xhci_ring *ep_ring)
 	return 0;
 }
 
+/*
+ * Determine if an USB device is a compatible devices:
+ *     True: Devices are audio class and they contain ISOC endpoint
+ *    False: Devices are not audio class or they're audio class but no ISOC endpoint or
+ *           they have at least one interface is video class
+ */
 static bool is_compatible_with_usb_audio_offload(struct usb_device *udev)
 {
 	struct usb_endpoint_descriptor *epd;
@@ -189,11 +195,8 @@ static bool is_compatible_with_usb_audio_offload(struct usb_device *udev)
 				for (k = 0; k < alt->desc.bNumEndpoints; k++) {
 					epd = &alt->endpoint[k].desc;
 					if (usb_endpoint_xfer_isoc(epd)) {
-					/* TODO(b/187373354): design the feature supporting rule */
-						if (udev->speed <= USB_SPEED_HIGH) {
-							is_audio = true;
-							break;
-						}
+						is_audio = true;
+						break;
 					}
 				}
 			}
