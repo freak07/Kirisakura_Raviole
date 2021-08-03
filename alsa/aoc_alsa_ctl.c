@@ -811,7 +811,7 @@ static int audio_capture_mic_source_set(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
 	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
-	int n, err = 0;
+	int err = 0;
 
 	if (mutex_lock_interruptible(&chip->audio_mutex))
 		return -EINTR;
@@ -821,12 +821,6 @@ static int audio_capture_mic_source_set(struct snd_kcontrol *kcontrol,
 		chip->audio_capture_mic_source = BUILTIN_MIC;
 
 	pr_info("mic source set: %d\n", chip->audio_capture_mic_source);
-
-	n = aoc_audio_capture_active_stream_num(chip);
-	if (chip->audio_capture_mic_source == NO_MIC && n <= 1)
-		err = aoc_audio_capture_mic_close(chip);
-	else if (n > 0)
-		err = aoc_audio_capture_mic_prepare(chip);
 
 	if (err < 0)
 		pr_err("ERR:%d in audio capture mic source set\n", err);

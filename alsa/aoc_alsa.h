@@ -216,6 +216,7 @@ struct aoc_chip {
 	int sidetone_enable;
 	int mic_loopback_enabled;
 	unsigned int opened;
+	unsigned int capture_param_set;
 	struct mutex audio_mutex;
 	spinlock_t audio_lock;
 	long pcm_wait_time_in_ms;
@@ -286,8 +287,8 @@ int aoc_audio_voip_stop(struct aoc_alsa_stream *alsa_stream);
 
 int aoc_pcm_device_to_stream_type(int device);
 
-int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest);
-int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest);
+int aoc_audio_path_open(struct aoc_chip *chip, int src, int dest, bool be_on);
+int aoc_audio_path_close(struct aoc_chip *chip, int src, int dest, bool be_on);
 int aoc_phonecall_path_open(struct aoc_chip *chip, int src, int dst, bool capture);
 int aoc_phonecall_path_close(struct aoc_chip *chip, int src, int dst, bool capture);
 int aoc_voipcall_path_open(struct aoc_chip *chip, int src, int dst, bool capture);
@@ -311,6 +312,12 @@ int aoc_mic_record_gain_set(struct aoc_chip *chip, long val);
 int aoc_audio_capture_mic_prepare(struct aoc_chip *chip);
 int aoc_audio_capture_mic_close(struct aoc_chip *chip);
 int aoc_audio_capture_active_stream_num(struct aoc_chip *chip);
+int aoc_audio_capture_param_configured_num(struct aoc_chip *chip);
+int ap_data_control_trigger(struct aoc_chip *chip, int record_cmd);
+int ap_record_stop(struct aoc_chip *chip);
+int aoc_capture_filter_runtime_control(struct aoc_chip *chip, uint32_t port_id, bool on);
+int aoc_audio_capture_runtime_trigger(struct aoc_chip *chip, int ep_id,
+	 int dst, bool on);
 
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute);
 int aoc_incall_capture_enable_get(struct aoc_chip *chip, int stream, long *val);

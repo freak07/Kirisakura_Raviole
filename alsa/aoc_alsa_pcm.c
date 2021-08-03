@@ -336,6 +336,9 @@ static int snd_aoc_pcm_close(struct snd_soc_component *component,
 	alsa_stream->period_size = 0;
 	alsa_stream->buffer_size = 0;
 
+	chip->opened &= ~(1 << alsa_stream->idx);
+	chip->capture_param_set &= ~(1 << alsa_stream->idx);
+
 	if (alsa_stream->open) {
 		alsa_stream->open = 0;
 		aoc_audio_close(alsa_stream);
@@ -346,8 +349,6 @@ static int snd_aoc_pcm_close(struct snd_soc_component *component,
 	* Do not free up alsa_stream here, it will be freed up by
 	* runtime->private_free callback we registered in *_open above
    	*/
-	chip->opened &= ~(1 << alsa_stream->idx);
-
 	mutex_unlock(&chip->audio_mutex);
 
 	cancel_work_sync(&alsa_stream->free_aoc_service_work);
