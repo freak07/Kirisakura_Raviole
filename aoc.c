@@ -769,9 +769,6 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		  version ? version : "unknown",
 		  _aoc_fw_is_release(fw) ? "release" : "development");
 
-	if (sram_was_repaired)
-		dev_err(dev, "SRAM was repaired on this device.  Stability/power will be impacted\n");
-
 	if (prvdata->disable_monitor_mode)
 		dev_err(dev, "Monitor Mode will be disabled.  Power will be impacted\n");
 
