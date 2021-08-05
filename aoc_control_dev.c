@@ -126,6 +126,54 @@ static ssize_t hf_build_info_show(struct device *dev,
 
 static DEVICE_ATTR_RO(hf_build_info);
 
+static ssize_t memory_exception_show(struct device *dev,
+				     struct device_attribute *attr, char *buf)
+{
+	struct stats_prvdata *prvdata = dev_get_drvdata(dev);
+	struct CMD_GET_MEMORY_EXCEPTION_DATA_COUNT get_count_cmd;
+	struct CMD_GET_MEMORY_EXCEPTION_DATA get_data_cmd;
+	u32 total_count;
+	u32 i;
+	u32 bytes_written;
+	int ret;
+
+	AocCmdHdrSet(&get_count_cmd.parent, CMD_GET_MEMORY_EXCEPTION_DATA_COUNT_ID,
+		     sizeof(get_count_cmd));
+
+	ret = read_attribute(prvdata, &get_count_cmd, sizeof(get_count_cmd),
+			     &get_count_cmd, sizeof(get_count_cmd));
+
+	if (ret < 0)
+		return ret;
+
+	total_count = get_count_cmd.num_memory_exception;
+	if (total_count > 16) {
+		total_count = 16;
+	}
+	bytes_written = 0;
+	for (i = 0; i < total_count; i++) {
+		AocCmdHdrSet(&get_data_cmd.parent, CMD_GET_MEMORY_EXCEPTION_DATA_ID,
+			     sizeof(get_data_cmd));
+		get_data_cmd.log_index = i;
+		get_data_cmd.valid = false;
+		ret = read_attribute(prvdata, &get_data_cmd, sizeof(get_data_cmd),
+				     &get_data_cmd, sizeof(get_data_cmd));
+		if (ret < 0)
+			return ret;
+
+		if (get_data_cmd.valid) {
+			bytes_written += scnprintf(buf + bytes_written, PAGE_SIZE - bytes_written,
+					    "index = %u, id = %u, return_address = 0x%x, fault_address = 0x%x, task_name = %s\n",
+					    i, get_data_cmd.id, get_data_cmd.return_address,
+					    get_data_cmd.fault_address, get_data_cmd.task_name);
+		}
+	}
+
+	return bytes_written;
+}
+
+static DEVICE_ATTR_RO(memory_exception);
+
 static ssize_t read_timed_stat(struct device *dev, char *buf, int index)
 {
 	struct stats_prvdata *prvdata = dev_get_drvdata(dev);
@@ -306,6 +354,7 @@ static struct attribute *aoc_stats_attrs[] = {
 	&dev_attr_audio_wakeup.attr,
 	&dev_attr_logging_wakeup.attr,
 	&dev_attr_hotword_wakeup.attr,
+	&dev_attr_memory_exception.attr,
 	NULL
 };
 
