@@ -264,7 +264,7 @@ static int snd_aoc_pcm_hw_params(struct snd_soc_component *component,
 		return err;
 	}
 
-	substream->wait_time = msecs_to_jiffies(chip->pcm_wait_time_in_ms);
+	substream->wait_time = msecs_to_jiffies(chip->voice_pcm_wait_time_in_ms);
 
 	alsa_stream->channels = params_channels(params);
 	alsa_stream->params_rate = params_rate(params);

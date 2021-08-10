@@ -30,6 +30,7 @@
 
 struct be_path_cache {
 	DECLARE_BITMAP(fe_put_mask, IDX_FE_MAX);
+	bool on;
 };
 
 static struct be_path_cache port_array[PORT_MAX] = {
@@ -37,6 +38,7 @@ static struct be_path_cache port_array[PORT_MAX] = {
 		.fe_put_mask = {
 			[0 ... BE_MAP_SZ(fe_put_mask) - 1] = 0,
 		},
+		.on = false,
 	},
 };
 
@@ -763,16 +765,92 @@ static int be_hw_params(struct snd_pcm_substream *stream,
 	return 0;
 }
 
+static int aoc_capture_eps_trigger(struct aoc_chip *chip, int hw_id, bool on)
+{
+	int bit;
+	uint32_t hw_idx;
+	uint32_t ep_id;
+
+	hw_idx = AOC_ID_TO_INDEX(hw_id);
+	if (hw_idx >= ARRAY_SIZE(port_array)) {
+		pr_err("%s: invalid idx hw_idx 0x%x", __func__,
+		       hw_id);
+		return -EINVAL;
+	}
+
+	for_each_set_bit(bit, port_array[hw_idx].fe_put_mask, IDX_FE_MAX) {
+		ep_id = (AOC_FE|AOC_TX|bit);
+		aoc_audio_capture_runtime_trigger(chip, ep_id, hw_id, on);
+	}
+	return 0;
+}
+
 static int be_prepare(struct snd_pcm_substream *stream, struct snd_soc_dai *dai)
 {
-	pr_debug("%s: dai %s id 0x%x", __func__, dai->name, dai->id);
+	struct snd_soc_pcm_runtime *rtd = stream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct aoc_chip *chip = snd_soc_card_get_drvdata(card);
+	uint32_t hw_idx;
+
+	hw_idx = AOC_ID_TO_INDEX(dai->id);
+
+	if (hw_idx >= ARRAY_SIZE(port_array)) {
+		pr_err("%s: invalid idx hw_idx 0x%x", __func__,
+		       dai->id);
+		return -EINVAL;
+	}
+
+	pr_info("%s: dai %s id 0x%x", __func__, dai->name, dai->id);
+
+	mutex_lock(&path_mutex);
+	switch (dai->id) {
+	case INTERNAL_MIC_TX:
+	case BT_TX:
+	case USB_TX:
+		mutex_lock(&chip->audio_mutex);
+		aoc_capture_filter_runtime_control(chip, dai->id, true);
+		aoc_capture_eps_trigger(chip, dai->id, true);
+		mutex_unlock(&chip->audio_mutex);
+		break;
+	default:
+		break;
+	}
+	port_array[hw_idx].on = true;
+	mutex_unlock(&path_mutex);
 	return 0;
 }
 
 static void be_shutdown(struct snd_pcm_substream *stream,
 			struct snd_soc_dai *dai)
 {
-	pr_debug("%s: dai %s id 0x%x", __func__, dai->name, dai->id);
+	struct snd_soc_pcm_runtime *rtd = stream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct aoc_chip *chip = snd_soc_card_get_drvdata(card);
+	uint32_t hw_idx;
+
+	hw_idx = AOC_ID_TO_INDEX(dai->id);
+
+	if (hw_idx >= ARRAY_SIZE(port_array)) {
+		pr_err("%s: invalid idx hw_idx 0x%x", __func__,
+		       dai->id);
+		return;
+	}
+
+	pr_info("%s: dai %s id 0x%x", __func__, dai->name, dai->id);
+	mutex_lock(&path_mutex);
+	switch (dai->id) {
+	case INTERNAL_MIC_TX:
+	case BT_TX:
+	case USB_TX:
+		mutex_lock(&chip->audio_mutex);
+		aoc_capture_filter_runtime_control(chip, dai->id, false);
+		mutex_unlock(&chip->audio_mutex);
+		break;
+	default:
+		break;
+	}
+	port_array[hw_idx].on = false;
+	mutex_unlock(&path_mutex);
 }
 
 static const struct snd_soc_dai_ops be_dai_ops = {
@@ -998,10 +1076,14 @@ static int aoc_path_put(uint32_t ep_id, uint32_t hw_id,
 
 	if (enable) {
 		set_bit(ep_idx, port_array[hw_idx].fe_put_mask);
-		aoc_audio_path_open(chip, ep_id, hw_id);
+		mutex_lock(&chip->audio_mutex);
+		aoc_audio_path_open(chip, ep_id, hw_id, port_array[hw_idx].on);
+		mutex_unlock(&chip->audio_mutex);
 	} else {
 		clear_bit(ep_idx, port_array[hw_idx].fe_put_mask);
-		aoc_audio_path_close(chip, ep_id, hw_id);
+		mutex_lock(&chip->audio_mutex);
+		aoc_audio_path_close(chip, ep_id, hw_id, port_array[hw_idx].on);
+		mutex_unlock(&chip->audio_mutex);
 	}
 
 	mutex_unlock(&path_mutex);

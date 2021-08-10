@@ -244,6 +244,25 @@ static int snd_aoc_pcm_close(struct snd_soc_component *component,
 	return 0;
 }
 
+static long get_wait_time(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
+	struct aoc_chip *chip = alsa_stream->chip;
+
+	switch (rtd->dai_link->id) {
+	case IDX_INCALL_PB0_RX:
+	case IDX_INCALL_PB1_RX:
+	case IDX_INCALL_CAP0_TX:
+	case IDX_INCALL_CAP1_TX:
+	case IDX_INCALL_CAP2_TX:
+		return msecs_to_jiffies(chip->voice_pcm_wait_time_in_ms);
+	default:
+		return msecs_to_jiffies(chip->pcm_wait_time_in_ms);
+	}
+}
+
 /* PCM hw_params callback */
 static int snd_aoc_pcm_hw_params(struct snd_soc_component *component,
 				 struct snd_pcm_substream *substream,
@@ -251,7 +270,6 @@ static int snd_aoc_pcm_hw_params(struct snd_soc_component *component,
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
-	struct aoc_chip *chip = alsa_stream->chip;
 	int err;
 
 	err = snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
@@ -260,7 +278,7 @@ static int snd_aoc_pcm_hw_params(struct snd_soc_component *component,
 		return err;
 	}
 
-	substream->wait_time = msecs_to_jiffies(chip->pcm_wait_time_in_ms);
+	substream->wait_time = get_wait_time(substream);
 
 	alsa_stream->channels = params_channels(params);
 	alsa_stream->params_rate = params_rate(params);

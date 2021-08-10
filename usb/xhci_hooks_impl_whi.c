@@ -558,6 +558,9 @@ static void usb_audio_offload_cleanup(struct xhci_hcd *xhci)
 
 	usb_unregister_notify(&xhci_udev_nb);
 
+	/* Notification for xhci driver removing */
+	xhci_sync_conn_stat(0, 0, 0, 0);
+
 	mutex_destroy(&vendor_data->lock);
 
 	kfree(vendor_data);

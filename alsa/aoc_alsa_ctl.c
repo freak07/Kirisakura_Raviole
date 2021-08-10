@@ -761,6 +761,38 @@ static int pcm_wait_time_set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_
 	return 0;
 }
 
+static int voice_pcm_wait_time_get(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = chip->voice_pcm_wait_time_in_ms;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int voice_pcm_wait_time_set(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int val = ucontrol->value.integer.value[0];
+
+	if (val < 0 || val > DEFAULT_PCM_WAIT_TIME_IN_MSECS)
+		return -EINVAL;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	chip->voice_pcm_wait_time_in_ms = val;
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
 static int audio_capture_mic_source_get(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
@@ -779,6 +811,7 @@ static int audio_capture_mic_source_set(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
 	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int err = 0;
 
 	if (mutex_lock_interruptible(&chip->audio_mutex))
 		return -EINTR;
@@ -787,8 +820,14 @@ static int audio_capture_mic_source_set(struct snd_kcontrol *kcontrol,
 	if (chip->audio_capture_mic_source == DEFAULT_MIC)
 		chip->audio_capture_mic_source = BUILTIN_MIC;
 
+	pr_info("mic source set: %d\n", chip->audio_capture_mic_source);
+
+	if (err < 0)
+		pr_err("ERR:%d in audio capture mic source set\n", err);
+
 	mutex_unlock(&chip->audio_mutex);
-	return 0;
+
+	return err;
 }
 
 static int voice_call_mic_source_get(struct snd_kcontrol *kcontrol,
@@ -904,6 +943,11 @@ static int mic_spatial_module_enable_set(struct snd_kcontrol *kcontrol,
 
 	chip->mic_spatial_module_enable = ucontrol->value.integer.value[0];
 
+	if (chip->mic_spatial_module_enable)
+		aoc_spatial_module_start(chip);
+	else
+		aoc_spatial_module_stop(chip);
+
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
 }
@@ -999,6 +1043,24 @@ aoc_builtin_mic_process_mode_ctl_get(struct snd_kcontrol *kcontrol,
 
 	ucontrol->value.enumerated.item[0] =
 		aoc_get_builtin_mic_process_mode(chip);
+
+	mutex_unlock(&chip->audio_mutex);
+	return 0;
+}
+
+static int aoc_builtin_mic_process_mode_ctl_set(struct snd_kcontrol *kcontrol,
+						struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int mode, err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	mode = ucontrol->value.enumerated.item[0];
+	err = aoc_set_builtin_mic_process_mode(chip, mode);
+	if (err < 0)
+		pr_err("ERR:%d builtin mic process mode set to %d fail", err, mode);
 
 	mutex_unlock(&chip->audio_mutex);
 	return 0;
@@ -1402,7 +1464,7 @@ static SOC_ENUM_SINGLE_DECL(incall_capture_stream2_enum, 1, 2, incall_capture_st
 
 /* audio capture mic source */
 static const char *audio_capture_mic_source_texts[] = { "Default", "Builtin_MIC", "USB_MIC",
-						       "BT_MIC" };
+						       "BT_MIC", "No MIC" };
 static SOC_ENUM_SINGLE_DECL(audio_capture_mic_source_enum, 1, 0, audio_capture_mic_source_texts);
 
 /* Voice call mic source */
@@ -1485,7 +1547,7 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 
 
 	SOC_ENUM_EXT("BUILTIN MIC Process Mode", builtin_mic_process_mode_enum,
-		     aoc_builtin_mic_process_mode_ctl_get, NULL),
+		     aoc_builtin_mic_process_mode_ctl_get, aoc_builtin_mic_process_mode_ctl_set),
 
 	SOC_ENUM_EXT("BT Mode", bt_mode_enum, aoc_sink_mode_ctl_get,
 		     aoc_sink_mode_ctl_set),
@@ -1691,6 +1753,9 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 
 	SOC_SINGLE_EXT("PCM Stream Wait Time in MSec", SND_SOC_NOPM, 0, 10000, 0, pcm_wait_time_get,
 		       pcm_wait_time_set),
+
+	SOC_SINGLE_EXT("Voice PCM Stream Wait Time in MSec", SND_SOC_NOPM, 0, 10000, 0,
+		voice_pcm_wait_time_get, voice_pcm_wait_time_set),
 
 	{
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,

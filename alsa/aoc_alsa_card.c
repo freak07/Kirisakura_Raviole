@@ -1830,6 +1830,7 @@ static int snd_aoc_init(struct aoc_chip *chip)
 	chip->telephony_expect_sink = NULL_PATH;
 
 	chip->pcm_wait_time_in_ms = DEFAULT_PCM_WAIT_TIME_IN_MSECS;
+	chip->voice_pcm_wait_time_in_ms = DEFAULT_VOICE_PCM_WAIT_TIME_IN_MSECS;
 
 	/* Default values for playback volume and mute */
 	chip->volume = 1000;
