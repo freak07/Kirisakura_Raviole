@@ -742,22 +742,39 @@ static struct xhci_ring *alloc_transfer_ring(struct xhci_hcd *xhci,
 	return ep_ring;
 }
 
+struct xhci_input_control_ctx *xhci_get_input_control_ctx(struct xhci_container_ctx *ctx)
+{
+	if (ctx->type != XHCI_CTX_TYPE_INPUT)
+		return NULL;
+
+	return (struct xhci_input_control_ctx *)ctx->bytes;
+}
+
 static void free_transfer_ring(struct xhci_hcd *xhci,
 		struct xhci_virt_device *virt_dev, unsigned int ep_index)
 {
 	struct xhci_vendor_data *vendor_data = xhci_to_priv(xhci)->vendor_data;
 	struct xhci_ring *ring, *new_ring;
 	struct xhci_ep_ctx *ep_ctx;
+	struct xhci_input_control_ctx *ctrl_ctx;
 	u32 ep_type;
+	u32 ep_is_added, ep_is_dropped;
 
 	ring = virt_dev->eps[ep_index].ring;
 	new_ring = virt_dev->eps[ep_index].new_ring;
 	ep_ctx = xhci_get_ep_ctx(xhci, virt_dev->out_ctx, ep_index);
 	ep_type = CTX_TO_EP_TYPE(le32_to_cpu(ep_ctx->ep_info2));
 
+	ctrl_ctx = xhci_get_input_control_ctx(virt_dev->in_ctx);
+	ep_is_added = EP_IS_ADDED(ctrl_ctx, ep_index);
+	ep_is_dropped = EP_IS_DROPPED(ctrl_ctx, ep_index);
+
+	xhci_dbg(xhci, "%s: ep %u is added(0x%x), is dropped(0x%x)\n", __func__, ep_index,
+		 ep_is_added, ep_is_dropped);
+
 	if (ring) {
-		xhci_dbg(xhci, "%s: ep_index=%u, ep_type=%u, ring type=%u\n", __func__, ep_index,
-			 ep_type, ring->type);
+		xhci_dbg(xhci, "%s: ep_index=%u, ep_type=%u, ring type=%u, new_ring=%pK\n",
+			 __func__, ep_index, ep_type, ring->type, new_ring);
 
 		if (vendor_data->op_mode == USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY &&
 			ring->type == TYPE_ISOC) {
@@ -767,9 +784,9 @@ static void free_transfer_ring(struct xhci_hcd *xhci,
 			xhci_ring_free(xhci, virt_dev->eps[ep_index].ring);
 
 		virt_dev->eps[ep_index].ring = NULL;
-		virt_dev->eps[ep_index].new_ring = NULL;
 
-		return;
+		if (ep_is_added == 0 && ep_is_dropped == 0)
+			return;
 	}
 
 	if (new_ring) {
