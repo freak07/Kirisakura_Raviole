@@ -192,6 +192,8 @@ int sysctl_legacy_va_layout;
 #ifdef CONFIG_SCHED_DEBUG
 static int min_sched_granularity_ns = 100000;		/* 100 usecs */
 static int max_sched_granularity_ns = NSEC_PER_SEC;	/* 1 second */
+static int idle_min_granularity = 750000ULL;
+static int idle_max_granularity = 7500000ULL;
 static int min_wakeup_granularity_ns;			/* 0 usecs */
 static int max_wakeup_granularity_ns = NSEC_PER_SEC;	/* 1 second */
 #ifdef CONFIG_SMP
@@ -1768,6 +1770,15 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= sched_proc_update_handler,
 		.extra1		= &min_sched_granularity_ns,
 		.extra2		= &max_sched_granularity_ns,
+	},
+	{
+		.procname	= "sched_idle_min_granularity_ns",
+		.data		= &sysctl_sched_min_granularity,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= sched_proc_update_handler,
+		.extra1		= &idle_min_granularity_ns,
+		.extra2		= &idle_max_granularity_ns,
 	},
 	{
 		.procname	= "sched_latency_ns",
