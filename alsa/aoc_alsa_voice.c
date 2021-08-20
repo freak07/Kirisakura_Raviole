@@ -314,6 +314,7 @@ static int aoc_pcm_new(struct snd_soc_component *component, struct snd_soc_pcm_r
 			snd_aoc_playback_hw.buffer_bytes_max);
 	}
 
+	rtd->pcm->nonatomic = true;
 	return 0;
 }
 

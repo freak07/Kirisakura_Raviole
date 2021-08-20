@@ -87,7 +87,7 @@ static enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
 		alsa_stream->pos = (consumed - alsa_stream->hw_ptr_base) % alsa_stream->buffer_size;
 	}
 
-	snd_pcm_period_elapsed(alsa_stream->substream);
+	schedule_work(&alsa_stream->pcm_period_work);
 
 	return HRTIMER_RESTART;
 }
@@ -146,6 +146,7 @@ static int snd_aoc_pcm_open(struct snd_soc_component *component,
 	alsa_stream->cstream = NULL;
 	alsa_stream->dev = dev;
 	alsa_stream->idx = idx;
+	INIT_WORK(&alsa_stream->pcm_period_work, aoc_pcm_period_work_handler);
 
 	/* Ring buffer will be flushed at prepare() before playback/capture */
 	alsa_stream->hw_ptr_base = (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ?
@@ -200,6 +201,7 @@ static int snd_aoc_pcm_close(struct snd_soc_component *component,
 
 	dev_dbg(component->dev, "name %s substream %pK", rtd->dai_link->name, substream);
 	aoc_timer_stop_sync(alsa_stream);
+	cancel_work_sync(&alsa_stream->pcm_period_work);
 
 	if (mutex_lock_interruptible(&chip->audio_mutex)) {
 		dev_err(component->dev, "ERR: interrupted while waiting for lock\n");
@@ -244,7 +246,6 @@ static int snd_aoc_pcm_close(struct snd_soc_component *component,
 	chip->opened &= ~(1 << alsa_stream->idx);
 
 	mutex_unlock(&chip->audio_mutex);
-
 	return 0;
 }
 
@@ -478,6 +479,7 @@ static int aoc_pcm_new(struct snd_soc_component *component, struct snd_soc_pcm_r
 					      snd_aoc_playback_hw.buffer_bytes_max);
 	}
 
+	rtd->pcm->nonatomic = true;
 	return 0;
 }
 

@@ -33,6 +33,7 @@ static void free_aoc_service_work_handler(struct work_struct *work)
 		return;
 
 	aoc_timer_stop_sync(alsa_stream);
+	cancel_work_sync(&alsa_stream->pcm_period_work);
 
 	if (mutex_lock_interruptible(&chip->audio_mutex)) {
 		pr_err("ERR: interrupted while waiting for lock\n");
@@ -45,6 +46,16 @@ static void free_aoc_service_work_handler(struct work_struct *work)
 	alsa_stream->dev = NULL;
 
 	mutex_unlock(&chip->audio_mutex);
+	return;
+}
+
+void aoc_pcm_period_work_handler(struct work_struct *work)
+{
+	struct aoc_alsa_stream *alsa_stream =
+		container_of(work, struct aoc_alsa_stream, pcm_period_work);
+
+	snd_pcm_period_elapsed(alsa_stream->substream);
+
 	return;
 }
 
@@ -189,7 +200,7 @@ static enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
 		alsa_stream->pos = (consumed - alsa_stream->hw_ptr_base) % alsa_stream->buffer_size;
 	}
 
-	snd_pcm_period_elapsed(alsa_stream->substream);
+	schedule_work(&alsa_stream->pcm_period_work);
 
 	return HRTIMER_RESTART;
 }
@@ -242,6 +253,7 @@ static int snd_aoc_pcm_open(struct snd_soc_component *component,
 	alsa_stream->stream_type = aoc_pcm_device_to_stream_type(idx);
 
 	INIT_WORK(&alsa_stream->free_aoc_service_work, free_aoc_service_work_handler);
+	INIT_WORK(&alsa_stream->pcm_period_work, aoc_pcm_period_work_handler);
 
 	/* Find the corresponding aoc audio service */
 	err = alloc_aoc_audio_service(rtd->dai_link->name, &dev, aoc_pcm_reset_handler,
@@ -276,6 +288,8 @@ static int snd_aoc_pcm_open(struct snd_soc_component *component,
 	hrtimer_init(&(alsa_stream->hr_timer), CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	alsa_stream->hr_timer.function = &aoc_pcm_hrtimer_irq_handler;
 
+	pr_debug("rtd->pcm->nonatomic = %d\n", rtd->pcm->nonatomic);
+
 	/* TODO: refactor needed on mapping between device number and entrypoint */
 	alsa_stream->entry_point_idx = (idx == 7) ? HAPTICS : idx;
 	mutex_unlock(&chip->audio_mutex);
@@ -291,6 +305,7 @@ out:
 
 	if (alsa_stream) {
 		cancel_work_sync(&alsa_stream->free_aoc_service_work);
+		cancel_work_sync(&alsa_stream->pcm_period_work);
 		kfree(alsa_stream);
 	}
 
@@ -310,6 +325,7 @@ static int snd_aoc_pcm_close(struct snd_soc_component *component,
 
 	pr_debug("%s: name %s substream %p", __func__, rtd->dai_link->name, substream);
 	aoc_timer_stop_sync(alsa_stream);
+	cancel_work_sync(&alsa_stream->pcm_period_work);
 
 	if (mutex_lock_interruptible(&chip->audio_mutex)) {
 		pr_err("ERR: interrupted while waiting for lock\n");
@@ -687,6 +703,8 @@ static int aoc_pcm_new(struct snd_soc_component *component, struct snd_soc_pcm_r
 	if (!rtd->ops.ack) {
 		rtd->ops.ack = snd_aoc_pcm_ack;
 	}
+
+	rtd->pcm->nonatomic = true;
 
 	return 0;
 }
