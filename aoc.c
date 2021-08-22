@@ -812,6 +812,8 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		disable_power_mode(0, POWERMODE_TYPE_SYSTEM);
 		prvdata->ipc_base = aoc_dram_translate(prvdata, ipc_offset);
 		aoc_a32_reset();
+		enable_irq(prvdata->watchdog_irq);
+
 		msleep(2000);
 		dev_info(dev, "re-enabling SICD\n");
 		enable_power_mode(0, POWERMODE_TYPE_SYSTEM);
@@ -846,6 +848,7 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 			goto free_fw;
 		}
 
+		enable_irq(prvdata->watchdog_irq);
 		aoc_state = AOC_STATE_FIRMWARE_LOADED;
 
 		msleep(2000);
@@ -1419,7 +1422,6 @@ static int aoc_watchdog_restart(struct aoc_prvdata *prvdata)
 		return rc;
 	}
 
-	enable_irq(prvdata->watchdog_irq);
 	return rc;
 }
 
@@ -2771,7 +2773,7 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	}
 
 	ret = devm_request_irq(dev, prvdata->watchdog_irq, watchdog_int_handler,
-			       IRQF_TRIGGER_HIGH, dev_name(dev), dev);
+			       IRQF_TRIGGER_HIGH | IRQ_NOAUTOEN, dev_name(dev), dev);
 	if (ret != 0) {
 		dev_err(dev, "failed to register watchdog irq handler: %d\n",
 			ret);
