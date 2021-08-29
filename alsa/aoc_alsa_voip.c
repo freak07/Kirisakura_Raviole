@@ -307,13 +307,21 @@ static int snd_aoc_pcm_prepare(struct snd_soc_component *component,
 
 	aoc_audio_setup(alsa_stream);
 
+	pr_debug("Flush aoc ring buffer\n");
+	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+		if (!aoc_ring_flush_read_data(alsa_stream->dev->service, AOC_UP, 0)) {
+			pr_err("ERR: capture ring buffer flush fail\n");
+			err = -EINVAL;
+		}
+	}
+
 	/* in preparation of the stream */
 	/* aoc_audio_set_ctls(alsa_stream->chip); */
 	alsa_stream->buffer_size = snd_pcm_lib_buffer_bytes(substream);
 	alsa_stream->period_size = snd_pcm_lib_period_bytes(substream);
 	alsa_stream->pos = 0;
 	alsa_stream->hw_ptr_base = (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ?
-						 aoc_ring_bytes_read(dev->service, AOC_DOWN) :
+						 aoc_ring_bytes_written(dev->service, AOC_DOWN) :
 						 aoc_ring_bytes_written(dev->service, AOC_UP);
 	alsa_stream->prev_consumed = alsa_stream->hw_ptr_base;
 	alsa_stream->n_overflow = 0;
