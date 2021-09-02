@@ -478,48 +478,6 @@ static void xhci_exynos_pm_runtime_init(struct device *dev)
 	init_waitqueue_head(&dev->power.wait_queue);
 }
 
-static struct xhci_plat_priv_overwrite xhci_plat_vendor_overwrite;
-
-int xhci_exynos_register_vendor_ops(struct xhci_vendor_ops *vendor_ops)
-{
-	if (vendor_ops == NULL)
-		return -EINVAL;
-
-	xhci_plat_vendor_overwrite.vendor_ops = vendor_ops;
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(xhci_exynos_register_vendor_ops);
-
-static int xhci_vendor_init(struct xhci_hcd *xhci)
-{
-	struct xhci_vendor_ops *ops = xhci_vendor_get_ops(xhci);
-	struct xhci_exynos_priv *priv = xhci_to_exynos_priv(xhci);
-
-	if (xhci_plat_vendor_overwrite.vendor_ops)
-		ops = priv->vendor_ops = xhci_plat_vendor_overwrite.vendor_ops;
-
-	if (ops && ops->vendor_init)
-		return ops->vendor_init(xhci);
-
-	return 0;
-}
-
-static int xhci_vendor_cleanup(struct xhci_hcd *xhci)
-{
-	struct xhci_vendor_ops *ops = xhci_vendor_get_ops(xhci);
-	struct xhci_exynos_priv *priv = xhci_to_exynos_priv(xhci);
-	int ret = 0;
-
-	if (ops && ops->vendor_cleanup)
-		ops->vendor_cleanup(xhci);
-	else
-		ret = -EOPNOTSUPP;
-
-	priv->vendor_ops = NULL;
-	return ret;
-}
-
 int xhci_exynos_wake_lock(struct xhci_hcd_exynos *xhci_exynos,
 				   int is_main_hcd, int is_lock)
 {
@@ -745,10 +703,6 @@ static int xhci_exynos_probe(struct platform_device *pdev)
 		}
 	}
 
-	ret = xhci_vendor_init(xhci);
-	if (ret)
-		goto disable_usb_phy;
-
 	xhci_exynos->main_wakelock = main_wakelock;
 	xhci_exynos->shared_wakelock = shared_wakelock;
 
@@ -831,21 +785,11 @@ static int xhci_exynos_remove(struct platform_device *dev)
 		goto remove_hcd;
 
 remove_hcd:
-	/*
-	 * We jump to put_hcd here because we move usb_remove_hcd(shared_hcd)
-	 * and the following 3 lines to our vendor hook implementation. This
-	 * is to fix a race from our audio offload design. Please refer to the
-	 * commit message for the detailed information.
-	 */
-	if (!xhci_vendor_cleanup(xhci))
-		goto put_hcd;
-
 	usb_remove_hcd(shared_hcd);
 	xhci->shared_hcd = NULL;
 	usb_phy_shutdown(hcd->usb_phy);
 	usb_remove_hcd(hcd);
 
-put_hcd:
 	devm_iounmap(&dev->dev, hcd->regs);
 	usb_put_hcd(shared_hcd);
 
