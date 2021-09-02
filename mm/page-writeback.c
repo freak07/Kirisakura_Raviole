@@ -1341,7 +1341,6 @@ static void wb_update_dirty_ratelimit(struct dirty_throttle_control *dtc,
 
 static void __wb_update_bandwidth(struct dirty_throttle_control *gdtc,
 				  struct dirty_throttle_control *mdtc,
-				  unsigned long start_time,
 				  bool update_ratelimit)
 {
 	struct bdi_writeback *wb = gdtc->wb;
@@ -1361,13 +1360,6 @@ static void __wb_update_bandwidth(struct dirty_throttle_control *gdtc,
 	dirtied = percpu_counter_read(&wb->stat[WB_DIRTIED]);
 	written = percpu_counter_read(&wb->stat[WB_WRITTEN]);
 
-	/*
-	 * Skip quiet periods when disk bandwidth is under-utilized.
-	 * (at least 1s idle time between two flusher runs)
-	 */
-	if (elapsed > HZ && time_before(wb->bw_time_stamp, start_time))
-		goto snapshot;
-
 	if (update_ratelimit) {
 		domain_update_bandwidth(gdtc, now);
 		wb_update_dirty_ratelimit(gdtc, dirtied, elapsed);
@@ -1383,17 +1375,36 @@ static void __wb_update_bandwidth(struct dirty_throttle_control *gdtc,
 	}
 	wb_update_write_bandwidth(wb, elapsed, written);
 
-snapshot:
 	wb->dirtied_stamp = dirtied;
 	wb->written_stamp = written;
 	wb->bw_time_stamp = now;
 }
 
-void wb_update_bandwidth(struct bdi_writeback *wb, unsigned long start_time)
+static void wb_update_bandwidth(struct bdi_writeback *wb)
 {
 	struct dirty_throttle_control gdtc = { GDTC_INIT(wb) };
 
-	__wb_update_bandwidth(&gdtc, NULL, start_time, false);
+	spin_lock(&wb->list_lock);
+	__wb_update_bandwidth(&gdtc, NULL, false);
+	spin_unlock(&wb->list_lock);
+}
+
+/* Interval after which we consider wb idle and don't estimate bandwidth */
+#define WB_BANDWIDTH_IDLE_JIF (HZ)
+
+static void wb_bandwidth_estimate_start(struct bdi_writeback *wb)
+{
+	unsigned long now = jiffies;
+	unsigned long elapsed = now - READ_ONCE(wb->bw_time_stamp);
+
+	if (elapsed > WB_BANDWIDTH_IDLE_JIF &&
+	    !atomic_read(&wb->writeback_inodes)) {
+		spin_lock(&wb->list_lock);
+		wb->dirtied_stamp = wb_stat(wb, WB_DIRTIED);
+		wb->written_stamp = wb_stat(wb, WB_WRITTEN);
+		wb->bw_time_stamp = now;
+		spin_unlock(&wb->list_lock);
+	}
 }
 
 /*
@@ -1725,7 +1736,7 @@ free_running:
 		if (time_is_before_jiffies(wb->bw_time_stamp +
 					   BANDWIDTH_INTERVAL)) {
 			spin_lock(&wb->list_lock);
-			__wb_update_bandwidth(gdtc, mdtc, start_time, true);
+			__wb_update_bandwidth(gdtc, mdtc, true);
 			spin_unlock(&wb->list_lock);
 		}
 
@@ -2350,9 +2361,12 @@ EXPORT_SYMBOL(generic_writepages);
 int do_writepages(struct address_space *mapping, struct writeback_control *wbc)
 {
 	int ret;
+	struct bdi_writeback *wb;
 
 	if (wbc->nr_to_write <= 0)
 		return 0;
+	wb = inode_to_wb_wbc(mapping->host, wbc);
+	wb_bandwidth_estimate_start(wb);
 	while (1) {
 		if (mapping->a_ops->writepages)
 			ret = mapping->a_ops->writepages(mapping, wbc);
@@ -2370,6 +2384,7 @@ int do_writepages(struct address_space *mapping, struct writeback_control *wbc)
 		reclaim_throttle(NODE_DATA(numa_node_id()),
 			VMSCAN_THROTTLE_WRITEBACK);
 	}
+	wb_update_bandwidth(wb);
 	return ret;
 }
 
