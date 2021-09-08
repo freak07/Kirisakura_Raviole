@@ -45,11 +45,6 @@ config VH_SYSTRACE
 
           If in doubt, say N.
 
-config VH_THERMAL
-        tristate "Vendor hooks for kernel thermal"
-        depends on VH_KERNEL
-        default m
-
 config VH_FS
         tristate "Vendor hooks for filesystem"
         depends on VH_KERNEL
@@ -74,4 +69,3 @@ config VH_PREEMPTIRQ_TRACEPOINTS
         tristate "Vendor hooks for long preemptirq trace points"
         depends on VH_SCHED
         default m
-
