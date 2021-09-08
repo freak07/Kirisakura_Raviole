@@ -42,74 +42,7 @@ static const struct xhci_driver_overrides xhci_exynos_overrides __initconst = {
 	.extra_priv_size = sizeof(struct xhci_exynos_priv),
 	.reset = xhci_exynos_setup,
 	.start = xhci_exynos_start,
-	.address_device = xhci_exynos_address_device,
-	.bus_suspend = xhci_exynos_bus_suspend,
-	.bus_resume = xhci_exynos_bus_resume,
 };
-
-int xhci_exynos_address_device(struct usb_hcd *hcd, struct usb_device *udev)
-{
-	struct xhci_exynos_priv *priv = hcd_to_xhci_exynos_priv(hcd);
-	struct xhci_hcd_exynos *xhci_exynos = priv->xhci_exynos;
-	int ret;
-
-	ret = xhci_address_device(hcd, udev);
-	udev->dev.platform_data  = xhci_exynos;
-
-	return ret;
-}
-
-int xhci_exynos_bus_suspend(struct usb_hcd *hcd)
-{
-	struct xhci_exynos_priv *priv = hcd_to_xhci_exynos_priv(hcd);
-	struct xhci_hcd_exynos *xhci_exynos = priv->xhci_exynos;
-	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
-	int ret, ret_phy, main_hcd;
-
-	if (hcd == xhci->main_hcd)
-		main_hcd = 1;
-	else
-		main_hcd = 0;
-
-	ret = xhci_bus_suspend(hcd);
-
-	if (hcd == xhci->main_hcd &&
-	    xhci_exynos->port_state == PORT_USB2) {
-		ret_phy = exynos_usbdrd_phy_vendor_set(xhci_exynos->phy_usb2, 1, 0);
-		if (ret_phy)
-			dev_info(xhci_exynos->dev, "phy vendor set fail\n");
-	}
-
-	xhci_exynos_wake_lock(xhci_exynos, main_hcd, 0);
-
-	return ret;
-}
-
-int xhci_exynos_bus_resume(struct usb_hcd *hcd)
-{
-	struct xhci_exynos_priv *priv = hcd_to_xhci_exynos_priv(hcd);
-	struct xhci_hcd_exynos *xhci_exynos = priv->xhci_exynos;
-	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
-	int ret, main_hcd;
-
-	if (hcd == xhci->main_hcd)
-		main_hcd = 1;
-	else
-		main_hcd = 0;
-
-	if (hcd == xhci->main_hcd &&
-	    xhci_exynos->port_state == PORT_USB2) {
-		ret = exynos_usbdrd_phy_vendor_set(xhci_exynos->phy_usb2, 1, 1);
-		if (ret)
-			dev_info(xhci_exynos->dev, "phy vendor set fail\n");
-	}
-
-	ret = xhci_bus_resume(hcd);
-
-	xhci_exynos_wake_lock(xhci_exynos, main_hcd, 1);
-
-	return ret;
-}
 
 static void xhci_priv_exynos_start(struct usb_hcd *hcd)
 {
@@ -476,50 +409,6 @@ static void xhci_exynos_pm_runtime_init(struct device *dev)
 
 	dev->power.timer_expires = 0;
 	init_waitqueue_head(&dev->power.wait_queue);
-}
-
-int xhci_exynos_wake_lock(struct xhci_hcd_exynos *xhci_exynos,
-				   int is_main_hcd, int is_lock)
-{
-	struct usb_hcd	*hcd = xhci_exynos->hcd;
-	int idle_ip_index;
-	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
-
-	dev_dbg(xhci_exynos->dev, "%s\n", __func__);
-
-	if (xhci->xhc_state & XHCI_STATE_REMOVING) {
-		dev_info(xhci_exynos->dev, "%s - Host removing return!\n",
-				__func__);
-		return -ESHUTDOWN;
-	}
-
-	if (is_lock) {
-		if (is_main_hcd) {
-			dev_info(xhci_exynos->dev, "%s: Main HCD WAKE LOCK\n", __func__);
-			__pm_stay_awake(xhci_exynos->main_wakelock);
-		} else {
-			dev_info(xhci_exynos->dev, "%s: Shared HCD WAKE LOCK\n", __func__);
-			__pm_stay_awake(xhci_exynos->shared_wakelock);
-		}
-		/* Add a routine for disable IDLEIP (IP idle) */
-		dev_info(xhci_exynos->dev, "IDLEIP(SICD) disable.\n");
-		idle_ip_index = dwc3_otg_get_idle_ip_index();
-		exynos_update_ip_idle_status(idle_ip_index, 0);
-	} else {
-		if (is_main_hcd) {
-			dev_info(xhci_exynos->dev, "%s: Main HCD WAKE UNLOCK\n", __func__);
-			__pm_relax(xhci_exynos->main_wakelock);
-		} else {
-			dev_info(xhci_exynos->dev, "%s: Shared HCD WAKE UNLOCK\n", __func__);
-			__pm_relax(xhci_exynos->shared_wakelock);
-		}
-
-		/* Add a routine for enable IDLEIP (IP idle) */
-		idle_ip_index = dwc3_otg_get_idle_ip_index();
-		exynos_update_ip_idle_status(idle_ip_index, 1);
-	}
-
-	return 0;
 }
 
 static int xhci_exynos_probe(struct platform_device *pdev)
