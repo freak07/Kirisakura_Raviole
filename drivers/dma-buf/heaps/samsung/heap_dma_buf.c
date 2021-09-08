@@ -403,31 +403,35 @@ static void *samsung_heap_do_vmap(struct samsung_dma_buffer *buffer)
 	return vaddr;
 }
 
-static void *samsung_heap_vmap(struct dma_buf *dmabuf)
+static int samsung_heap_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
 {
 	struct samsung_dma_buffer *buffer = dmabuf->priv;
 	void *vaddr;
+	int ret = 0;
 
 	mutex_lock(&buffer->lock);
 	if (buffer->vmap_cnt) {
 		buffer->vmap_cnt++;
-		vaddr = buffer->vaddr;
+		dma_buf_map_set_vaddr(map, buffer->vaddr);
 		goto out;
 	}
 
 	vaddr = samsung_heap_do_vmap(buffer);
-	if (IS_ERR(vaddr))
+	if (IS_ERR(vaddr)) {
+		ret = PTR_ERR(vaddr);
 		goto out;
+	}
 
 	buffer->vaddr = vaddr;
 	buffer->vmap_cnt++;
+	dma_buf_map_set_vaddr(map, buffer->vaddr);
 out:
 	mutex_unlock(&buffer->lock);
 
-	return vaddr;
+	return ret;
 }
 
-static void samsung_heap_vunmap(struct dma_buf *dmabuf, void *vaddr)
+static void samsung_heap_vunmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
 {
 	struct samsung_dma_buffer *buffer = dmabuf->priv;
 
@@ -437,6 +441,7 @@ static void samsung_heap_vunmap(struct dma_buf *dmabuf, void *vaddr)
 		buffer->vaddr = NULL;
 	}
 	mutex_unlock(&buffer->lock);
+	dma_buf_map_clear(map);
 }
 
 static void samsung_heap_dma_buf_release(struct dma_buf *dmabuf)
