@@ -1163,6 +1163,7 @@ static struct iommu_ops samsung_sysmmu_ops = {
 	.aux_detach_dev		= samsung_sysmmu_aux_detach_dev,
 	.aux_get_pasid		= samsung_sysmmu_aux_get_pasid,
 	.pgsize_bitmap		= SECT_SIZE | LPAGE_SIZE | SPAGE_SIZE,
+	.owner						= THIS_MODULE,
 };
 
 static int sysmmu_get_hw_info(struct sysmmu_drvdata *data)
