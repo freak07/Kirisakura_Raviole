@@ -209,6 +209,7 @@ static int exynos_cpufreq_init(struct cpufreq_policy *policy)
 	return 0;
 }
 
+/* TODO: do we need this???
 static unsigned int exynos_cpufreq_resolve_freq(struct cpufreq_policy *policy,
 						unsigned int target_freq)
 {
@@ -222,6 +223,7 @@ static unsigned int exynos_cpufreq_resolve_freq(struct cpufreq_policy *policy,
 
 	return policy->freq_table[index].frequency;
 }
+*/
 
 static int exynos_cpufreq_online(struct cpufreq_policy *policy)
 {
@@ -494,7 +496,7 @@ static struct cpufreq_driver exynos_driver = {
 	.verify		= exynos_cpufreq_verify,
 	.target		= exynos_cpufreq_target,
 	.get		= exynos_cpufreq_get,
-	.resolve_freq	= exynos_cpufreq_resolve_freq,
+	//.resolve_freq	= exynos_cpufreq_resolve_freq,
 	.online		= exynos_cpufreq_online,
 	.offline	= exynos_cpufreq_offline,
 	.suspend	= exynos_cpufreq_suspend,
