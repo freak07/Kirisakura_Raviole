@@ -159,7 +159,7 @@ static void seq_print_vma_name(struct seq_file *m, struct vm_area_struct *vma)
 		write_len = strnlen(kaddr + page_offset, len);
 		seq_write(m, kaddr + page_offset, write_len);
 		kunmap(page);
-		put_user_page(page);
+		put_page(page);
 
 		/* if strnlen hit a null terminator then we're done */
 		if (write_len != len)
@@ -1311,11 +1311,8 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 			for (vma = mm->mmap; vma; vma = vma->vm_next) {
 				if (!(vma->vm_flags & VM_SOFTDIRTY))
 					continue;
-				vm_write_begin(vma);
-				WRITE_ONCE(vma->vm_flags,
-					vma->vm_flags & ~VM_SOFTDIRTY);
+				vma->vm_flags &= ~VM_SOFTDIRTY;
 				vma_set_page_prot(vma);
-				vm_write_end(vma);
 			}
 
 			inc_tlb_flush_pending(mm);

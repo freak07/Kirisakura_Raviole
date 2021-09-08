@@ -21,7 +21,6 @@
 #include <linux/mm_types.h>
 #include <linux/page-flags.h>
 #include <linux/local_lock.h>
-#include <linux/android_kabi.h>
 #include <asm/page.h>
 
 /* Free memory management - zoned buddy allocator.  */
@@ -39,8 +38,6 @@
  * will not.
  */
 #define PAGE_ALLOC_COSTLY_ORDER 3
-
-#define MAX_KSWAPD_THREADS 16
 
 enum migratetype {
 	MIGRATE_UNMOVABLE,
@@ -649,11 +646,6 @@ struct zone {
 	/* Zone statistics */
 	atomic_long_t		vm_stat[NR_VM_ZONE_STAT_ITEMS];
 	atomic_long_t		vm_numa_event[NR_VM_NUMA_EVENT_ITEMS];
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_KABI_RESERVE(3);
-	ANDROID_KABI_RESERVE(4);
 } ____cacheline_internodealigned_in_smp;
 
 enum pgdat_flags {
@@ -842,19 +834,16 @@ typedef struct pglist_data {
 	wait_queue_head_t pfmemalloc_wait;
 	struct task_struct *kswapd;	/* Protected by
 					   mem_hotplug_begin/end() */
-	struct task_struct *mkswapd[MAX_KSWAPD_THREADS];
 	int kswapd_order;
 	enum zone_type kswapd_highest_zoneidx;
 
 	int kswapd_failures;		/* Number of 'reclaimed == 0' runs */
 
-	ANDROID_OEM_DATA(1);
 #ifdef CONFIG_COMPACTION
 	int kcompactd_max_order;
 	enum zone_type kcompactd_highest_zoneidx;
 	wait_queue_head_t kcompactd_wait;
 	struct task_struct *kcompactd;
-	bool proactive_compact_trigger;
 #endif
 	/*
 	 * This is a per-node reserve of pages that are not available
@@ -1088,7 +1077,6 @@ static inline struct pglist_data *NODE_DATA(int nid)
 extern struct pglist_data *first_online_pgdat(void);
 extern struct pglist_data *next_online_pgdat(struct pglist_data *pgdat);
 extern struct zone *next_zone(struct zone *zone);
-extern int isolate_anon_lru_page(struct page *page);
 
 /**
  * for_each_online_pgdat - helper macro to iterate over all online nodes

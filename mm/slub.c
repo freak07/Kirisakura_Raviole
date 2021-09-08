@@ -40,7 +40,6 @@
 
 #include <linux/debugfs.h>
 #include <trace/events/kmem.h>
-#include <trace/hooks/mm.h>
 
 #include "internal.h"
 
@@ -509,9 +508,9 @@ static inline void *restore_red_left(struct kmem_cache *s, void *p)
  * Debug settings:
  */
 #if defined(CONFIG_SLUB_DEBUG_ON)
-slab_flags_t slub_debug = DEBUG_DEFAULT_FLAGS;
+static slab_flags_t slub_debug = DEBUG_DEFAULT_FLAGS;
 #else
-slab_flags_t slub_debug;
+static slab_flags_t slub_debug;
 #endif
 
 static char *slub_debug_string;
@@ -645,8 +644,6 @@ static void set_track(struct kmem_cache *s, void *object,
 
 		if (nr_entries < TRACK_ADDRS_COUNT)
 			p->addrs[nr_entries] = 0;
-		trace_android_vh_save_track_hash(alloc == TRACK_ALLOC,
-						(unsigned long)p);
 #endif
 		p->addr = addr;
 		p->cpu = smp_processor_id();
@@ -5938,7 +5935,6 @@ void get_slabinfo(struct kmem_cache *s, struct slabinfo *sinfo)
 	sinfo->objects_per_slab = oo_objects(s->oo);
 	sinfo->cache_order = oo_order(s->oo);
 }
-EXPORT_SYMBOL_GPL(get_slabinfo);
 
 void slabinfo_show_stats(struct seq_file *m, struct kmem_cache *s)
 {

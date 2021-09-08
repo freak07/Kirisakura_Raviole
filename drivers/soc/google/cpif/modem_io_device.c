@@ -443,7 +443,8 @@ static int rx_multi_pdp(struct sk_buff *skb)
 			mif_err_limited("%s: %s<-%s: ERR! netif_receive_skb\n",
 					ld->name, iod->name, iod->mc->name);
 	} else {
-		napi_gro_receive(napi, skb);
+		ret = napi_gro_receive(napi, skb);
+
 		ld->gro_flush(ld, napi);
 	}
 	return len;

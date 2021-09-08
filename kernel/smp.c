@@ -25,7 +25,6 @@
 #include <linux/nmi.h>
 #include <linux/sched/debug.h>
 #include <linux/jump_label.h>
-#include <linux/suspend.h>
 
 #include "smpboot.h"
 #include "sched/smp.h"
@@ -1174,35 +1173,11 @@ void wake_up_all_idle_cpus(void)
 		if (cpu == smp_processor_id())
 			continue;
 
-#if IS_ENABLED(CONFIG_SUSPEND)
-		if (s2idle_state == S2IDLE_STATE_ENTER || cpu_active(cpu))
-#endif
-			wake_up_if_idle(cpu);
-	}
-	preempt_enable();
-}
-EXPORT_SYMBOL_GPL(wake_up_all_idle_cpus);
-
-/**
- * wake_up_all_online_idle_cpus - break all online cpus out of idle
- * wake_up_all_online_idle_cpus try to break all online cpus which is in idle
- * state even including idle polling cpus, for non-idle cpus, we will do nothing
- * for them.
- */
-void wake_up_all_online_idle_cpus(void)
-{
-	int cpu;
-
-	preempt_disable();
-	for_each_online_cpu(cpu) {
-		if (cpu == smp_processor_id())
-			continue;
-
 		wake_up_if_idle(cpu);
 	}
 	preempt_enable();
 }
-EXPORT_SYMBOL_GPL(wake_up_all_online_idle_cpus);
+EXPORT_SYMBOL_GPL(wake_up_all_idle_cpus);
 
 /**
  * smp_call_on_cpu - Call a function on a specific cpu

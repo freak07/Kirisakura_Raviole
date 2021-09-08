@@ -19,7 +19,6 @@
 #include <asm/processor.h>
 #include <linux/osq_lock.h>
 #include <linux/debug_locks.h>
-#include <linux/android_vendor.h>
 
 struct ww_class;
 struct ww_acquire_ctx;
@@ -65,7 +64,6 @@ struct mutex {
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	struct lockdep_map	dep_map;
 #endif
-	ANDROID_OEM_DATA_ARRAY(1, 2);
 };
 
 struct ww_mutex {

@@ -1,16 +1,6 @@
-menuconfig DMABUF_HEAPS_DEFERRED_FREE
-	bool "DMA-BUF heaps deferred-free library"
-	help
-	  Choose this option to enable the DMA-BUF heaps deferred-free library.
-
-menuconfig DMABUF_HEAPS_PAGE_POOL
-	bool "DMA-BUF heaps page-pool library"
-	help
-	  Choose this option to enable the DMA-BUF heaps page-pool library.
-
 config DMABUF_HEAPS_SYSTEM
 	tristate "DMA-BUF System Heap"
-	depends on DMABUF_HEAPS && DMABUF_HEAPS_DEFERRED_FREE && DMABUF_HEAPS_PAGE_POOL
+	depends on DMABUF_HEAPS
 	help
 	  Choose this option to enable the system dmabuf heap. The system heap
 	  is backed by pages from the buddy allocator. If in doubt, say Y.
@@ -22,13 +12,5 @@ config DMABUF_HEAPS_CMA
 	  Choose this option to enable dma-buf CMA heap. This heap is backed
 	  by the Contiguous Memory Allocator (CMA). If your system has these
 	  regions, you should say Y here.
-
-config DMABUF_HEAPS_CHUNK
-	bool "DMA-BUF CHUNK Heap"
-	depends on DMABUF_HEAPS && DMA_CMA
-	help
-	  Choose this option to enable dma-buf CHUNK heap. This heap is backed
-	  by the Contiguous Memory Allocator (CMA) and allocates the buffers that
-	  are arranged into a list of fixed size chunks taken from CMA.
 
 source "drivers/dma-buf/heaps/samsung/Kconfig"

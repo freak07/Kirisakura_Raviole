@@ -63,7 +63,6 @@
 #include <linux/sched/rt.h>
 #include <linux/sched/mm.h>
 #include <linux/page_owner.h>
-#include <linux/page_pinner.h>
 #include <linux/kthread.h>
 #include <linux/memcontrol.h>
 #include <linux/ftrace.h>
@@ -73,7 +72,6 @@
 #include <linux/padata.h>
 #include <linux/khugepaged.h>
 #include <linux/buffer_head.h>
-#include <trace/hooks/mm.h>
 #include <asm/sections.h>
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -528,24 +526,6 @@ unsigned long get_pfnblock_flags_mask(const struct page *page,
 {
 	return __get_pfnblock_flags_mask(page, pfn, mask);
 }
-EXPORT_SYMBOL_GPL(get_pfnblock_flags_mask);
-
-int isolate_anon_lru_page(struct page *page)
-{
-	int ret;
-
-	if (!PageLRU(page) || !PageAnon(page))
-		return -EINVAL;
-
-	if (!get_page_unless_zero(page))
-		return -EINVAL;
-
-	ret = isolate_lru_page(page);
-	put_page(page);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(isolate_anon_lru_page);
 
 static __always_inline int get_pfnblock_migratetype(const struct page *page,
 					unsigned long pfn)
@@ -1336,7 +1316,6 @@ static __always_inline bool free_pages_prepare(struct page *page,
 		if (memcg_kmem_enabled() && PageMemcgKmem(page))
 			__memcg_kmem_uncharge_page(page, order);
 		reset_page_owner(page, order);
-		free_page_pinner(page, order);
 		return false;
 	}
 
@@ -1374,7 +1353,6 @@ static __always_inline bool free_pages_prepare(struct page *page,
 	page_cpupid_reset_last(page);
 	page->flags &= ~PAGE_FLAGS_CHECK_AT_PREP;
 	reset_page_owner(page, order);
-	free_page_pinner(page, order);
 
 	if (!PageHighMem(page)) {
 		debug_check_no_locks_freed(page_address(page),
@@ -3770,8 +3748,6 @@ struct page *rmqueue(struct zone *preferred_zone,
 
 	__count_zid_vm_events(PGALLOC, page_zonenum(page), 1 << order);
 	zone_statistics(preferred_zone, zone, 1);
-	trace_android_vh_rmqueue(preferred_zone, zone, order,
-			gfp_flags, alloc_flags, migratetype);
 
 out:
 	/* Separate test+clear to avoid unnecessary atomics */
@@ -3961,7 +3937,6 @@ bool zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 	return __zone_watermark_ok(z, order, mark, highest_zoneidx, alloc_flags,
 					zone_page_state(z, NR_FREE_PAGES));
 }
-EXPORT_SYMBOL_GPL(zone_watermark_ok);
 
 static inline bool zone_watermark_fast(struct zone *z, unsigned int order,
 				unsigned long mark, int highest_zoneidx,
@@ -4014,7 +3989,6 @@ bool zone_watermark_ok_safe(struct zone *z, unsigned int order,
 	return __zone_watermark_ok(z, order, mark, highest_zoneidx, 0,
 								free_pages);
 }
-EXPORT_SYMBOL_GPL(zone_watermark_ok_safe);
 
 #ifdef CONFIG_NUMA
 static bool zone_allows_reclaim(struct zone *local_zone, struct zone *zone)
@@ -4932,7 +4906,7 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 	int no_progress_loops;
 	unsigned int cpuset_mems_cookie;
 	int reserve_flags;
-	unsigned long alloc_start = jiffies;
+
 	/*
 	 * We also sanity check to catch abuse of atomic reserves being used by
 	 * callers that are not in atomic context.
@@ -5174,7 +5148,6 @@ fail:
 	warn_alloc(gfp_mask, ac->nodemask,
 			"page allocation failure: order:%u", order);
 got_pg:
-	trace_android_vh_alloc_pages_slowpath(gfp_mask, order, alloc_start);
 	return page;
 }
 
@@ -8950,7 +8923,7 @@ static unsigned long pfn_max_align_down(unsigned long pfn)
 			     pageblock_nr_pages) - 1);
 }
 
-unsigned long pfn_max_align_up(unsigned long pfn)
+static unsigned long pfn_max_align_up(unsigned long pfn)
 {
 	return ALIGN(pfn, max_t(unsigned long, MAX_ORDER_NR_PAGES,
 				pageblock_nr_pages));
@@ -8965,20 +8938,10 @@ static void alloc_contig_dump_pages(struct list_head *page_list)
 
 	if (DYNAMIC_DEBUG_BRANCH(descriptor)) {
 		struct page *page;
-		unsigned long nr_skip = 0;
-		unsigned long nr_pages = 0;
 
 		dump_stack();
-		list_for_each_entry(page, page_list, lru) {
-			nr_pages++;
-			/* The page will be freed by putback_movable_pages soon */
-			if (page_count(page) == 1) {
-				nr_skip++;
-				continue;
-			}
+		list_for_each_entry(page, page_list, lru)
 			dump_page(page, "migration failure");
-		}
-		pr_warn("total dump_pages %lu skipping %lu\n", nr_pages, nr_skip);
 	}
 }
 #else
@@ -8989,23 +8952,17 @@ static inline void alloc_contig_dump_pages(struct list_head *page_list)
 
 /* [start, end) must belong to a single zone. */
 static int __alloc_contig_migrate_range(struct compact_control *cc,
-					unsigned long start, unsigned long end,
-					struct acr_info *info)
+					unsigned long start, unsigned long end)
 {
 	/* This function is based on compact_zone() from compaction.c. */
 	unsigned int nr_reclaimed;
 	unsigned long pfn = start;
 	unsigned int tries = 0;
-	unsigned int max_tries = 5;
 	int ret = 0;
-	struct page *page;
 	struct migration_target_control mtc = {
 		.nid = zone_to_nid(cc->zone),
 		.gfp_mask = GFP_USER | __GFP_MOVABLE | __GFP_RETRY_MAYFAIL,
 	};
-
-	if (cc->alloc_contig && cc->mode == MIGRATE_ASYNC)
-		max_tries = 1;
 
 	lru_cache_disable();
 
@@ -9022,23 +8979,17 @@ static int __alloc_contig_migrate_range(struct compact_control *cc,
 				break;
 			pfn = cc->migrate_pfn;
 			tries = 0;
-		} else if (++tries == max_tries) {
+		} else if (++tries == 5) {
 			ret = -EBUSY;
 			break;
 		}
 
 		nr_reclaimed = reclaim_clean_pages_from_list(cc->zone,
 							&cc->migratepages);
-		info->nr_reclaimed += nr_reclaimed;
 		cc->nr_migratepages -= nr_reclaimed;
-
-		list_for_each_entry(page, &cc->migratepages, lru)
-			info->nr_mapped += page_mapcount(page);
 
 		ret = migrate_pages(&cc->migratepages, alloc_migration_target,
 				NULL, (unsigned long)&mtc, cc->mode, MR_CONTIG_RANGE);
-		if (!ret)
-			info->nr_migrated += cc->nr_migratepages;
 
 		/*
 		 * On -ENOMEM, migrate_pages() bails out right away. It is pointless
@@ -9050,18 +9001,9 @@ static int __alloc_contig_migrate_range(struct compact_control *cc,
 
 	lru_cache_enable();
 	if (ret < 0) {
-		if (ret == -EBUSY) {
+		if (ret == -EBUSY)
 			alloc_contig_dump_pages(&cc->migratepages);
-			page_pinner_mark_migration_failed_pages(&cc->migratepages);
-		}
-
-		if (!list_empty(&cc->migratepages)) {
-			page = list_first_entry(&cc->migratepages, struct page , lru);
-			info->failed_pfn = page_to_pfn(page);
-		}
-
 		putback_movable_pages(&cc->migratepages);
-		info->err |= ACR_ERR_MIGRATE;
 		return ret;
 	}
 	return 0;
@@ -9089,8 +9031,7 @@ static int __alloc_contig_migrate_range(struct compact_control *cc,
  * need to be freed with free_contig_range().
  */
 int alloc_contig_range(unsigned long start, unsigned long end,
-		       unsigned migratetype, gfp_t gfp_mask,
-		       struct acr_info *info)
+		       unsigned migratetype, gfp_t gfp_mask)
 {
 	unsigned long outer_start, outer_end;
 	unsigned int order;
@@ -9100,7 +9041,7 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 		.nr_migratepages = 0,
 		.order = -1,
 		.zone = page_zone(pfn_to_page(start)),
-		.mode = gfp_mask & __GFP_NORETRY ? MIGRATE_ASYNC : MIGRATE_SYNC,
+		.mode = MIGRATE_SYNC,
 		.ignore_skip_hint = true,
 		.no_set_skip_hint = true,
 		.gfp_mask = current_gfp_context(gfp_mask),
@@ -9133,12 +9074,9 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 	 */
 
 	ret = start_isolate_page_range(pfn_max_align_down(start),
-				       pfn_max_align_up(end), migratetype, 0,
-				       &info->failed_pfn);
-	if (ret) {
-		info->err |= ACR_ERR_ISOLATE;
+				       pfn_max_align_up(end), migratetype, 0);
+	if (ret)
 		return ret;
-	}
 
 	drain_all_pages(cc.zone);
 
@@ -9152,8 +9090,8 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 	 * allocated.  So, if we fall through be sure to clear ret so that
 	 * -EBUSY is not accidentally used or returned to caller.
 	 */
-	ret = __alloc_contig_migrate_range(&cc, start, end, info);
-	if (ret && (ret != -EBUSY || (gfp_mask & __GFP_NORETRY)))
+	ret = __alloc_contig_migrate_range(&cc, start, end);
+	if (ret && ret != -EBUSY)
 		goto done;
 	ret = 0;
 
@@ -9198,9 +9136,8 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 	}
 
 	/* Make sure the range is really isolated. */
-	if (test_pages_isolated(outer_start, end, 0, &info->failed_pfn)) {
+	if (test_pages_isolated(outer_start, end, 0)) {
 		ret = -EBUSY;
-		info->err |= ACR_ERR_TEST;
 		goto done;
 	}
 
@@ -9227,11 +9164,10 @@ EXPORT_SYMBOL(alloc_contig_range);
 static int __alloc_contig_pages(unsigned long start_pfn,
 				unsigned long nr_pages, gfp_t gfp_mask)
 {
-	struct acr_info dummy;
 	unsigned long end_pfn = start_pfn + nr_pages;
 
 	return alloc_contig_range(start_pfn, end_pfn, MIGRATE_MOVABLE,
-				  gfp_mask, &dummy);
+				  gfp_mask);
 }
 
 static bool pfn_range_valid_contig(struct zone *z, unsigned long start_pfn,

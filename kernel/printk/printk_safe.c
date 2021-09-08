@@ -278,14 +278,6 @@ void printk_safe_flush_on_panic(void)
 		raw_spin_lock_init(&safe_read_lock);
 	}
 
-	if (raw_spin_is_locked(&safe_read_lock)) {
-		if (num_online_cpus() > 1)
-			return;
-
-		debug_locks_off();
-		raw_spin_lock_init(&safe_read_lock);
-	}
-
 	printk_safe_flush();
 }
 

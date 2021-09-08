@@ -2057,8 +2057,6 @@ static int moxa_set_serial_info(struct tty_struct *tty,
 
 	close_delay = msecs_to_jiffies(ss->close_delay * 10);
 
-	close_delay = msecs_to_jiffies(ss->close_delay * 10);
-
 	mutex_lock(&info->port.mutex);
 	if (!capable(CAP_SYS_ADMIN)) {
 		if (close_delay != info->port.close_delay ||

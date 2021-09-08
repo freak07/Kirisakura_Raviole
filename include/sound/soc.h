@@ -19,7 +19,6 @@
 #include <linux/kernel.h>
 #include <linux/regmap.h>
 #include <linux/log2.h>
-#include <linux/android_kabi.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/compress_driver.h>
@@ -726,8 +725,6 @@ struct snd_soc_dai_link {
 #ifdef CONFIG_SND_SOC_TOPOLOGY
 	struct snd_soc_dobj dobj; /* For topology */
 #endif
-
-	ANDROID_KABI_RESERVE(1);
 };
 
 static inline struct snd_soc_dai_link_component*
@@ -997,11 +994,6 @@ struct snd_soc_card {
 	unsigned int component_chaining:1;
 
 	void *drvdata;
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_KABI_RESERVE(3);
-	ANDROID_KABI_RESERVE(4);
 };
 #define for_each_card_prelinks(card, i, link)				\
 	for ((i) = 0;							\
@@ -1086,9 +1078,6 @@ struct snd_soc_pcm_runtime {
 	unsigned int fe_compr:1; /* for Dynamic PCM */
 
 	int num_components;
-
-	ANDROID_KABI_RESERVE(1);
-
 	struct snd_soc_component *components[]; /* CPU/Codec/Platform */
 };
 /* see soc_new_pcm_runtime()  */
@@ -1128,8 +1117,6 @@ struct soc_mixer_control {
 #ifdef CONFIG_SND_SOC_TOPOLOGY
 	struct snd_soc_dobj dobj;
 #endif
-
-	ANDROID_KABI_RESERVE(1);
 };
 
 struct soc_bytes {
@@ -1174,8 +1161,6 @@ struct soc_enum {
 #ifdef CONFIG_SND_SOC_TOPOLOGY
 	struct snd_soc_dobj dobj;
 #endif
-
-	ANDROID_KABI_RESERVE(1);
 };
 
 static inline bool snd_soc_volsw_is_stereo(struct soc_mixer_control *mc)

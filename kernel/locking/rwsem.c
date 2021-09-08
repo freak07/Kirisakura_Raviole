@@ -327,6 +327,17 @@ void __init_rwsem(struct rw_semaphore *sem, const char *name,
 }
 EXPORT_SYMBOL(__init_rwsem);
 
+enum rwsem_waiter_type {
+	RWSEM_WAITING_FOR_WRITE,
+	RWSEM_WAITING_FOR_READ
+};
+
+struct rwsem_waiter {
+	struct list_head list;
+	struct task_struct *task;
+	enum rwsem_waiter_type type;
+	unsigned long timeout;
+};
 #define rwsem_first_waiter(sem) \
 	list_first_entry(&sem->wait_list, struct rwsem_waiter, list)
 
@@ -1184,7 +1195,6 @@ static struct rw_semaphore *rwsem_wake(struct rw_semaphore *sem, long count)
 
 	if (!list_empty(&sem->wait_list))
 		rwsem_mark_wake(sem, RWSEM_WAKE_ANY, &wake_q);
-	trace_android_vh_rwsem_wake_finish(sem);
 
 	raw_spin_unlock_irqrestore(&sem->wait_lock, flags);
 	wake_up_q(&wake_q);

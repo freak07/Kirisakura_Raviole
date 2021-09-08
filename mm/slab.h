@@ -46,7 +46,6 @@ struct kmem_cache {
 #include <linux/kmemleak.h>
 #include <linux/random.h>
 #include <linux/sched/mm.h>
-#include <linux/android_vendor.h>
 
 /*
  * State of the slab allocator.
@@ -105,9 +104,6 @@ struct track {
 	int cpu;		/* Was running on cpu */
 	int pid;		/* Pid context */
 	unsigned long when;	/* When did the operation occur */
-#ifdef CONFIG_STACKTRACE
-	ANDROID_OEM_DATA(1);
-#endif
 };
 
 enum track_item { TRACK_ALLOC, TRACK_FREE };
@@ -242,7 +238,6 @@ extern unsigned long get_each_object_track(struct kmem_cache *s,
 		struct page *page, enum track_item alloc,
 		int (*fn)(const struct kmem_cache *, const void *,
 		const struct track *, void *), void *private);
-extern slab_flags_t slub_debug;
 static inline bool __slub_debug_enabled(void)
 {
 	return static_branch_unlikely(&slub_debug_enabled);

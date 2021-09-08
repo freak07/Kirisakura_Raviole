@@ -1744,14 +1744,6 @@ static struct attribute *hpload_attrs[] = {
 };
 ATTRIBUTE_GROUPS(hpload);
 
-static struct attribute *hpload_attrs[] = {
-	&dev_attr_hpload_dc_l.attr,
-	&dev_attr_hpload_dc_r.attr,
-	&dev_attr_hpload_ac_l.attr,
-	&dev_attr_hpload_ac_r.attr,
-};
-ATTRIBUTE_GROUPS(hpload);
-
 static struct reg_sequence hp_en_cal_seq[] = {
 	{CS43130_INT_MASK_4, CS43130_INT_MASK_ALL},
 	{CS43130_HP_MEAS_LOAD_1, 0},

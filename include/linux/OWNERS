@@ -1,2 +1,4 @@
-# include OWNERS from the authoritative android-mainline branch
-include kernel/common:android-mainline:/include/linux/OWNERS
+per-file bio.h=file:/block/OWNERS
+per-file blk*.h=file:/block/OWNERS
+per-file f2fs**=file:/fs/f2fs/OWNERS
+per-file net**=file:/net/OWNERS

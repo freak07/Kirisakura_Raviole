@@ -1182,46 +1182,6 @@ int add_memory(int nid, u64 start, u64 size, mhp_t mhp_flags)
 }
 EXPORT_SYMBOL_GPL(add_memory);
 
-int add_memory_subsection(int nid, u64 start, u64 size)
-{
-	struct mhp_params params = { .pgprot = PAGE_KERNEL };
-	struct resource *res;
-	int ret;
-
-	if (size == memory_block_size_bytes())
-		return add_memory(nid, start, size, MHP_NONE);
-
-	if (!IS_ALIGNED(start, SUBSECTION_SIZE) ||
-	    !IS_ALIGNED(size, SUBSECTION_SIZE)) {
-		pr_err("%s: start 0x%llx size 0x%llx not aligned to subsection size\n",
-			   __func__, start, size);
-		return -EINVAL;
-	}
-
-	res = register_memory_resource(start, size, "System RAM");
-	if (IS_ERR(res))
-		return PTR_ERR(res);
-
-	mem_hotplug_begin();
-
-	nid = memory_add_physaddr_to_nid(start);
-
-	if (IS_ENABLED(CONFIG_ARCH_KEEP_MEMBLOCK))
-		memblock_add_node(start, size, nid);
-
-	ret = arch_add_memory(nid, start, size, &params);
-	if (ret) {
-		if (IS_ENABLED(CONFIG_ARCH_KEEP_MEMBLOCK))
-			memblock_remove(start, size);
-		pr_err("%s failed to add subsection start 0x%llx size 0x%llx\n",
-			   __func__, start, size);
-	}
-	mem_hotplug_done();
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(add_memory_subsection);
-
 /*
  * Add special, driver-managed memory to the system as system RAM. Such
  * memory is not exposed via the raw firmware-provided memmap as system
@@ -1668,7 +1628,7 @@ int __ref offline_pages(unsigned long start_pfn, unsigned long nr_pages)
 	/* set above range as isolated */
 	ret = start_isolate_page_range(start_pfn, end_pfn,
 				       MIGRATE_MOVABLE,
-				       MEMORY_OFFLINE | REPORT_FAILURE, NULL);
+				       MEMORY_OFFLINE | REPORT_FAILURE);
 	if (ret) {
 		reason = "failure to isolate range";
 		goto failed_removal_pcplists_disabled;
@@ -1722,7 +1682,7 @@ int __ref offline_pages(unsigned long start_pfn, unsigned long nr_pages)
 			goto failed_removal_isolated;
 		}
 
-		ret = test_pages_isolated(start_pfn, end_pfn, MEMORY_OFFLINE, NULL);
+		ret = test_pages_isolated(start_pfn, end_pfn, MEMORY_OFFLINE);
 
 	} while (ret);
 
@@ -1983,32 +1943,6 @@ int remove_memory(int nid, u64 start, u64 size)
 	return rc;
 }
 EXPORT_SYMBOL_GPL(remove_memory);
-
-int remove_memory_subsection(int nid, u64 start, u64 size)
-{
-	if (size ==  memory_block_size_bytes())
-		return remove_memory(nid, start, size);
-
-	if (!IS_ALIGNED(start, SUBSECTION_SIZE) ||
-	    !IS_ALIGNED(size, SUBSECTION_SIZE)) {
-		pr_err("%s: start 0x%llx size 0x%llx not aligned to subsection size\n",
-			   __func__, start, size);
-		return -EINVAL;
-	}
-
-	mem_hotplug_begin();
-	arch_remove_memory(nid, start, size, NULL);
-
-	if (IS_ENABLED(CONFIG_ARCH_KEEP_MEMBLOCK))
-		memblock_remove(start, size);
-
-	release_mem_region_adjustable(start, size);
-
-	mem_hotplug_done();
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(remove_memory_subsection);
 
 static int try_offline_memory_block(struct memory_block *mem, void *arg)
 {

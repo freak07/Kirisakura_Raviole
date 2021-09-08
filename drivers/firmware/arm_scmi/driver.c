@@ -34,8 +34,6 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/scmi.h>
-#undef CREATE_TRACE_POINTS
-#include <trace/hooks/scmi.h>
 
 enum scmi_error_codes {
 	SCMI_SUCCESS = 0,	/* Success */
@@ -468,7 +466,6 @@ static int do_xfer(const struct scmi_protocol_handle *ph,
 	} else {
 		/* And we wait for the response. */
 		timeout = msecs_to_jiffies(info->desc->max_rx_timeout_ms);
-		trace_android_vh_scmi_timeout_sync(&timeout);
 		if (!wait_for_completion_timeout(&xfer->done, timeout)) {
 			dev_err(dev, "timed out in resp(caller: %pS)\n",
 				(void *)_RET_IP_);

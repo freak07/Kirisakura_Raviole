@@ -1214,7 +1214,7 @@ void do_user_addr_fault(struct pt_regs *regs,
 			unsigned long error_code,
 			unsigned long address)
 {
-	struct vm_area_struct *vma = NULL;
+	struct vm_area_struct *vma;
 	struct task_struct *tsk;
 	struct mm_struct *mm;
 	vm_fault_t fault;
@@ -1317,16 +1317,6 @@ void do_user_addr_fault(struct pt_regs *regs,
 #endif
 
 	/*
-	 * Do not try to do a speculative page fault if the fault was due to
-	 * protection keys since it can't be resolved.
-	 */
-	if (!(hw_error_code & X86_PF_PK)) {
-		fault = handle_speculative_fault(mm, address, flags, &vma, regs);
-		if (fault != VM_FAULT_RETRY)
-			goto done;
-	}
-
-	/*
 	 * Kernel-mode access to the user address space should only occur
 	 * on well-defined single instructions listed in the exception
 	 * tables.  But, an erroneous kernel fault occurring outside one of
@@ -1358,8 +1348,7 @@ retry:
 		might_sleep();
 	}
 
-	if (!vma || !can_reuse_spf_vma(vma, address))
-		vma = find_vma(mm, address);
+	vma = find_vma(mm, address);
 	if (unlikely(!vma)) {
 		bad_area(regs, error_code, address);
 		return;
@@ -1419,19 +1408,10 @@ good_area:
 	if (unlikely((fault & VM_FAULT_RETRY) &&
 		     (flags & FAULT_FLAG_ALLOW_RETRY))) {
 		flags |= FAULT_FLAG_TRIED;
-
-		/*
-		 * Do not try to reuse this vma and fetch it
-		 * again since we will release the mmap_sem.
-		 */
-		vma = NULL;
-
 		goto retry;
 	}
 
 	mmap_read_unlock(mm);
-
-done:
 	if (likely(!(fault & VM_FAULT_ERROR)))
 		return;
 

@@ -43,7 +43,6 @@
 #include <scsi/scsi_tcq.h>
 #include <scsi/scsi_dbg.h>
 #include <scsi/scsi_eh.h>
-#include <linux/android_kabi.h>
 
 #include "ufs.h"
 #include "ufs_quirks.h"
@@ -223,8 +222,6 @@ struct ufshcd_lrb {
 #endif
 
 	bool req_abort_skip;
-
-	ANDROID_KABI_RESERVE(1);
 };
 
 /**
@@ -359,11 +356,6 @@ struct ufs_hba_variant_ops {
 			       const union ufs_crypto_cfg_entry *cfg, int slot);
 	void	(*event_notify)(struct ufs_hba *hba,
 				enum ufs_event_type evt, void *data);
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_KABI_RESERVE(3);
-	ANDROID_KABI_RESERVE(4);
 };
 
 /* clock gating state  */
@@ -403,8 +395,6 @@ struct ufs_clk_gating {
 	bool is_initialized;
 	int active_reqs;
 	struct workqueue_struct *clk_gating_workq;
-
-	ANDROID_KABI_RESERVE(1);
 };
 
 struct ufs_saved_pwr_info {
@@ -451,8 +441,6 @@ struct ufs_clk_scaling {
 	bool is_initialized;
 	bool is_busy_started;
 	bool is_suspended;
-
-	ANDROID_KABI_RESERVE(1);
 };
 
 #define UFS_EVENT_HIST_LENGTH 8
@@ -581,18 +569,6 @@ enum ufshcd_quirks {
 	UFSHCD_QUIRK_ALIGN_SG_WITH_PAGE_SIZE		= 1 << 14,
 
 	/*
-	 * This quirk needs to be enabled if the host controller does not
-	 * support UIC command
-	 */
-	UFSHCD_QUIRK_BROKEN_UIC_CMD			= 1 << 15,
-
-	/*
-	 * This quirk needs to be enabled if the host controller cannot
-	 * support interface configuration.
-	 */
-	UFSHCD_QUIRK_SKIP_INTERFACE_CONFIGURATION	= 1 << 16,
-
-	/*
 	 * This quirk needs to be enabled if the host controller supports inline
 	 * encryption, but it needs to initialize the crypto capabilities in a
 	 * nonstandard way and/or it needs to override blk_ksm_ll_ops.  If
@@ -687,31 +663,6 @@ struct ufs_hba_variant_params {
 	u16 hba_enable_delay_us;
 	u32 wb_flush_threshold;
 };
-
-#ifdef CONFIG_SCSI_UFS_HPB
-/**
- * struct ufshpb_dev_info - UFSHPB device related info
- * @num_lu: the number of user logical unit to check whether all lu finished
- *          initialization
- * @rgn_size: device reported HPB region size
- * @srgn_size: device reported HPB sub-region size
- * @slave_conf_cnt: counter to check all lu finished initialization
- * @hpb_disabled: flag to check if HPB is disabled
- * @max_hpb_single_cmd: device reported bMAX_DATA_SIZE_FOR_SINGLE_CMD value
- * @is_legacy: flag to check HPB 1.0
- * @control_mode: either host or device
- */
-struct ufshpb_dev_info {
-	int num_lu;
-	int rgn_size;
-	int srgn_size;
-	atomic_t slave_conf_cnt;
-	bool hpb_disabled;
-	u8 max_hpb_single_cmd;
-	bool is_legacy;
-	u8 control_mode;
-};
-#endif
 
 struct ufs_hba_monitor {
 	unsigned long chunk_size;
@@ -925,10 +876,6 @@ struct ufs_hba {
 	struct request_queue	*bsg_queue;
 	struct delayed_work rpm_dev_flush_recheck_work;
 
-#ifdef CONFIG_SCSI_UFS_HPB
-	struct ufshpb_dev_info ufshpb_dev;
-#endif
-
 	struct ufs_hba_monitor	monitor;
 
 #ifdef CONFIG_SCSI_UFS_CRYPTO
@@ -945,11 +892,6 @@ struct ufs_hba {
 	u32 luns_avail;
 	bool complete_put;
 	bool rpmb_complete_put;
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_KABI_RESERVE(3);
-	ANDROID_KABI_RESERVE(4);
 };
 
 /* Returns true if clocks can be gated. Otherwise false */
@@ -1044,7 +986,6 @@ int ufshcd_init(struct ufs_hba *, void __iomem *, unsigned int);
 int ufshcd_link_recovery(struct ufs_hba *hba);
 int ufshcd_make_hba_operational(struct ufs_hba *hba);
 void ufshcd_remove(struct ufs_hba *);
-int ufshcd_uic_hibern8_enter(struct ufs_hba *hba);
 int ufshcd_uic_hibern8_exit(struct ufs_hba *hba);
 void ufshcd_delay_us(unsigned long us, unsigned long tolerance);
 int ufshcd_wait_for_register(struct ufs_hba *hba, u32 reg, u32 mask,

@@ -12,7 +12,6 @@
 #include <linux/scatterlist.h>
 #include <linux/bitmap.h>
 #include <linux/types.h>
-#include <linux/android_kabi.h>
 #include <asm/page.h>
 
 /**
@@ -948,11 +947,6 @@ struct dma_device {
 	void (*dbg_summary_show)(struct seq_file *s, struct dma_device *dev);
 	struct dentry *dbg_dev_root;
 #endif
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_KABI_RESERVE(3);
-	ANDROID_KABI_RESERVE(4);
 };
 
 static inline int dmaengine_slave_config(struct dma_chan *chan,

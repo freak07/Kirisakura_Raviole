@@ -26,8 +26,6 @@
 #include <linux/blkzoned.h>
 #include <linux/pm.h>
 #include <linux/sbitmap.h>
-#include <linux/android_kabi.h>
-#include <linux/android_vendor.h>
 
 struct module;
 struct scsi_ioctl_command;
@@ -240,8 +238,6 @@ struct request {
 	 */
 	rq_end_io_fn *end_io;
 	void *end_io_data;
-
-	ANDROID_KABI_RESERVE(1);
 };
 
 static inline bool blk_op_is_passthrough(unsigned int op)
@@ -335,8 +331,6 @@ struct queue_limits {
 	unsigned char		discard_misaligned;
 	unsigned char		raid_partial_stripes_expensive;
 	enum blk_zoned_model	zoned;
-
-	ANDROID_KABI_RESERVE(1);
 };
 
 typedef int (*report_zones_cb)(struct blk_zone *zone, unsigned int idx,
@@ -576,12 +570,6 @@ struct request_queue {
 
 #define BLK_MAX_WRITE_HINTS	5
 	u64			write_hints[BLK_MAX_WRITE_HINTS];
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_KABI_RESERVE(3);
-	ANDROID_KABI_RESERVE(4);
-	ANDROID_OEM_DATA(1);
 };
 
 /* Keep blk_queue_flag_name[] in sync with the definitions below */
@@ -1867,10 +1855,6 @@ struct block_device_operations {
 	char *(*devnode)(struct gendisk *disk, umode_t *mode);
 	struct module *owner;
 	const struct pr_ops *pr_ops;
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_OEM_DATA(1);
 };
 
 #ifdef CONFIG_COMPAT

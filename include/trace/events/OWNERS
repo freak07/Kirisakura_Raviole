@@ -1,2 +1,1 @@
-# include OWNERS from the authoritative android-mainline branch
-include kernel/common:android-mainline:/include/trace/events/OWNERS
+per-file f2fs**=file:/fs/f2fs/OWNERS

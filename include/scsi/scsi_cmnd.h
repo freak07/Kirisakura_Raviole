@@ -12,7 +12,6 @@
 #include <scsi/scsi_device.h>
 #include <scsi/scsi_host.h>
 #include <scsi/scsi_request.h>
-#include <linux/android_kabi.h>
 
 struct Scsi_Host;
 struct scsi_driver;
@@ -145,11 +144,6 @@ struct scsi_cmnd {
 
 	unsigned char tag;	/* SCSI-II queued command tag */
 	unsigned int extra_len;	/* length of alignment and padding */
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_KABI_RESERVE(3);
-	ANDROID_KABI_RESERVE(4);
 };
 
 /*

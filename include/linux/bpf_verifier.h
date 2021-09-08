@@ -8,7 +8,6 @@
 #include <linux/btf.h> /* for struct btf and btf_id() */
 #include <linux/filter.h> /* for MAX_BPF_STACK */
 #include <linux/tnum.h>
-#include <linux/android_kabi.h>
 
 /* Maximum variable offset umax_value permitted when resolving memory accesses.
  * In practice this is far bigger than any realistic pointer offset; this limit
@@ -393,8 +392,6 @@ struct bpf_subprog_info {
 	bool has_tail_call;
 	bool tail_call_reachable;
 	bool has_ld_abs;
-
-	ANDROID_KABI_RESERVE(1);
 };
 
 /* single container for all structs
@@ -454,9 +451,6 @@ struct bpf_verifier_env {
 	/* longest register parentage chain walked for liveness marking */
 	u32 longest_mark_read_walk;
 	bpfptr_t fd_array;
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
 };
 
 __printf(2, 0) void bpf_verifier_vlog(struct bpf_verifier_log *log,

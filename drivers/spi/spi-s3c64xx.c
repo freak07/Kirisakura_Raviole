@@ -1525,15 +1525,20 @@ static struct s3c64xx_spi_info *s3c64xx_spi_parse_dt(struct device *dev)
 }
 #endif
 
+static const struct of_device_id s3c64xx_spi_dt_match[];
+
 static inline struct s3c64xx_spi_port_config *s3c64xx_spi_get_port_config(
 						struct platform_device *pdev)
 {
 #ifdef CONFIG_OF
-	if (pdev->dev.of_node)
-		return (struct s3c64xx_spi_port_config *)of_device_get_match_data(&pdev->dev);
+	if (pdev->dev.of_node) {
+		const struct of_device_id *match;
+
+		match = of_match_node(s3c64xx_spi_dt_match, pdev->dev.of_node);
+		return (struct s3c64xx_spi_port_config *)match->data;
+	}
 #endif
-	return (struct s3c64xx_spi_port_config *)
-			platform_get_device_id(pdev)->driver_data;
+	return (struct s3c64xx_spi_port_config *)platform_get_device_id(pdev)->driver_data;
 }
 
 static int s3c64xx_spi_probe(struct platform_device *pdev)
@@ -2135,27 +2140,27 @@ static const struct dev_pm_ops s3c64xx_spi_pm = {
 			   s3c64xx_spi_runtime_resume, NULL)
 };
 
-static struct s3c64xx_spi_port_config s3c2443_spi_port_config = {
+static const struct s3c64xx_spi_port_config s3c2443_spi_port_config = {
 	.fifo_lvl_mask	= { 0x7f },
 	.rx_lvl_offset	= 13,
 	.tx_st_done	= 21,
 	.high_speed	= true,
 };
 
-static struct s3c64xx_spi_port_config s3c6410_spi_port_config = {
+static const struct s3c64xx_spi_port_config s3c6410_spi_port_config = {
 	.fifo_lvl_mask	= { 0x7f, 0x7F },
 	.rx_lvl_offset	= 13,
 	.tx_st_done	= 21,
 };
 
-static struct s3c64xx_spi_port_config s5pv210_spi_port_config = {
+static const struct s3c64xx_spi_port_config s5pv210_spi_port_config = {
 	.fifo_lvl_mask	= { 0x1ff, 0x7F },
 	.rx_lvl_offset	= 15,
 	.tx_st_done	= 25,
 	.high_speed	= true,
 };
 
-static struct s3c64xx_spi_port_config exynos4_spi_port_config = {
+static const struct s3c64xx_spi_port_config exynos4_spi_port_config = {
 	.fifo_lvl_mask	= { 0x1ff, 0x7F, 0x7F },
 	.rx_lvl_offset	= 15,
 	.tx_st_done	= 25,
@@ -2163,7 +2168,7 @@ static struct s3c64xx_spi_port_config exynos4_spi_port_config = {
 	.clk_from_cmu	= true,
 };
 
-static struct s3c64xx_spi_port_config exynos7_spi_port_config = {
+static const struct s3c64xx_spi_port_config exynos7_spi_port_config = {
 	.fifo_lvl_mask	= { 0x1ff, 0x7F, 0x7F, 0x7F, 0x7F, 0x1ff},
 	.rx_lvl_offset	= 15,
 	.tx_st_done	= 25,

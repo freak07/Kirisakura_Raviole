@@ -12,7 +12,6 @@
 #include <linux/types.h>
 #include <linux/list.h>
 #include <linux/err.h>
-#include <linux/android_kabi.h>
 
 struct fwnode_operations;
 struct device;
@@ -35,7 +34,6 @@ struct fwnode_handle {
 	struct list_head suppliers;
 	struct list_head consumers;
 	u8 flags;
-	ANDROID_KABI_RESERVE(1);
 };
 
 struct fwnode_link {
@@ -43,9 +41,6 @@ struct fwnode_link {
 	struct list_head s_hook;
 	struct fwnode_handle *consumer;
 	struct list_head c_hook;
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_KABI_RESERVE(3);
 };
 
 /**

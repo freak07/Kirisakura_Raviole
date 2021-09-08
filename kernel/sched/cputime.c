@@ -4,7 +4,6 @@
  */
 #include <linux/cpufreq_times.h>
 #include "sched.h"
-#include <trace/hooks/sched.h>
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 
@@ -398,7 +397,6 @@ static void irqtime_account_process_tick(struct task_struct *p, int user_tick,
 	} else {
 		account_system_index_time(p, cputime, CPUTIME_SYSTEM);
 	}
-	trace_android_vh_irqtime_account_process_tick(p, this_rq(), user_tick, ticks);
 }
 
 static void irqtime_account_idle_ticks(int ticks)
@@ -483,7 +481,6 @@ void account_process_tick(struct task_struct *p, int user_tick)
 
 	if (vtime_accounting_enabled_this_cpu())
 		return;
-	trace_android_vh_account_task_time(p, this_rq(), user_tick);
 
 	if (sched_clock_irqtime) {
 		irqtime_account_process_tick(p, user_tick, 1);

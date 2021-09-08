@@ -45,13 +45,6 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_util_est_cfs_tp);
 EXPORT_TRACEPOINT_SYMBOL_GPL(sched_util_est_se_tp);
 EXPORT_TRACEPOINT_SYMBOL_GPL(sched_update_nr_running_tp);
 EXPORT_TRACEPOINT_SYMBOL_GPL(sched_switch);
-EXPORT_TRACEPOINT_SYMBOL_GPL(sched_waking);
-#ifdef CONFIG_SCHEDSTATS
-EXPORT_TRACEPOINT_SYMBOL_GPL(sched_stat_sleep);
-EXPORT_TRACEPOINT_SYMBOL_GPL(sched_stat_wait);
-EXPORT_TRACEPOINT_SYMBOL_GPL(sched_stat_iowait);
-EXPORT_TRACEPOINT_SYMBOL_GPL(sched_stat_blocked);
-#endif
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 EXPORT_SYMBOL_GPL(runqueues);
@@ -69,7 +62,6 @@ EXPORT_SYMBOL_GPL(runqueues);
 const_debug unsigned int sysctl_sched_features =
 #include "features.h"
 	0;
-EXPORT_SYMBOL_GPL(sysctl_sched_features);
 #undef SCHED_FEAT
 
 /*
@@ -487,7 +479,6 @@ void raw_spin_rq_lock_nested(struct rq *rq, int subclass)
 		raw_spin_unlock(lock);
 	}
 }
-EXPORT_SYMBOL_GPL(raw_spin_rq_lock_nested);
 
 bool raw_spin_rq_trylock(struct rq *rq)
 {
@@ -517,7 +508,6 @@ void raw_spin_rq_unlock(struct rq *rq)
 {
 	raw_spin_unlock(rq_lockp(rq));
 }
-EXPORT_SYMBOL_GPL(raw_spin_rq_unlock);
 
 #ifdef CONFIG_SMP
 /*
@@ -604,7 +594,6 @@ struct rq *task_rq_lock(struct task_struct *p, struct rq_flags *rf)
 			cpu_relax();
 	}
 }
-EXPORT_SYMBOL_GPL(task_rq_lock);
 
 /*
  * RQ-clock updating methods:
@@ -988,7 +977,6 @@ void resched_curr(struct rq *rq)
 	else
 		trace_sched_wake_idle_without_ipi(cpu);
 }
-EXPORT_SYMBOL_GPL(resched_curr);
 
 void resched_cpu(int cpu)
 {
@@ -1016,7 +1004,7 @@ int get_nohz_timer_target(void)
 	int i, cpu = smp_processor_id(), default_cpu = -1;
 	struct sched_domain *sd;
 
-	if (housekeeping_cpu(cpu, HK_FLAG_TIMER) && cpu_active(cpu)) {
+	if (housekeeping_cpu(cpu, HK_FLAG_TIMER)) {
 		if (!idle_cpu(cpu))
 			return cpu;
 		default_cpu = cpu;
@@ -1036,25 +1024,8 @@ int get_nohz_timer_target(void)
 		}
 	}
 
-	if (default_cpu == -1) {
-		for_each_cpu_and(i, cpu_active_mask,
-				 housekeeping_cpumask(HK_FLAG_TIMER)) {
-			if (cpu == i)
-				continue;
-
-			if (!idle_cpu(i)) {
-				cpu = i;
-				goto unlock;
-			}
-		}
-
-		/* no active, not-idle, housekpeeing CPU found. */
-		default_cpu = cpumask_any(cpu_active_mask);
-
-		if (unlikely(default_cpu >= nr_cpu_ids))
-			goto unlock;
-	}
-
+	if (default_cpu == -1)
+		default_cpu = housekeeping_any_cpu(HK_FLAG_TIMER);
 	cpu = default_cpu;
 unlock:
 	rcu_read_unlock();
@@ -1480,12 +1451,6 @@ uclamp_eff_get(struct task_struct *p, enum uclamp_id clamp_id)
 {
 	struct uclamp_se uc_req = uclamp_tg_restrict(p, clamp_id);
 	struct uclamp_se uc_max = uclamp_default[clamp_id];
-	struct uclamp_se uc_eff;
-	int ret = 0;
-
-	trace_android_rvh_uclamp_eff_get(p, clamp_id, &uc_max, &uc_eff, &ret);
-	if (ret)
-		return uc_eff;
 
 	/* System default restrictions always apply */
 	if (unlikely(uc_req.value > uc_max.value))
@@ -1887,14 +1852,12 @@ static void __setscheduler_uclamp(struct task_struct *p,
 	    attr->sched_util_min != -1) {
 		uclamp_se_set(&p->uclamp_req[UCLAMP_MIN],
 			      attr->sched_util_min, true);
-		trace_android_vh_setscheduler_uclamp(p, UCLAMP_MIN, attr->sched_util_min);
 	}
 
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX &&
 	    attr->sched_util_max != -1) {
 		uclamp_se_set(&p->uclamp_req[UCLAMP_MAX],
 			      attr->sched_util_max, true);
-		trace_android_vh_setscheduler_uclamp(p, UCLAMP_MAX, attr->sched_util_max);
 	}
 }
 
@@ -1995,7 +1958,6 @@ static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 	uclamp_rq_inc(rq, p);
 	trace_android_rvh_enqueue_task(rq, p, flags);
 	p->sched_class->enqueue_task(rq, p, flags);
-	trace_android_rvh_after_enqueue_task(rq, p);
 
 	if (sched_core_enabled(rq))
 		sched_core_enqueue(rq, p);
@@ -2017,7 +1979,6 @@ static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	uclamp_rq_dec(rq, p);
 	trace_android_rvh_dequeue_task(rq, p, flags);
 	p->sched_class->dequeue_task(rq, p, flags);
-	trace_android_rvh_after_dequeue_task(rq, p);
 }
 
 void activate_task(struct rq *rq, struct task_struct *p, int flags)
@@ -2486,7 +2447,6 @@ void set_cpus_allowed_common(struct task_struct *p, const struct cpumask *new_ma
 
 	cpumask_copy(&p->cpus_mask, new_mask);
 	p->nr_cpus_allowed = cpumask_weight(new_mask);
-	trace_android_rvh_set_cpus_allowed_comm(p, new_mask);
 }
 
 static void
@@ -2756,19 +2716,25 @@ static int affine_move_task(struct rq *rq, struct task_struct *p, struct rq_flag
 }
 
 /*
- * Called with both p->pi_lock and rq->lock held; drops both before returning.
+ * Change a given task's CPU affinity. Migrate the thread to a
+ * proper CPU and schedule it away if the CPU it's executing on
+ * is removed from the allowed bitmask.
+ *
+ * NOTE: the caller must have a valid reference to the task, the
+ * task must not exit() & deallocate itself prematurely. The
+ * call is not atomic; no spinlocks may be held.
  */
-static int __set_cpus_allowed_ptr_locked(struct task_struct *p,
-					 const struct cpumask *new_mask,
-					 u32 flags,
-					 struct rq *rq,
-					 struct rq_flags *rf)
+static int __set_cpus_allowed_ptr(struct task_struct *p,
+				  const struct cpumask *new_mask,
+				  u32 flags)
 {
 	const struct cpumask *cpu_valid_mask = cpu_active_mask;
-	const struct cpumask *cpu_allowed_mask = task_cpu_possible_mask(p);
 	unsigned int dest_cpu;
+	struct rq_flags rf;
+	struct rq *rq;
 	int ret = 0;
 
+	rq = task_rq_lock(p, &rf);
 	update_rq_clock(rq);
 
 	if (p->flags & PF_KTHREAD || is_migration_disabled(p)) {
@@ -2783,9 +2749,6 @@ static int __set_cpus_allowed_ptr_locked(struct task_struct *p,
 		 * set_cpus_allowed_common() and actually reset p->cpus_ptr.
 		 */
 		cpu_valid_mask = cpu_online_mask;
-	} else if (!cpumask_subset(new_mask, cpu_allowed_mask)) {
-		ret = -EINVAL;
-		goto out;
 	}
 
 	/*
@@ -2822,32 +2785,12 @@ static int __set_cpus_allowed_ptr_locked(struct task_struct *p,
 
 	__do_set_cpus_allowed(p, new_mask, flags);
 
-	return affine_move_task(rq, p, rf, dest_cpu, flags);
+	return affine_move_task(rq, p, &rf, dest_cpu, flags);
 
 out:
-	task_rq_unlock(rq, p, rf);
+	task_rq_unlock(rq, p, &rf);
 
 	return ret;
-}
-
-/*
- * Change a given task's CPU affinity. Migrate the thread to a
- * proper CPU and schedule it away if the CPU it's executing on
- * is removed from the allowed bitmask.
- *
- * NOTE: the caller must have a valid reference to the task, the
- * task must not exit() & deallocate itself prematurely. The
- * call is not atomic; no spinlocks may be held.
- */
-static int __set_cpus_allowed_ptr(struct task_struct *p,
-				  const struct cpumask *new_mask,
-				  u32 flags)
-{
-	struct rq_flags rf;
-	struct rq *rq;
-
-	rq = task_rq_lock(p, &rf);
-	return __set_cpus_allowed_ptr_locked(p, new_mask, flags, rq, &rf);
 }
 
 int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
@@ -2855,74 +2798,6 @@ int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 	return __set_cpus_allowed_ptr(p, new_mask, 0);
 }
 EXPORT_SYMBOL_GPL(set_cpus_allowed_ptr);
-
-/*
- * Change a given task's CPU affinity to the intersection of its current
- * affinity mask and @subset_mask, writing the resulting mask to @new_mask.
- * If the resulting mask is empty, leave the affinity unchanged and return
- * -EINVAL.
- */
-static int restrict_cpus_allowed_ptr(struct task_struct *p,
-				     struct cpumask *new_mask,
-				     const struct cpumask *subset_mask)
-{
-	struct rq_flags rf;
-	struct rq *rq;
-
-	rq = task_rq_lock(p, &rf);
-	if (!cpumask_and(new_mask, &p->cpus_mask, subset_mask)) {
-		task_rq_unlock(rq, p, &rf);
-		return -EINVAL;
-	}
-
-	return __set_cpus_allowed_ptr_locked(p, new_mask, false, rq, &rf);
-}
-
-/*
- * Restrict a given task's CPU affinity so that it is a subset of
- * task_cpu_possible_mask(). If the resulting mask is empty, we warn and
- * walk up the cpuset hierarchy until we find a suitable mask.
- */
-void force_compatible_cpus_allowed_ptr(struct task_struct *p)
-{
-	cpumask_var_t new_mask;
-	const struct cpumask *override_mask = task_cpu_possible_mask(p);
-
-	alloc_cpumask_var(&new_mask, GFP_KERNEL);
-
-	/*
-	 * __migrate_task() can fail silently in the face of concurrent
-	 * offlining of the chosen destination CPU, so take the hotplug
-	 * lock to ensure that the migration succeeds.
-	 */
-	trace_android_rvh_force_compatible_pre(NULL);
-	cpus_read_lock();
-	if (!cpumask_available(new_mask))
-		goto out_set_mask;
-
-	if (!restrict_cpus_allowed_ptr(p, new_mask, override_mask))
-		goto out_free_mask;
-
-	/*
-	 * We failed to find a valid subset of the affinity mask for the
-	 * task, so override it based on its cpuset hierarchy.
-	 */
-	cpuset_cpus_allowed(p, new_mask);
-	override_mask = new_mask;
-
-out_set_mask:
-	if (printk_ratelimit()) {
-		printk_deferred("Overriding affinity for process %d (%s) to CPUs %*pbl\n",
-				task_pid_nr(p), p->comm,
-				cpumask_pr_args(override_mask));
-	}
-
-	WARN_ON(set_cpus_allowed_ptr(p, override_mask));
-out_free_mask:
-	cpus_read_unlock();
-	trace_android_rvh_force_compatible_post(NULL);
-	free_cpumask_var(new_mask);
-}
 
 void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 {
@@ -3272,7 +3147,9 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 
 		/* Look for allowed, online CPU in same node. */
 		for_each_cpu(dest_cpu, nodemask) {
-			if (is_cpu_allowed(p, dest_cpu))
+			if (!cpu_active(dest_cpu))
+				continue;
+			if (cpumask_test_cpu(dest_cpu, p->cpus_ptr))
 				return dest_cpu;
 		}
 	}
@@ -3305,6 +3182,7 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 			do_set_cpus_allowed(p, cpu_possible_mask);
 			state = fail;
 			break;
+
 		case fail:
 			BUG();
 			break;
@@ -3502,9 +3380,6 @@ ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
 {
 	int en_flags = ENQUEUE_WAKEUP | ENQUEUE_NOCLOCK;
 
-	if (wake_flags & WF_SYNC)
-		en_flags |= ENQUEUE_WAKEUP_SYNC;
-
 	lockdep_assert_rq_held(rq);
 
 	if (p->sched_contributes_to_load)
@@ -3687,12 +3562,7 @@ static inline bool ttwu_queue_cond(int cpu, int wake_flags)
 
 static bool ttwu_queue_wakelist(struct task_struct *p, int cpu, int wake_flags)
 {
-	bool cond = false;
-
-	trace_android_rvh_ttwu_cond(&cond);
-
-	if ((sched_feat(TTWU_QUEUE) && ttwu_queue_cond(cpu, wake_flags)) ||
-			cond) {
+	if (sched_feat(TTWU_QUEUE) && ttwu_queue_cond(cpu, wake_flags)) {
 		if (WARN_ON_ONCE(cpu == smp_processor_id()))
 			return false;
 
@@ -3886,19 +3756,6 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	smp_mb__after_spinlock();
 	if (!(READ_ONCE(p->__state) & state))
 		goto unlock;
-
-#ifdef CONFIG_FREEZER
-	/*
-	 * If we're going to wake up a thread which may be frozen, then
-	 * we can only do so if we have an active CPU which is capable of
-	 * running it. This may not be the case when resuming from suspend,
-	 * as the secondary CPUs may not yet be back online. See __thaw_task()
-	 * for the actual wakeup.
-	 */
-	if (unlikely(frozen_or_skipped(p)) &&
-	    !cpumask_intersects(cpu_active_mask, task_cpu_possible_mask(p)))
-		goto unlock;
-#endif
 
 	trace_sched_waking(p);
 
@@ -4113,8 +3970,6 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	p->se.cfs_rq			= NULL;
 #endif
-
-	trace_android_rvh_sched_fork_init(p);
 
 #ifdef CONFIG_SCHEDSTATS
 	/* Even if schedstat is disabled, there should not be garbage */
@@ -4544,7 +4399,6 @@ struct callback_head balance_push_callback = {
 	.next = NULL,
 	.func = (void (*)(struct callback_head *))balance_push,
 };
-EXPORT_SYMBOL_GPL(balance_push_callback);
 
 static inline struct callback_head *splice_balance_callbacks(struct rq *rq)
 {
@@ -4977,11 +4831,6 @@ void sched_exec(void)
 	struct task_struct *p = current;
 	unsigned long flags;
 	int dest_cpu;
-	bool cond = false;
-
-	trace_android_rvh_sched_exec(&cond);
-	if (cond)
-		return;
 
 	raw_spin_lock_irqsave(&p->pi_lock, flags);
 	dest_cpu = p->sched_class->select_task_rq(p, task_cpu(p), WF_EXEC);
@@ -5411,8 +5260,6 @@ static noinline void __schedule_bug(struct task_struct *prev)
 	}
 	if (panic_on_warn)
 		panic("scheduling while atomic\n");
-
-	trace_android_rvh_schedule_bug(prev);
 
 	dump_stack();
 	add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
@@ -6527,7 +6374,7 @@ asmlinkage __visible void __sched preempt_schedule_irq(void)
 int default_wake_function(wait_queue_entry_t *curr, unsigned mode, int wake_flags,
 			  void *key)
 {
-	WARN_ON_ONCE(IS_ENABLED(CONFIG_SCHED_DEBUG) && wake_flags & ~(WF_SYNC | WF_ANDROID_VENDOR));
+	WARN_ON_ONCE(IS_ENABLED(CONFIG_SCHED_DEBUG) && wake_flags & ~WF_SYNC);
 	return try_to_wake_up(curr->private, mode, wake_flags);
 }
 EXPORT_SYMBOL(default_wake_function);
@@ -6832,6 +6679,7 @@ int idle_cpu(int cpu)
 
 	return 1;
 }
+EXPORT_SYMBOL_GPL(idle_cpu);
 
 /**
  * available_idle_cpu - is a given CPU idle for enqueuing work.
@@ -6849,7 +6697,6 @@ int available_idle_cpu(int cpu)
 
 	return 1;
 }
-EXPORT_SYMBOL_GPL(available_idle_cpu);
 
 /**
  * idle_task - return the idle task for a given CPU.
@@ -7745,7 +7592,6 @@ long sched_setaffinity(pid_t pid, const struct cpumask *in_mask)
 	cpumask_var_t cpus_allowed, new_mask;
 	struct task_struct *p;
 	int retval;
-	int skip = 0;
 
 	rcu_read_lock();
 
@@ -7781,9 +7627,6 @@ long sched_setaffinity(pid_t pid, const struct cpumask *in_mask)
 		rcu_read_unlock();
 	}
 
-	trace_android_vh_sched_setaffinity_early(p, in_mask, &skip);
-	if (skip)
-		goto out_free_new_mask;
 	retval = security_task_setscheduler(p);
 	if (retval)
 		goto out_free_new_mask;
@@ -9346,9 +9189,6 @@ void ___might_sleep(const char *file, int line, int preempt_offset)
 		pr_err("Preemption disabled at:");
 		print_ip_sym(KERN_ERR, preempt_disable_ip);
 	}
-
-	trace_android_rvh_schedule_bug(NULL);
-
 	dump_stack();
 	add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
 }
@@ -9702,7 +9542,6 @@ static int cpu_cgroup_css_online(struct cgroup_subsys_state *css)
 	mutex_unlock(&uclamp_mutex);
 #endif
 
-	trace_android_rvh_cpu_cgroup_online(css);
 	return 0;
 }
 

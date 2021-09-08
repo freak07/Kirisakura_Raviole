@@ -14,8 +14,6 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 
-#include <trace/hooks/sound.h>
-
 #include "usbaudio.h"
 #include "card.h"
 #include "quirks.h"
@@ -1059,7 +1057,6 @@ static int snd_usb_pcm_open(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_usb_substream *subs = &as->substream[direction];
 	int ret;
-	bool is_support = false;
 
 	runtime->hw = snd_usb_hardware;
 	runtime->private_data = subs;
@@ -1080,11 +1077,6 @@ static int snd_usb_pcm_open(struct snd_pcm_substream *substream)
 	ret = snd_media_stream_init(subs, as->pcm, direction);
 	if (ret < 0)
 		snd_usb_autosuspend(subs->stream->chip);
-
-	trace_android_vh_sound_usb_support_cpu_suspend(subs->dev, direction, &is_support);
-	if (!ret && is_support)
-		snd_usb_autosuspend(subs->stream->chip);
-
 	return ret;
 }
 
@@ -1094,11 +1086,6 @@ static int snd_usb_pcm_close(struct snd_pcm_substream *substream)
 	struct snd_usb_stream *as = snd_pcm_substream_chip(substream);
 	struct snd_usb_substream *subs = &as->substream[direction];
 	int ret;
-	bool is_support = false;
-
-	trace_android_vh_sound_usb_support_cpu_suspend(subs->dev, direction, &is_support);
-	if (!ret && is_support)
-		snd_usb_autoresume(subs->stream->chip);
 
 	snd_media_stop_pipeline(subs);
 

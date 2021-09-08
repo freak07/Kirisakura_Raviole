@@ -526,7 +526,7 @@ static void binder_wakeup_poll_threads_ilocked(struct binder_proc *proc,
 		thread = rb_entry(n, struct binder_thread, rb_node);
 		if (thread->looper & BINDER_LOOPER_STATE_POLL &&
 		    binder_available_for_proc_work_ilocked(thread)) {
-			trace_android_vh_binder_wakeup_ilocked(thread->task, sync, proc);
+			trace_android_vh_binder_wakeup_poll_threads_ilocked(thread->task);
 			if (sync)
 				wake_up_interruptible_sync(&thread->wait);
 			else
@@ -586,7 +586,7 @@ static void binder_wakeup_thread_ilocked(struct binder_proc *proc,
 	assert_spin_locked(&proc->inner_lock);
 
 	if (thread) {
-		trace_android_vh_binder_wakeup_ilocked(thread->task, sync, proc);
+		trace_android_vh_binder_wakeup_thread_ilocked(thread->task);
 		if (sync)
 			wake_up_interruptible_sync(&thread->wait);
 		else
@@ -729,7 +729,6 @@ static void binder_transaction_priority(struct task_struct *task,
 					bool inherit_rt)
 {
 	struct binder_priority desired_prio = t->priority;
-	bool skip = false;
 
 	if (t->set_priority_called)
 		return;
@@ -737,10 +736,6 @@ static void binder_transaction_priority(struct task_struct *task,
 	t->set_priority_called = true;
 	t->saved_priority.sched_policy = task->policy;
 	t->saved_priority.prio = task->normal_prio;
-
-	trace_android_vh_binder_priority_skip(task, &skip);
-	if (skip)
-		return;
 
 	if (!inherit_rt && is_rt_policy(desired_prio.sched_policy)) {
 		desired_prio.prio = NICE_TO_PRIO(0);
@@ -1202,7 +1197,6 @@ static struct binder_ref *binder_get_ref_for_node_olocked(
 		     "%d new ref %d desc %d for node %d\n",
 		      proc->pid, new_ref->data.debug_id, new_ref->data.desc,
 		      node->debug_id);
-	trace_android_vh_binder_new_ref(proc->tsk, new_ref->data.desc, new_ref->node->debug_id);
 	binder_node_unlock(node);
 	return new_ref;
 }
@@ -1370,7 +1364,6 @@ err_no_ref:
  */
 static void binder_free_ref(struct binder_ref *ref)
 {
-	trace_android_vh_binder_del_ref(ref->proc ? ref->proc->tsk : 0, ref->data.desc);
 	if (ref->node)
 		binder_free_node(ref->node);
 	kfree(ref->death);
@@ -2520,9 +2513,6 @@ static int binder_proc_transaction(struct binder_transaction *t,
 	if (!thread && !pending_async)
 		thread = binder_select_thread_ilocked(proc);
 
-	trace_android_vh_binder_proc_transaction(current, proc->tsk,
-		thread ? thread->task : 0, node->debug_id, t->code, pending_async);
-
 	if (thread) {
 		binder_transaction_priority(thread->task, t, node_prio,
 					    node->inherit_rt);
@@ -2678,7 +2668,6 @@ static void binder_transaction(struct binder_proc *proc,
 		target_proc = target_thread->proc;
 		target_proc->tmp_ref++;
 		binder_inner_proc_unlock(target_thread->proc);
-		trace_android_vh_binder_reply(target_proc, proc, thread, tr);
 	} else {
 		if (tr->target.handle) {
 			struct binder_ref *ref;
@@ -2731,7 +2720,6 @@ static void binder_transaction(struct binder_proc *proc,
 			goto err_dead_binder;
 		}
 		e->to_node = target_node->debug_id;
-		trace_android_vh_binder_trans(target_proc, proc, thread, tr);
 		if (security_binder_transaction(proc->tsk,
 						target_proc->tsk) < 0) {
 			return_error = BR_FAILED_REPLY;
@@ -3873,7 +3861,6 @@ static int binder_wait_for_work(struct binder_thread *thread,
 		if (do_proc_work)
 			list_add(&thread->waiting_thread_node,
 				 &proc->waiting_threads);
-		trace_android_vh_binder_wait_for_work(do_proc_work, thread, proc);
 		binder_inner_proc_unlock(proc);
 		schedule();
 		binder_inner_proc_lock(proc);
@@ -4244,7 +4231,6 @@ retry:
 			trd->sender_pid =
 				task_tgid_nr_ns(sender,
 						task_active_pid_ns(current));
-			trace_android_vh_sync_txn_recvd(thread->task, t_from->task);
 		} else {
 			trd->sender_pid = 0;
 		}
@@ -5215,7 +5201,7 @@ static int binder_open(struct inode *nodp, struct file *filp)
 	}
 	hlist_add_head(&proc->proc_node, &binder_procs);
 	mutex_unlock(&binder_procs_lock);
-	trace_android_vh_binder_preset(&binder_procs, &binder_procs_lock);
+
 	if (binder_debugfs_dir_entry_proc && !existing_pid) {
 		char strbuf[11];
 
@@ -5509,7 +5495,6 @@ static void print_binder_transaction_ilocked(struct seq_file *m,
 	struct binder_buffer *buffer = t->buffer;
 
 	spin_lock(&t->lock);
-	trace_android_vh_binder_print_transaction_info(m, proc, prefix, t);
 	to_proc = t->to_proc;
 	seq_printf(m,
 		   "%s %d: %pK from %d:%d to %d:%d code %x flags %x pri %d:%d r%d",
@@ -6163,6 +6148,5 @@ device_initcall(binder_init);
 
 #define CREATE_TRACE_POINTS
 #include "binder_trace.h"
-EXPORT_TRACEPOINT_SYMBOL_GPL(binder_transaction_received);
 
 MODULE_LICENSE("GPL v2");

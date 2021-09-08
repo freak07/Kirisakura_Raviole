@@ -1353,8 +1353,6 @@ static int __reloc_gpu_alloc(struct i915_execbuffer *eb,
 
 	memset32(cmd, 0, pool->obj->base.size / sizeof(u32));
 
-	memset32(cmd, 0, pool->obj->base.size / sizeof(u32));
-
 	batch = i915_vma_instance(pool->obj, vma->vm, NULL);
 	if (IS_ERR(batch)) {
 		err = PTR_ERR(batch);

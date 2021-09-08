@@ -95,14 +95,6 @@ config RING_BUFFER_ALLOW_SWAP
 	 Allow the use of ring_buffer_swap_cpu.
 	 Adds a very slight overhead to tracing when enabled.
 
-config TRACE_MMIO_ACCESS
-	bool "Register read/write tracing"
-	depends on TRACING
-	depends on ARM64
-	help
-	  Create tracepoints for IO read/write operations. These trace events
-	  can be used for logging all MMIO read/write operations.
-
 config PREEMPTIRQ_TRACEPOINTS
 	bool
 	depends on TRACE_PREEMPT_TOGGLE || TRACE_IRQFLAGS
@@ -111,11 +103,6 @@ config PREEMPTIRQ_TRACEPOINTS
 	help
 	  Create preempt/irq toggle tracepoints if needed, so that other parts
 	  of the kernel can use them to generate or add hooks to them.
-
-menuconfig TRACEFS_DISABLE_AUTOMOUNT
-	bool "Do not autmount tracefs in the debugfs filesystem"
-	help
-	  Provides an option to not automount tracefs in /sys/kernel/debug/tracing.
 
 # All tracer options should select GENERIC_TRACER. For those options that are
 # enabled by all tracers (context switch and event tracer) they select TRACING.

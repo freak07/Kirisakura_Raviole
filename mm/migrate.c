@@ -167,7 +167,6 @@ void putback_movable_pages(struct list_head *l)
 		}
 	}
 }
-EXPORT_SYMBOL_GPL(putback_movable_pages);
 
 /*
  * Restore a potential migration pte to a working pte entry
@@ -212,7 +211,7 @@ static bool remove_migration_pte(struct page *page, struct vm_area_struct *vma,
 		 */
 		entry = pte_to_swp_entry(*pvmw.pte);
 		if (is_writable_migration_entry(entry))
-			pte = maybe_mkwrite(pte, vma->vm_flags);
+			pte = maybe_mkwrite(pte, vma);
 		else if (pte_swp_uffd_wp(*pvmw.pte))
 			pte = pte_mkuffd_wp(pte);
 
@@ -1385,8 +1384,6 @@ int migrate_pages(struct list_head *from, new_page_t get_new_page,
 
 	trace_mm_migrate_pages_start(mode, reason);
 
-	trace_mm_migrate_pages_start(mode, reason);
-
 	if (!swapwrite)
 		current->flags |= PF_SWAPWRITE;
 
@@ -1524,7 +1521,6 @@ out:
 
 	return rc;
 }
-EXPORT_SYMBOL_GPL(migrate_pages);
 
 struct page *alloc_migration_target(struct page *page, unsigned long private)
 {
@@ -1666,7 +1662,7 @@ out_putpage:
 	 * isolate_lru_page() or drop the page ref if it was
 	 * not isolated.
 	 */
-	put_user_page(page);
+	put_page(page);
 out:
 	mmap_read_unlock(mm);
 	return err;
@@ -2063,7 +2059,7 @@ static int numamigrate_isolate_page(pg_data_t *pgdat, struct page *page)
  * node. Caller is expected to have an elevated reference count on
  * the page that will be dropped by this function before returning.
  */
-int migrate_misplaced_page(struct page *page, struct vm_fault *vmf,
+int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 			   int node)
 {
 	pg_data_t *pgdat = NODE_DATA(node);
@@ -2091,7 +2087,7 @@ int migrate_misplaced_page(struct page *page, struct vm_fault *vmf,
 	 * with execute permissions as they are probably shared libraries.
 	 */
 	if (page_mapcount(page) != 1 && page_is_file_lru(page) &&
-	    (vmf->vma_flags & VM_EXEC))
+	    (vma->vm_flags & VM_EXEC))
 		goto out;
 
 	/*

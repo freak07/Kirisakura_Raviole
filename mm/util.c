@@ -27,9 +27,6 @@
 #include <linux/uaccess.h>
 
 #include "internal.h"
-#ifndef __GENKSYMS__
-#include <trace/hooks/syscall_check.h>
-#endif
 
 /**
  * kfree_const - conditionally free memory
@@ -369,7 +366,6 @@ unsigned long arch_mmap_rnd(void)
 
 	return rnd << PAGE_SHIFT;
 }
-EXPORT_SYMBOL_GPL(arch_mmap_rnd);
 
 static int mmap_is_legacy(struct rlimit *rlim_stack)
 {
@@ -527,7 +523,6 @@ unsigned long vm_mmap_pgoff(struct file *file, unsigned long addr,
 		if (populate)
 			mm_populate(ret, populate);
 	}
-	trace_android_vh_check_mmap_file(file, prot, flag, ret);
 	return ret;
 }
 

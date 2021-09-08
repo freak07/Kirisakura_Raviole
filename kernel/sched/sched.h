@@ -68,7 +68,6 @@
 #include <linux/task_work.h>
 #include <linux/tsacct_kern.h>
 #include <linux/android_vendor.h>
-#include <linux/android_kabi.h>
 
 #include <asm/tlb.h>
 
@@ -439,10 +438,6 @@ struct task_group {
 	ANDROID_VENDOR_DATA_ARRAY(1, 4);
 #endif
 
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_KABI_RESERVE(3);
-	ANDROID_KABI_RESERVE(4);
 };
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -620,8 +615,6 @@ struct cfs_rq {
 	int			throttle_count;
 	struct list_head	throttled_list;
 #endif /* CONFIG_CFS_BANDWIDTH */
-
-	ANDROID_VENDOR_DATA_ARRAY(1, 16);
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 };
 
@@ -859,11 +852,6 @@ struct root_domain {
 	struct perf_domain __rcu *pd;
 
 	ANDROID_VENDOR_DATA_ARRAY(1, 4);
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_KABI_RESERVE(3);
-	ANDROID_KABI_RESERVE(4);
 };
 
 extern void init_defrootdomain(void);
@@ -875,7 +863,6 @@ extern void sched_put_rd(struct root_domain *rd);
 #ifdef HAVE_RT_PUSH_IPI
 extern void rto_push_irq_work_func(struct irq_work *work);
 #endif
-extern struct task_struct *pick_highest_pushable_task(struct rq *rq, int cpu);
 #endif /* CONFIG_SMP */
 
 #ifdef CONFIG_UCLAMP_TASK
@@ -1122,12 +1109,6 @@ struct rq {
 #endif
 
 	ANDROID_VENDOR_DATA_ARRAY(1, 96);
-	ANDROID_OEM_DATA_ARRAY(1, 16);
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_KABI_RESERVE(3);
-	ANDROID_KABI_RESERVE(4);
 };
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -1993,8 +1974,6 @@ static __always_inline bool static_branch_##name(struct static_key *key) \
 #undef SCHED_FEAT
 
 extern struct static_key sched_feat_keys[__SCHED_FEAT_NR];
-extern const char * const sched_feat_names[__SCHED_FEAT_NR];
-
 #define sched_feat(x) (static_branch_##x(&sched_feat_keys[__SCHED_FEAT_##x]))
 
 #else /* !CONFIG_JUMP_LABEL */
@@ -2069,7 +2048,6 @@ static inline int task_on_rq_migrating(struct task_struct *p)
 #define WF_SYNC     0x10 /* Waker goes to sleep after wakeup */
 #define WF_MIGRATED 0x20 /* Internal use, task got migrated */
 #define WF_ON_CPU   0x40 /* Wakee is on_cpu */
-#define WF_ANDROID_VENDOR	0x1000		/* Vendor specific for Android */
 
 #ifdef CONFIG_SMP
 static_assert(WF_EXEC == SD_BALANCE_EXEC);
@@ -2128,8 +2106,6 @@ extern const u32		sched_prio_to_wmult[40];
 #else
 #define ENQUEUE_MIGRATED	0x00
 #endif
-
-#define ENQUEUE_WAKEUP_SYNC	0x80
 
 #define RETRY_TASK		((void *)-1UL)
 
@@ -2295,7 +2271,6 @@ static inline struct task_struct *get_push_task(struct rq *rq)
 
 extern int push_cpu_stop(void *arg);
 
-extern unsigned long __read_mostly max_load_balance_interval;
 #endif
 
 #ifdef CONFIG_CPU_IDLE

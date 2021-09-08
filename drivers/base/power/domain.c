@@ -2018,7 +2018,6 @@ int pm_genpd_init(struct generic_pm_domain *genpd,
 
 	mutex_lock(&gpd_list_lock);
 	list_add(&genpd->gpd_list_node, &gpd_list);
-	genpd_debug_add(genpd);
 	mutex_unlock(&gpd_list_lock);
 	genpd_debug_add(genpd);
 

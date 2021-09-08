@@ -18,7 +18,6 @@
 #include <asm/debug-monitors.h>
 #include <asm/insn.h>
 #include <asm/set_memory.h>
-#include <trace/hooks/memory.h>
 
 #include "bpf_jit.h"
 
@@ -1101,8 +1100,6 @@ skip_init_ctx:
 			goto out_off;
 		}
 		bpf_jit_binary_lock_ro(header);
-		trace_android_vh_set_memory_ro((unsigned long)header, header->pages);
-		trace_android_vh_set_memory_x((unsigned long)header, header->pages);
 	} else {
 		jit_data->ctx = ctx;
 		jit_data->image = image_ptr;

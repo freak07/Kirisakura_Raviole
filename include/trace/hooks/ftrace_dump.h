@@ -13,6 +13,8 @@
 #include <linux/tracepoint.h>
 #include <trace/hooks/vendor_hooks.h>
 
+#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
+
 DECLARE_HOOK(android_vh_ftrace_oops_enter,
 	TP_PROTO(bool *ftrace_check),
 	TP_ARGS(ftrace_check));
@@ -33,7 +35,15 @@ DECLARE_HOOK(android_vh_ftrace_dump_buffer,
 	TP_PROTO(struct trace_seq *trace_buf, bool *dump_printk),
 	TP_ARGS(trace_buf, dump_printk));
 
-/* macro versions of hooks are no longer required */
+#else
+
+#define trace_android_vh_ftrace_oops_enter(ftrace_check)
+#define trace_android_vh_ftrace_oops_exit(ftrace_check)
+#define trace_android_vh_ftrace_size_check(size, ftrace_check)
+#define trace_android_vh_ftrace_format_check(ftrace_check)
+#define trace_android_vh_ftrace_dump_buffer(trace_buf, dump_printk)
+
+#endif
 
 #endif /* _TRACE_HOOK_FTRACE_DUMP_H */
 /* This part must be outside protection */

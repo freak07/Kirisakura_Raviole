@@ -181,8 +181,7 @@ __first_valid_page(unsigned long pfn, unsigned long nr_pages)
  * Return: 0 on success and -EBUSY if any part of range cannot be isolated.
  */
 int start_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
-			     unsigned migratetype, int flags,
-			     unsigned long *failed_pfn)
+			     unsigned migratetype, int flags)
 {
 	unsigned long pfn;
 	unsigned long undo_pfn;
@@ -198,8 +197,6 @@ int start_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
 		if (page) {
 			if (set_migratetype_isolate(page, migratetype, flags)) {
 				undo_pfn = pfn;
-				if (failed_pfn)
-					*failed_pfn = page_to_pfn(page);
 				goto undo;
 			}
 		}
@@ -285,7 +282,7 @@ __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
 
 /* Caller should ensure that requested range is in a single zone */
 int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
-			int isol_flags, unsigned long *failed_pfn)
+			int isol_flags)
 {
 	unsigned long pfn, flags;
 	struct page *page;
@@ -311,12 +308,6 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 	spin_unlock_irqrestore(&zone->lock, flags);
 
 	trace_test_pages_isolated(start_pfn, end_pfn, pfn);
-	if (pfn < end_pfn) {
-		page_pinner_failure_detect(pfn_to_page(pfn));
-		if (failed_pfn)
-			*failed_pfn = pfn;
-		return -EBUSY;
-	}
 
-	return 0;
+	return pfn < end_pfn ? -EBUSY : 0;
 }

@@ -205,14 +205,10 @@ static int g2d_get_userptr(struct g2d_task *task,
 	unsigned long end = PFN_UP(data->userptr + data->length);
 	unsigned long page_off = data->userptr & ~PAGE_MASK;
 	unsigned int nr_pages = (unsigned int)(end - begin);
-	unsigned int flags = FOLL_FORCE;
 	struct sg_table *sgt;
 	struct frame_vector *vec;
 	struct page **pages;
 	int ret = -ENOMEM;
-
-	if (dir != DMA_TO_DEVICE)
-		flags |= FOLL_WRITE;
 
 	sgt = kmalloc(sizeof(*sgt), GFP_KERNEL);
 	if (!sgt)

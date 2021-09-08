@@ -65,7 +65,6 @@ struct lru_pvecs {
 	struct pagevec lru_deactivate_file;
 	struct pagevec lru_deactivate;
 	struct pagevec lru_lazyfree;
-	struct pagevec lru_lazyfree_movetail;
 #ifdef CONFIG_SMP
 	struct pagevec activate_page;
 #endif
@@ -486,14 +485,14 @@ EXPORT_SYMBOL(lru_cache_add);
  * Place @page on the inactive or unevictable LRU list, depending on its
  * evictability.
  */
-void __lru_cache_add_inactive_or_unevictable(struct page *page,
-					 unsigned long vma_flags)
+void lru_cache_add_inactive_or_unevictable(struct page *page,
+					 struct vm_area_struct *vma)
 {
 	bool unevictable;
 
 	VM_BUG_ON_PAGE(PageLRU(page), page);
 
-	unevictable = (vma_flags & (VM_LOCKED | VM_SPECIAL)) == VM_LOCKED;
+	unevictable = (vma->vm_flags & (VM_LOCKED | VM_SPECIAL)) == VM_LOCKED;
 	if (unlikely(unevictable) && !TestSetPageMlocked(page)) {
 		int nr_pages = thp_nr_pages(page);
 		/*
@@ -607,19 +606,6 @@ static void lru_lazyfree_fn(struct page *page, struct lruvec *lruvec)
 	}
 }
 
-static void lru_lazyfree_movetail_fn(struct page *page, struct lruvec *lruvec)
-{
-	if (PageLRU(page) && !PageUnevictable(page) && PageSwapBacked(page) &&
-		!PageSwapCache(page)) {
-		bool active = PageActive(page);
-
-		del_page_from_lru_list(page, lruvec);
-		ClearPageActive(page);
-		ClearPageReferenced(page);
-		add_page_to_lru_list(page, lruvec);
-	}
-}
-
 /*
  * Drain pages out of the cpu's pagevecs.
  * Either "cpu" is the current CPU, and preemption has already been
@@ -654,10 +640,6 @@ void lru_add_drain_cpu(int cpu)
 	pvec = &per_cpu(lru_pvecs.lru_lazyfree, cpu);
 	if (pagevec_count(pvec))
 		pagevec_lru_move_fn(pvec, lru_lazyfree_fn);
-
-	pvec = &per_cpu(lru_pvecs.lru_lazyfree_movetail, cpu);
-	if (pagevec_count(pvec))
-		pagevec_lru_move_fn(pvec, lru_lazyfree_movetail_fn);
 
 	activate_page_drain(cpu);
 	invalidate_bh_lrus_cpu(cpu);
@@ -732,29 +714,6 @@ void mark_page_lazyfree(struct page *page)
 		get_page(page);
 		if (pagevec_add_and_need_flush(pvec, page))
 			pagevec_lru_move_fn(pvec, lru_lazyfree_fn);
-		local_unlock(&lru_pvecs.lock);
-	}
-}
-
-/**
- * mark_page_lazyfree_movetail - make a swapbacked page lazyfree
- * @page: page to deactivate
- *
- * mark_page_lazyfree_movetail() moves @page to the tail of inactive file list.
- * This is done to accelerate the reclaim of @page.
- */
-void mark_page_lazyfree_movetail(struct page *page, bool tail)
-{
-	if (PageLRU(page) && !PageUnevictable(page) && PageSwapBacked(page) &&
-		!PageSwapCache(page)) {
-		struct pagevec *pvec;
-
-		local_lock(&lru_pvecs.lock);
-		pvec = this_cpu_ptr(&lru_pvecs.lru_lazyfree_movetail);
-		get_page(page);
-		if (pagevec_add_and_need_flush(pvec, page))
-			pagevec_lru_move_fn(pvec,
-					lru_lazyfree_movetail_fn);
 		local_unlock(&lru_pvecs.lock);
 	}
 }
@@ -871,7 +830,6 @@ inline void __lru_add_drain_all(bool force_all_cpus)
 		    pagevec_count(&per_cpu(lru_pvecs.lru_deactivate_file, cpu)) ||
 		    pagevec_count(&per_cpu(lru_pvecs.lru_deactivate, cpu)) ||
 		    pagevec_count(&per_cpu(lru_pvecs.lru_lazyfree, cpu)) ||
-		    pagevec_count(&per_cpu(lru_pvecs.lru_lazyfree_movetail, cpu)) ||
 		    need_activate_page_drain(cpu) ||
 		    has_bh_in_lru(cpu, NULL)) {
 			INIT_WORK(work, lru_add_drain_per_cpu);

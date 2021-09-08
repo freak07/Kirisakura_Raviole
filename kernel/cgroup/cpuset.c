@@ -67,7 +67,6 @@
 #include <linux/wait.h>
 
 #include <trace/hooks/sched.h>
-#include <trace/hooks/cgroup.h>
 
 DEFINE_STATIC_KEY_FALSE(cpusets_pre_enable_key);
 DEFINE_STATIC_KEY_FALSE(cpusets_enabled_key);
@@ -365,29 +364,18 @@ static inline bool is_in_v2_mode(void)
 }
 
 /*
- * Return in pmask the portion of a task's cpusets's cpus_allowed that
- * are online and are capable of running the task.  If none are found,
- * walk up the cpuset hierarchy until we find one that does have some
- * appropriate cpus.
+ * Return in pmask the portion of a cpusets's cpus_allowed that
+ * are online.  If none are online, walk up the cpuset hierarchy
+ * until we find one that does have some online cpus.
  *
  * One way or another, we guarantee to return some non-empty subset
  * of cpu_online_mask.
  *
  * Call with callback_lock or cpuset_mutex held.
  */
-static void guarantee_online_cpus(struct task_struct *tsk,
-				  struct cpumask *pmask)
+static void guarantee_online_cpus(struct cpuset *cs, struct cpumask *pmask)
 {
-	const struct cpumask *possible_mask = task_cpu_possible_mask(tsk);
-	struct cpuset *cs;
-
-	if (WARN_ON(!cpumask_and(pmask, possible_mask, cpu_active_mask)))
-		cpumask_copy(pmask, cpu_active_mask);
-
-	rcu_read_lock();
-	cs = task_cs(tsk);
-
-	while (!cpumask_intersects(cs->effective_cpus, pmask)) {
+	while (!cpumask_intersects(cs->effective_cpus, cpu_online_mask)) {
 		cs = parent_cs(cs);
 		if (unlikely(!cs)) {
 			/*
@@ -397,13 +385,11 @@ static void guarantee_online_cpus(struct task_struct *tsk,
 			 * cpuset's effective_cpus is on its way to be
 			 * identical to cpu_online_mask.
 			 */
-			goto out_unlock;
+			cpumask_copy(pmask, cpu_online_mask);
+			return;
 		}
 	}
-	cpumask_and(pmask, pmask, cs->effective_cpus);
-
-out_unlock:
-	rcu_read_unlock();
+	cpumask_and(pmask, cs->effective_cpus, cpu_online_mask);
 }
 
 /*
@@ -2226,13 +2212,15 @@ static void cpuset_attach(struct cgroup_taskset *tset)
 
 	percpu_down_write(&cpuset_rwsem);
 
+	/* prepare for attach */
+	if (cs == &top_cpuset)
+		cpumask_copy(cpus_attach, cpu_possible_mask);
+	else
+		guarantee_online_cpus(cs, cpus_attach);
+
 	guarantee_online_mems(cs, &cpuset_attach_nodemask_to);
 
 	cgroup_taskset_for_each(task, css, tset) {
-		if (cs != &top_cpuset)
-			guarantee_online_cpus(task, cpus_attach);
-		else
-			cpumask_copy(cpus_attach, task_cpu_possible_mask(task));
 		/*
 		 * can_attach beforehand should guarantee that this doesn't
 		 * fail.  TODO: have a better way to handle failure here
@@ -2910,13 +2898,10 @@ static void cpuset_bind(struct cgroup_subsys_state *root_css)
  */
 static void cpuset_fork(struct task_struct *task)
 {
-	int inherit_cpus = 0;
 	if (task_css_is_root(task, cpuset_cgrp_id))
 		return;
 
-	trace_android_rvh_cpuset_fork(task, &inherit_cpus);
-	if (!inherit_cpus)
-		set_cpus_allowed_ptr(task, current->cpus_ptr);
+	set_cpus_allowed_ptr(task, current->cpus_ptr);
 	task->mems_allowed = current->mems_allowed;
 }
 
@@ -3279,7 +3264,6 @@ void cpuset_wait_for_hotplug(void)
 {
 	flush_work(&cpuset_hotplug_work);
 }
-EXPORT_SYMBOL_GPL(cpuset_wait_for_hotplug);
 
 /*
  * Keep top_cpuset.mems_allowed tracking node_states[N_MEMORY].
@@ -3335,11 +3319,11 @@ void cpuset_cpus_allowed(struct task_struct *tsk, struct cpumask *pmask)
 
 	spin_lock_irqsave(&callback_lock, flags);
 	rcu_read_lock();
-	guarantee_online_cpus(tsk, pmask);
+	guarantee_online_cpus(task_cs(tsk), pmask);
 	rcu_read_unlock();
 	spin_unlock_irqrestore(&callback_lock, flags);
 }
-EXPORT_SYMBOL_GPL(cpuset_cpus_allowed);
+
 /**
  * cpuset_cpus_allowed_fallback - final fallback before complete catastrophe.
  * @tsk: pointer to task_struct with which the scheduler is struggling
@@ -3354,17 +3338,9 @@ EXPORT_SYMBOL_GPL(cpuset_cpus_allowed);
 
 void cpuset_cpus_allowed_fallback(struct task_struct *tsk)
 {
-	const struct cpumask *possible_mask = task_cpu_possible_mask(tsk);
-	const struct cpumask *cs_mask;
-
 	rcu_read_lock();
-	cs_mask = task_cs(tsk)->cpus_allowed;
-
-	if (!is_in_v2_mode() || !cpumask_subset(cs_mask, possible_mask))
-		goto unlock; /* select_fallback_rq will try harder */
-
-	do_set_cpus_allowed(tsk, cs_mask);
-unlock:
+	do_set_cpus_allowed(tsk, is_in_v2_mode() ?
+		task_cs(tsk)->cpus_allowed : cpu_possible_mask);
 	rcu_read_unlock();
 
 	/*

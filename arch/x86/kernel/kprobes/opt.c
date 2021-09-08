@@ -103,14 +103,6 @@ static void synthesize_set_arg1(kprobe_opcode_t *addr, unsigned long val)
 asm (
 			".pushsection .rodata\n"
 			"optprobe_template_func:\n"
-			".pushsection .discard.func_stack_frame_non_standard\n"
-			"__func_stack_frame_non_standard_optprobe_template_func:\n"
-#ifdef CONFIG_64BIT
-		        ".quad optprobe_template_func\n"
-#else
-			".long optprobe_template_func\n"
-#endif
-			".popsection\n"
 			".global optprobe_template_entry\n"
 			"optprobe_template_entry:\n"
 #ifdef CONFIG_X86_64

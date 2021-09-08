@@ -1,2 +1,3 @@
-# include OWNERS from the authoritative android-mainline branch
-include kernel/common:android-mainline:/arch/x86/OWNERS
+per-file crypto/**=file:/crypto/OWNERS
+per-file mm/**=file:/mm/OWNERS
+per-file net/**=file:/net/OWNERS

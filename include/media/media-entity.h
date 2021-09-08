@@ -17,7 +17,6 @@
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/media.h>
-#include <linux/android_vendor.h>
 
 /* Enums used internally at the media controller to represent graphs */
 
@@ -146,7 +145,6 @@ struct media_link {
 	struct media_link *reverse;
 	unsigned long flags;
 	bool is_backlink;
-	ANDROID_VENDOR_DATA(1);
 };
 
 /**

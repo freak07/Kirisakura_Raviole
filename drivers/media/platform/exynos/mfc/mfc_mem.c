@@ -40,7 +40,6 @@ int mfc_mem_get_user_shared_handle(struct mfc_ctx *ctx,
 	ret = dma_buf_vmap(handle->dma_buf, &map);
 	if (ret) {
 		mfc_ctx_err("Failed to get kernel virtual address\n");
-		ret = -EINVAL;
 		goto map_kernel_fail;
 	}
 	handle->vaddr = map.vaddr;
@@ -215,8 +214,7 @@ static int mfc_mem_dma_heap_alloc(struct mfc_dev *dev,
 
 		ret = dma_buf_vmap(special_buf->dma_buf, &map);
 		if (ret) {
-			mfc_dev_err("Failed to get vaddr (err 0x%p)\n",
-					ERR_PTR(ret));
+			mfc_dev_err("Failed to get kernel virtual adddress\n");
 			goto err_vaddr;
 		}
 		special_buf->vaddr = map.vaddr;

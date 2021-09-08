@@ -528,9 +528,6 @@ struct pl330_dmac {
 	int irqnum_having_multi[AMBA_NR_IRQS];
 
 	int quirks;
-
-	struct reset_control	*rstc;
-	struct reset_control	*rstc_ocp;
 };
 
 static struct pl330_of_quirks {
@@ -579,6 +576,10 @@ struct _xfer_spec {
 	u32 ccr;
 	struct dma_pl330_desc *desc;
 };
+
+static int pl330_config_write(struct dma_chan *chan,
+			struct dma_slave_config *slave_config,
+			enum dma_transfer_direction direction);
 
 static inline bool _queue_full(struct pl330_thread *thrd)
 {
@@ -1785,6 +1786,8 @@ static int pl330_submit_req(struct pl330_thread *thrd,
 
 	/* First dry run to check if req is acceptable */
 	ret = _setup_req(pl330, 1, thrd, idx, &xs);
+	if (ret < 0)
+		goto xfer_exit;
 
 	if (ret > pl330->mcbufsz / 2) {
 		dev_info(pl330->ddma.dev, "%s:%d Try increasing mcbufsz (%i/%i)\n",
@@ -2548,20 +2551,21 @@ static int fixup_burst_len(int max_burst_len, int quirks)
 		return max_burst_len;
 }
 
-static int pl330_config(struct dma_chan *chan,
-			struct dma_slave_config *slave_config)
+static int pl330_config_write(struct dma_chan *chan,
+			struct dma_slave_config *slave_config,
+			enum dma_transfer_direction direction)
 {
 	struct dma_pl330_chan *pch = to_pchan(chan);
 
 	pl330_unprep_slave_fifo(pch);
-	if (slave_config->direction == DMA_MEM_TO_DEV) {
+	if (direction == DMA_MEM_TO_DEV) {
 		if (slave_config->dst_addr)
 			pch->fifo_addr = slave_config->dst_addr;
 		if (slave_config->dst_addr_width)
 			pch->burst_sz = __ffs(slave_config->dst_addr_width);
 		pch->burst_len = fixup_burst_len(slave_config->dst_maxburst,
 			pch->dmac->quirks);
-	} else if (slave_config->direction == DMA_DEV_TO_MEM) {
+	} else if (direction == DMA_DEV_TO_MEM) {
 		if (slave_config->src_addr)
 			pch->fifo_addr = slave_config->src_addr;
 		if (slave_config->src_addr_width)
@@ -2573,13 +2577,22 @@ static int pl330_config(struct dma_chan *chan,
 	return 0;
 }
 
+static int pl330_config(struct dma_chan *chan,
+			struct dma_slave_config *slave_config)
+{
+	struct dma_pl330_chan *pch = to_pchan(chan);
+
+	memcpy(&pch->slave_config, slave_config, sizeof(*slave_config));
+
+	return 0;
+}
+
 static int pl330_terminate_all(struct dma_chan *chan)
 {
 	struct dma_pl330_chan *pch = to_pchan(chan);
 	struct dma_pl330_desc *desc;
 	unsigned long flags;
 	struct pl330_dmac *pl330 = pch->dmac;
-	LIST_HEAD(list);
 	bool power_down = false;
 
 	pm_runtime_get_sync(pl330->ddma.dev);
@@ -2992,6 +3005,8 @@ struct dma_async_tx_descriptor *__pl330_prep_dma_cyclic(struct dma_chan *chan,
 		return NULL;
 	}
 
+	pl330_config_write(chan, &pch->slave_config, direction);
+
 	if (!pl330_prep_slave_fifo(pch, direction))
 		return NULL;
 
@@ -3159,6 +3174,8 @@ pl330_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 
 	if (unlikely(!pch || !sgl || !sg_len))
 		return NULL;
+
+	pl330_config_write(chan, &pch->slave_config, direction);
 
 	if (!pl330_prep_slave_fifo(pch, direction))
 		return NULL;

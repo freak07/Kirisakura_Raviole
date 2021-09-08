@@ -932,7 +932,7 @@ int dump_user_range(struct coredump_params *cprm, unsigned long start,
 
 			stop = !dump_emit(cprm, kaddr, PAGE_SIZE);
 			kunmap_local(kaddr);
-			put_user_page(page);
+			put_page(page);
 			if (stop)
 				return 0;
 		} else {

@@ -465,7 +465,7 @@ static inline unsigned int rdo_max_power(u32 rdo)
 #define PD_T_SRC_TRANSITION	35
 #define PD_T_DRP_SNK		40
 #define PD_T_DRP_SRC		30
-#define PD_T_PS_SOURCE_OFF	870
+#define PD_T_PS_SOURCE_OFF	920
 #define PD_T_PS_SOURCE_ON	480
 #define PD_T_PS_SOURCE_ON_PRS	450	/* 390 - 480ms */
 #define PD_T_PS_HARD_RESET	30
@@ -486,7 +486,7 @@ static inline unsigned int rdo_max_power(u32 rdo)
 #define PD_T_DRP_TRY		100	/* 75 - 150 ms */
 #define PD_T_DRP_TRYWAIT	600	/* 400 - 800 ms */
 
-#define PD_T_CC_DEBOUNCE	170	/* 100 - 200 ms */
+#define PD_T_CC_DEBOUNCE	200	/* 100 - 200 ms */
 #define PD_T_PD_DEBOUNCE	20	/* 10 - 20 ms */
 #define PD_T_TRY_CC_DEBOUNCE	15	/* 10 - 20 ms */
 

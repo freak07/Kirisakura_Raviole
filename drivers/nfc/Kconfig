@@ -83,15 +83,3 @@ config NFC_ST21NFC_NO_CRYSTAL
 	depends on NFC_ST21NFC
 	help
 	 ST Microelectronics ST21NFC Near Field Communication controller support.
-
-config ESE_ST54
-	tristate "ST Microelectronics ST54 family ESE driver"
-	depends on SPI
-	help
-	  ST Microelectronics ST54 ESE Near Field Communication controller support.
-
-config ESE_ST33
-	tristate "ST Microelectronics ST33 ESE driver"
-	depends on SPI
-	help
-	  ST Microelectronics ST33 ESE Near Field Communication controller support.

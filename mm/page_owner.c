@@ -31,7 +31,7 @@ struct page_owner {
 	pid_t pid;
 };
 
-bool page_owner_enabled;
+static bool page_owner_enabled = false;
 DEFINE_STATIC_KEY_FALSE(page_owner_inited);
 
 static depot_stack_handle_t dummy_handle;
@@ -93,30 +93,10 @@ struct page_ext_operations page_owner_ops = {
 	.init = init_page_owner,
 };
 
-struct page_owner *get_page_owner(struct page_ext *page_ext)
+static inline struct page_owner *get_page_owner(struct page_ext *page_ext)
 {
 	return (void *)page_ext + page_owner_ops.offset;
 }
-EXPORT_SYMBOL_GPL(get_page_owner);
-
-depot_stack_handle_t get_page_owner_handle(struct page_ext *page_ext, unsigned long pfn)
-{
-	struct page_owner *page_owner;
-	depot_stack_handle_t handle;
-
-	if (!page_owner_enabled)
-		return 0;
-
-	page_owner = get_page_owner(page_ext);
-
-	/* skip handle for tail pages of higher order allocations */
-	if (!IS_ALIGNED(pfn, 1 << page_owner->order))
-		return 0;
-
-	handle = READ_ONCE(page_owner->handle);
-	return handle;
-}
-EXPORT_SYMBOL_GPL(get_page_owner_handle);
 
 static noinline depot_stack_handle_t save_stack(gfp_t flags)
 {

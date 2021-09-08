@@ -534,12 +534,7 @@ static int xhci_stop_device(struct xhci_hcd *xhci, int slot_id, int suspend)
 	    cmd->status == COMP_COMMAND_RING_STOPPED) {
 		xhci_warn(xhci, "Timeout while waiting for stop endpoint command\n");
 		ret = -ETIME;
-		goto cmd_cleanup;
 	}
-
-	ret = xhci_vendor_sync_dev_ctx(xhci, slot_id);
-	if (ret)
-		xhci_warn(xhci, "Sync device context failed, ret=%d\n", ret);
 
 cmd_cleanup:
 	xhci_free_command(xhci, cmd);
@@ -1809,7 +1804,6 @@ retry:
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(xhci_bus_suspend);
 
 /*
  * Workaround for missing Cold Attach Status (CAS) if device re-plugged in S3.
@@ -1954,7 +1948,6 @@ int xhci_bus_resume(struct usb_hcd *hcd)
 	spin_unlock_irqrestore(&xhci->lock, flags);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(xhci_bus_resume);
 
 unsigned long xhci_get_resuming_ports(struct usb_hcd *hcd)
 {

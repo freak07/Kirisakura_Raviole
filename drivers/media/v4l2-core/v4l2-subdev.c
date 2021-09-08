@@ -22,9 +22,6 @@
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-fh.h>
 #include <media/v4l2-event.h>
-#ifndef __GENKSYMS__
-#include <trace/hooks/v4l2core.h>
-#endif
 
 #if defined(CONFIG_VIDEO_V4L2_SUBDEV_API)
 static int subdev_fh_init(struct v4l2_subdev_fh *fh, struct v4l2_subdev *sd)
@@ -566,14 +563,9 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 
 	case VIDIOC_SUBDEV_S_FRAME_INTERVAL: {
 		struct v4l2_subdev_frame_interval *fi = arg;
-		int ret = 0;
 
 		if (ro_subdev)
 			return -EPERM;
-
-		trace_android_vh_v4l2subdev_set_frame_interval(sd, fi, &ret);
-		if (ret)
-			return ret;
 
 		memset(fi->reserved, 0, sizeof(fi->reserved));
 		return v4l2_subdev_call(sd, video, s_frame_interval, arg);

@@ -40,7 +40,6 @@
 #include <linux/hugetlb.h>
 #include <asm/tlbflush.h>
 #include <asm/shmparam.h>
-#include <trace/hooks/mm.h>
 
 #include "internal.h"
 #include "pgalloc-track.h"
@@ -787,7 +786,6 @@ unsigned long vmalloc_nr_pages(void)
 {
 	return atomic_long_read(&nr_vmalloc_pages);
 }
-EXPORT_SYMBOL_GPL(vmalloc_nr_pages);
 
 static struct vmap_area *__find_vmap_area(unsigned long addr)
 {
@@ -2342,7 +2340,6 @@ static inline void setup_vmalloc_vm_locked(struct vm_struct *vm,
 	vm->size = va->va_end - va->va_start;
 	vm->caller = caller;
 	va->vm = vm;
-	trace_android_vh_save_vmalloc_stack(flags, vm);
 }
 
 static void setup_vmalloc_vm(struct vm_struct *vm, struct vmap_area *va,
@@ -3882,7 +3879,6 @@ static int s_show(struct seq_file *m, void *p)
 		seq_puts(m, " vpages");
 
 	show_numa_info(m, v);
-	trace_android_vh_show_stack_hash(m, v);
 	seq_putc(m, '\n');
 
 	/*

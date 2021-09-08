@@ -8,11 +8,8 @@
 #include <linux/cma.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
-#include <linux/module.h>
 
 #include "cma.h"
-
-static bool experimental;
 
 #define CMA_ATTR_RO(_name) \
 	static struct kobj_attribute _name##_attr = __ATTR_RO(_name)
@@ -80,9 +77,6 @@ static int __init cma_sysfs_init(void)
 	struct cma *cma;
 	int i, err;
 
-	if (!experimental)
-		return 0;
-
 	cma_kobj_root = kobject_create_and_add("cma", mm_kobj);
 	if (!cma_kobj_root)
 		return -ENOMEM;
@@ -116,5 +110,3 @@ out:
 	return err;
 }
 subsys_initcall(cma_sysfs_init);
-
-module_param(experimental, bool, 0400);

@@ -1,2 +1,1 @@
-# include OWNERS from the authoritative android-mainline branch
-include kernel/common:android-mainline:/Documentation/ABI/testing/OWNERS
+per-file sysfs-fs-f2fs=file:/fs/f2fs/OWNERS

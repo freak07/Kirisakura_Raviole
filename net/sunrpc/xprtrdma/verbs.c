@@ -1215,20 +1215,6 @@ void rpcrdma_reply_put(struct rpcrdma_buffer *buffers, struct rpcrdma_req *req)
 }
 
 /**
- * rpcrdma_reply_put - Put reply buffers back into pool
- * @buffers: buffer pool
- * @req: object to return
- *
- */
-void rpcrdma_reply_put(struct rpcrdma_buffer *buffers, struct rpcrdma_req *req)
-{
-	if (req->rl_reply) {
-		rpcrdma_rep_put(buffers, req->rl_reply);
-		req->rl_reply = NULL;
-	}
-}
-
-/**
  * rpcrdma_buffer_get - Get a request buffer
  * @buffers: Buffer pool from which to obtain a buffer
  *

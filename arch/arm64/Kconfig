@@ -122,7 +122,6 @@ config ARM64
 	select GENERIC_FIND_FIRST_BIT
 	select GENERIC_IDLE_POLL_SETUP
 	select GENERIC_IRQ_IPI
-	select ARCH_WANTS_IRQ_RAW
 	select GENERIC_IRQ_PROBE
 	select GENERIC_IRQ_SHOW
 	select GENERIC_IRQ_SHOW_LEVEL
@@ -222,7 +221,6 @@ config ARM64
 	select SYSCTL_EXCEPTION_TRACE
 	select THREAD_INFO_IN_TASK
 	select HAVE_ARCH_USERFAULTFD_MINOR if USERFAULTFD
-	select ARCH_SUPPORTS_SPECULATIVE_PAGE_FAULT
 	help
 	  ARM 64-bit (AArch64) Linux support.
 
@@ -1857,12 +1855,6 @@ config CMDLINE_FROM_BOOTLOADER
 	  Uses the command-line options passed by the boot loader. If
 	  the boot loader doesn't provide any, the default kernel command
 	  string provided in CMDLINE will be used.
-
-config CMDLINE_EXTEND
-	bool "Extend bootloader kernel arguments"
-	help
-	  The command-line arguments provided by the boot loader will be
-	  appended to the default kernel command string.
 
 config CMDLINE_FORCE
 	bool "Always use the default kernel command string"

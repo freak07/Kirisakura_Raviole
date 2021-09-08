@@ -16,9 +16,6 @@
 #include <linux/mmc/pm.h>
 #include <linux/dma-direction.h>
 #include <linux/keyslot-manager.h>
-#include <linux/android_kabi.h>
-
-#include <linux/android_vendor.h>
 
 struct mmc_ios {
 	unsigned int	clock;			/* clock rate */
@@ -193,9 +190,6 @@ struct mmc_host_ops {
 
 	/* Initialize an SD express card, mandatory for MMC_CAP2_SD_EXP. */
 	int	(*init_sd_express)(struct mmc_host *host, struct mmc_ios *ios);
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
 };
 
 struct mmc_cqe_ops {
@@ -240,9 +234,6 @@ struct mmc_cqe_ops {
 	 * will have zero data bytes transferred.
 	 */
 	void	(*cqe_recovery_finish)(struct mmc_host *host);
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
 };
 
 struct mmc_async_req {
@@ -269,7 +260,6 @@ struct mmc_async_req {
 struct mmc_slot {
 	int cd_irq;
 	bool cd_wake_enabled;
-	ANDROID_OEM_DATA_ARRAY(1, 2);
 	void *handler_priv;
 };
 
@@ -506,11 +496,6 @@ struct mmc_host {
 
 	/* Host Software Queue support */
 	bool			hsq_enabled;
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-	ANDROID_VENDOR_DATA(1);
-	ANDROID_OEM_DATA(1);
 
 	unsigned long		private[] ____cacheline_aligned;
 };
