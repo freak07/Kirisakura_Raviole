@@ -102,6 +102,40 @@ bool is_acpm_ipc_busy(void)
 }
 EXPORT_SYMBOL_GPL(is_acpm_ipc_busy);
 
+/**
+ * TODO(cmllamas): fix the following crash from arch strstr:
+ * __pi_memcmp+0xd8/0x110
+ * acpm_ipc_probe+0x934/0x9b8 [gs_acpm]
+ * platform_probe+0xc8/0x114
+ */
+static int _memcmp(const void *cs, const void *ct, size_t count)
+{
+	const unsigned char *su1, *su2;
+	int res = 0;
+
+	for (su1 = cs, su2 = ct; 0 < count; ++su1, ++su2, count--)
+		if ((res = *su1 - *su2) != 0)
+			break;
+	return res;
+}
+
+static char *_strstr(const char *s1, const char *s2)
+{
+	size_t l1, l2;
+
+	l2 = strlen(s2);
+	if (!l2)
+		return (char *)s1;
+	l1 = strlen(s1);
+	while (l1 >= l2) {
+		l1--;
+		if (!_memcmp(s1, s2, l2))
+			return (char *)s1;
+		s1++;
+	}
+	return NULL;
+}
+
 static int plugins_init(struct device_node *node)
 {
 	struct plugin *plugins;
@@ -121,7 +155,7 @@ static int plugins_init(struct device_node *node)
 		if (!plugins[i].fw_name || !name)
 			continue;
 
-		if (strstr(name, "DVFS") || strstr(name, "dvfs")) {
+		if (_strstr(name, "DVFS") || _strstr(name, "dvfs")) {
 			prop = of_get_property(node, "fvmap_offset", &len);
 			if (prop) {
 				base_addr = acpm_srambase;
