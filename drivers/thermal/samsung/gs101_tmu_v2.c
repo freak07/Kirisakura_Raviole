@@ -991,6 +991,7 @@ static void gs101_throttle_cpu_hotplug(struct kthread_work *work)
 	mutex_unlock(&data->lock);
 }
 
+/*
 static void gs101_throttle_cpu_pause(struct kthread_work *work)
 {
 	struct gs101_tmu_data *data = container_of(work,
@@ -1035,6 +1036,7 @@ static void gs101_throttle_cpu_pause(struct kthread_work *work)
 
 	mutex_unlock(&data->lock);
 }
+*/
 
 static void gs101_throttle_hard_limit(struct kthread_work *work)
 {
@@ -1216,9 +1218,12 @@ static int gs101_tmu_irq_work_init(struct platform_device *pdev)
 			kthread_init_work(&data->hotplug_work, gs101_throttle_cpu_hotplug);
 		}
 
+		/* TODO: b/199473897 fix this in android-mainline (commit c7f998a0cd01 "Revert
+				"ANDROID: cpu/hotplug: add pause/resume_cpus interface")
 		if (data->pause_enable) {
 			kthread_init_work(&data->cpu_pause_work, gs101_throttle_cpu_pause);
 		}
+		*/
 
 		kthread_init_worker(&data->pause_worker);
 		scnprintf(kworker_name, CPUHP_USER_NAME_LEN, "%s_pause", data->tmu_name);
