@@ -2,7 +2,6 @@
 /*
  * Copyright (C) 2017-2018 HUAWEI, Inc.
  *             https://www.huawei.com/
- * Created by Gao Xiang <gaoxiang25@huawei.com>
  */
 #include <linux/security.h>
 #include "xattr.h"
@@ -471,8 +470,7 @@ int erofs_getxattr(struct inode *inode, int index,
 
 static int erofs_xattr_generic_get(const struct xattr_handler *handler,
 				   struct dentry *unused, struct inode *inode,
-				   const char *name, void *buffer, size_t size,
-				   int flags)
+				   const char *name, void *buffer, size_t size)
 {
 	struct erofs_sb_info *const sbi = EROFS_I_SB(inode);
 
@@ -710,4 +708,3 @@ struct posix_acl *erofs_get_acl(struct inode *inode, int type)
 	return acl;
 }
 #endif
-

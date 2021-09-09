@@ -545,14 +545,14 @@ static void pixel_ufs_trace_upiu_cmd(struct ufs_hba *hba,
 }
 
 static void pixel_ufs_send_uic_command(void *data, struct ufs_hba *hba,
-				struct uic_command *ucmd, const char *str)
+				struct uic_command *ucmd, int str_t)
 {
 	u8 event = 0;
 	u8 opcode = (ucmd) ? ucmd->command : 0xFF;
 
-	if (!strcmp(str, "send"))
+	if (str_t == UFS_CMD_SEND)
 		event = EVENT_DME_SEND;
-	else if (!strcmp(str, "complete"))
+	else if (str_t == UFS_CMD_COMP)
 		event = EVENT_DME_COMPL;
 	else
 		event = EVENT_UNDEF;
@@ -561,15 +561,15 @@ static void pixel_ufs_send_uic_command(void *data, struct ufs_hba *hba,
 }
 
 static void pixel_ufs_send_tm_command(void *data, struct ufs_hba *hba,
-				int tag, const char *str)
+				int tag, int str_t)
 {
 	u8 event = 0;
 
-	if (!strcmp(str, "tm_send"))
+	if (str_t == UFS_TM_SEND)
 		event = EVENT_TM_SEND;
-	else if (!strcmp(str, "tm_err"))
+	else if (str_t == UFS_TM_ERR)
 		event = EVENT_TM_ERR;
-	else if (!strcmp(str, "tm_compl"))
+	else if (str_t == UFS_TM_COMP)
 		event = EVENT_TM_COMPL;
 	else
 		event = EVENT_UNDEF;

@@ -270,7 +270,7 @@ static void gart_iommu_sync_map(struct iommu_domain *domain, unsigned long iova,
 static void gart_iommu_sync(struct iommu_domain *domain,
 			    struct iommu_iotlb_gather *gather)
 {
-	size_t length = gather->end - gather->start;
+	size_t length = gather->end - gather->start + 1;
 
 	gart_iommu_sync_map(domain, gather->start, length);
 }
@@ -353,10 +353,7 @@ struct gart_device *tegra_gart_probe(struct device *dev, struct tegra_mc *mc)
 	if (err)
 		goto free_gart;
 
-	iommu_device_set_ops(&gart->iommu, &gart_iommu_ops);
-	iommu_device_set_fwnode(&gart->iommu, dev->fwnode);
-
-	err = iommu_device_register(&gart->iommu);
+	err = iommu_device_register(&gart->iommu, &gart_iommu_ops, dev);
 	if (err)
 		goto remove_sysfs;
 

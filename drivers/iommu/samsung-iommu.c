@@ -1390,10 +1390,7 @@ static int samsung_sysmmu_device_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	iommu_device_set_ops(&data->iommu, &samsung_sysmmu_ops);
-	iommu_device_set_fwnode(&data->iommu, dev->fwnode);
-
-	err = iommu_device_register(&data->iommu);
+	err = iommu_device_register(&data->iommu, &samsung_sysmmu_ops, dev);
 	if (err) {
 		dev_err(dev, "failed to register iommu\n");
 		goto err_iommu_register;

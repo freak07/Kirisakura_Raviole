@@ -7,6 +7,7 @@ obj-$(CONFIG_PCI_DRA7XX) += pci-dra7xx.o
 obj-$(CONFIG_PCI_EXYNOS) += pcie-exynos-core.o
 pcie-exynos-core-objs += pcie-exynos-rc.o pcie-exynos-dbg.o
 obj-$(CONFIG_PCI_EXYNOS_CAL_GS101) += pcie-exynos-gs101-rc-cal.o
+obj-$(CONFIG_PCIE_FU740) += pcie-fu740.o
 obj-$(CONFIG_PCI_IMX6) += pci-imx6.o
 obj-$(CONFIG_PCIE_SPEAR13XX) += pcie-spear13xx.o
 obj-$(CONFIG_PCI_KEYSTONE) += pci-keystone.o
@@ -33,7 +34,13 @@ obj-$(CONFIG_PCIE_UNIPHIER_EP) += pcie-uniphier-ep.o
 # ARM64 and use internal ifdefs to only build the pieces we need
 # depending on whether ACPI, the DT driver, or both are enabled.
 
-ifdef CONFIG_PCI
+obj-$(CONFIG_PCIE_AL) += pcie-al.o
+obj-$(CONFIG_PCI_HISI) += pcie-hisi.o
+
+ifdef CONFIG_ACPI
+ifdef CONFIG_PCI_QUIRKS
 obj-$(CONFIG_ARM64) += pcie-al.o
 obj-$(CONFIG_ARM64) += pcie-hisi.o
+obj-$(CONFIG_ARM64) += pcie-tegra194-acpi.o
+endif
 endif

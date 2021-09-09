@@ -161,8 +161,6 @@ static inline void set_mems_allowed(nodemask_t nodemask)
 	task_unlock(current);
 }
 
-extern void cpuset_hotplug_workfn(struct work_struct *work);
-
 #else /* !CONFIG_CPUSETS */
 
 static inline bool cpusets_enabled(void) { return false; }
@@ -277,8 +275,6 @@ static inline bool read_mems_allowed_retry(unsigned int seq)
 {
 	return false;
 }
-
-static inline void cpuset_hotplug_workfn(struct work_struct *work) {}
 
 #endif /* !CONFIG_CPUSETS */
 

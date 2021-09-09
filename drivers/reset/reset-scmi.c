@@ -2,7 +2,7 @@
 /*
  * ARM System Control and Management Interface (ARM SCMI) reset driver
  *
- * Copyright (C) 2019-2020 ARM Ltd.
+ * Copyright (C) 2019-2021 ARM Ltd.
  */
 
 #include <linux/module.h>
@@ -97,7 +97,7 @@ static int scmi_reset_probe(struct scmi_device *sdev)
 	if (!handle)
 		return -ENODEV;
 
-	reset_ops = handle->devm_get_protocol(sdev, SCMI_PROTOCOL_RESET, &ph);
+	reset_ops = handle->devm_protocol_get(sdev, SCMI_PROTOCOL_RESET, &ph);
 	if (IS_ERR(reset_ops))
 		return PTR_ERR(reset_ops);
 

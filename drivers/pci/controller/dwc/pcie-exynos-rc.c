@@ -2399,8 +2399,6 @@ static int exynos_pcie_rc_msi_init(struct pcie_port *pp)
 			dev_dbg(dev, "EP is Modem but ModemIF is disabled\n");
 #endif
 		} else {
-			dw_pcie_msi_init(pp);
-
 			if ((pp->msi_data >> 32) != 0)
 				dev_info(dev, "MSI memory is allocated over 32bit boundary\n");
 			dev_dbg(dev, "msi_data : %pad\n", &pp->msi_data);

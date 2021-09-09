@@ -24,6 +24,7 @@
 #include <linux/suspend.h>
 #include <linux/time.h>
 #include <linux/timer.h>
+#include <linux/panic_notifier.h>
 
 #if IS_ENABLED(CONFIG_MUIC_NOTIFIER)
 #include <linux/muic/muic.h>

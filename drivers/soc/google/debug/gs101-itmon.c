@@ -13,6 +13,7 @@
 #include <linux/bitops.h>
 #include <linux/of_irq.h>
 #include <linux/delay.h>
+#include <linux/panic_notifier.h>
 #include <soc/google/exynos-itmon.h>
 #include <soc/google/debug-snapshot.h>
 

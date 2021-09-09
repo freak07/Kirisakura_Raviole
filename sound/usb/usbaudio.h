@@ -38,8 +38,8 @@ struct snd_usb_audio {
 	wait_queue_head_t shutdown_wait;
 	unsigned int txfr_quirk:1; /* Subframe boundaries on transfers */
 	unsigned int tx_length_quirk:1; /* Put length specifier in transfers */
-	unsigned int setup_fmt_after_resume_quirk:1; /* setup the format to interface after resume */
 	unsigned int need_delayed_register:1; /* warn for delayed registration */
+	unsigned int playback_first:1;	/* for implicit fb: don't wait for the first capture URBs */
 	int num_interfaces;
 	int num_suspended_intf;
 	int sample_rate_read_error;
@@ -48,6 +48,7 @@ struct snd_usb_audio {
 
 	struct list_head pcm_list;	/* list of pcm streams */
 	struct list_head ep_list;	/* list of audio-related endpoints */
+	struct list_head iface_ref_list; /* list of interface refcounts */
 	int pcm_devs;
 
 	struct list_head midi_list;	/* list of midi interfaces */
@@ -55,10 +56,8 @@ struct snd_usb_audio {
 	struct list_head mixer_list;	/* list of mixer interfaces */
 
 	int setup;			/* from the 'device_setup' module param */
+	bool generic_implicit_fb;	/* from the 'implicit_fb' module param */
 	bool autoclock;			/* from the 'autoclock' module param */
-	bool keep_iface;		/* keep interface/altset after closing
-					 * or parameter change
-					 */
 
 	struct usb_host_interface *ctrl_intf;	/* the audio control interface */
 	struct media_device *media_dev;
@@ -89,6 +88,7 @@ struct snd_usb_audio {
  */
 
 /* special values for .ifnum */
+#define QUIRK_NODEV_INTERFACE		-3	/* return -ENODEV */
 #define QUIRK_NO_INTERFACE		-2
 #define QUIRK_ANY_INTERFACE		-1
 
@@ -138,54 +138,5 @@ void snd_usb_unlock_shutdown(struct snd_usb_audio *chip);
 
 extern bool snd_usb_use_vmalloc;
 extern bool snd_usb_skip_validation;
-
-struct audioformat;
-
-enum snd_vendor_pcm_open_close {
-	SOUND_PCM_CLOSE = 0,
-	SOUND_PCM_OPEN,
-};
-
-/**
- * struct snd_usb_audio_vendor_ops - function callbacks for USB audio accelerators
- * @connect: called when a new interface is found
- * @disconnect: called when an interface is removed
- * @set_interface: called when an interface is initialized
- * @set_rate: called when the rate is set
- * @set_pcm_buf: called when the pcm buffer is set
- * @set_pcm_intf: called when the pcm interface is set
- * @set_pcm_connection: called when pcm is opened/closed
- * @set_pcm_binterval: called when the pcm binterval is set
- * @usb_add_ctls: called when USB controls are added
- *
- * Set of callbacks for some accelerated USB audio streaming hardware.
- *
- * TODO: make this USB host-controller specific, right now this only works for
- * one USB controller in the system at a time, which is only realistic for
- * self-contained systems like phones.
- */
-struct snd_usb_audio_vendor_ops {
-	int (*connect)(struct usb_interface *intf);
-	void (*disconnect)(struct usb_interface *intf);
-
-	int (*set_interface)(struct usb_device *udev,
-			     struct usb_host_interface *alts,
-			     int iface, int alt);
-	int (*set_rate)(struct usb_interface *intf, int iface, int rate,
-			int alt);
-	int (*set_pcm_buf)(struct usb_device *udev, int iface);
-	int (*set_pcm_intf)(struct usb_interface *intf, int iface, int alt,
-			    int direction);
-	int (*set_pcm_connection)(struct usb_device *udev,
-				  enum snd_vendor_pcm_open_close onoff,
-				  int direction);
-	int (*set_pcm_binterval)(struct audioformat *fp,
-				 struct audioformat *found,
-				 int *cur_attr, int *attr);
-	int (*usb_add_ctls)(struct snd_usb_audio *chip);
-
-	ANDROID_KABI_RESERVE(1);
-	ANDROID_KABI_RESERVE(2);
-};
 
 #endif /* __USBAUDIO_H */

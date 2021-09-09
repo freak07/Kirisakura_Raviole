@@ -456,9 +456,6 @@ struct tcpm_port {
 	/* Sink caps have been queried */
 	bool sink_cap_done;
 
-	/* Port is still in tCCDebounce */
-	bool debouncing;
-
 	/* Collision Avoidance and Atomic Message Sequence */
 	enum tcpm_state upcoming_state;
 	enum tcpm_ams ams;
@@ -474,6 +471,9 @@ struct tcpm_port {
 	 * SNK_READY for non-pd link.
 	 */
 	bool slow_charger_loop;
+
+	/* Port is still in tCCDebounce */
+	bool debouncing;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *dentry;
 	struct mutex logbuffer_lock;	/* log buffer access lock */
@@ -749,8 +749,9 @@ static void tcpm_debugfs_init(struct tcpm_port *port)
 
 	mutex_init(&port->logbuffer_lock);
 	snprintf(name, NAME_MAX, "tcpm-%s", dev_name(port->dev));
-	port->dentry = debugfs_create_file(name, S_IFREG | 0444, usb_debug_root,
-					   port, &tcpm_debug_fops);
+	port->dentry = debugfs_create_dir(name, usb_debug_root);
+	debugfs_create_file("log", S_IFREG | 0444, port->dentry, port,
+			    &tcpm_debug_fops);
 }
 
 static void tcpm_debugfs_exit(struct tcpm_port *port)
@@ -1363,7 +1364,7 @@ static int tcpm_ams_start(struct tcpm_port *port, enum tcpm_ams ams)
 	}
 
 	if (port->pwr_role == TYPEC_SOURCE) {
-		enum typec_cc_status cc_req;
+		enum typec_cc_status cc_req = port->cc_req;
 
 		port->ams = ams;
 
@@ -1384,10 +1385,8 @@ static int tcpm_ams_start(struct tcpm_port *port, enum tcpm_ams ams)
 			return ret;
 		}
 
-		if (port->negotiated_rev >= PD_REV30) {
-			cc_req = port->cc_req;
+		if (port->negotiated_rev >= PD_REV30)
 			tcpm_set_cc(port, SINK_TX_NG);
-		}
 
 		switch (port->state) {
 		case SRC_READY:
@@ -2214,6 +2213,7 @@ static int tcpm_altmode_vdm(struct typec_altmode *altmode,
 	struct tcpm_port *port = typec_altmode_get_drvdata(altmode);
 
 	tcpm_queue_vdm_unlocked(port, header, data, count - 1);
+
 	return 0;
 }
 
@@ -5547,10 +5547,8 @@ static void tcpm_enable_frs_work(struct kthread_work *work)
 	}
 
 	/* Send when the state machine is idle */
-	if (port->state != SNK_READY || port->vdm_sm_running || port->send_discover) {
-		tcpm_log_force(port, "Resched sink cap query");
+	if (port->state != SNK_READY || port->vdm_sm_running || port->send_discover)
 		goto resched;
-	}
 
 	port->upcoming_state = GET_SINK_CAP;
 	ret = tcpm_ams_start(port, GET_SINK_CAPABILITIES);
@@ -6055,6 +6053,15 @@ static int tcpm_fw_get_caps(struct tcpm_port *port,
 	if (!fwnode)
 		return -EINVAL;
 
+	/*
+	 * This fwnode has a "compatible" property, but is never populated as a
+	 * struct device. Instead we simply parse it to read the properties.
+	 * This it breaks fw_devlink=on. To maintain backward compatibility
+	 * with existing DT files, we work around this by deleting any
+	 * fwnode_links to/from this fwnode.
+	 */
+	fw_devlink_purge_absent_suppliers(fwnode);
+
 	/* USB data support is optional */
 	ret = fwnode_property_read_string(fwnode, "data-role", &cap_str);
 	if (ret == 0) {
@@ -6329,6 +6336,7 @@ static int tcpm_psy_get_prop(struct power_supply *psy,
 		ret = -EINVAL;
 		break;
 	}
+
 	return ret;
 }
 
@@ -6422,14 +6430,14 @@ static int devm_tcpm_psy_register(struct tcpm_port *port)
 	snprintf(psy_name, psy_name_len, "%s%s", tcpm_psy_name_prefix,
 		 port_dev_name);
 	port->psy_desc.name = psy_name;
-	port->psy_desc.type = POWER_SUPPLY_TYPE_USB,
+	port->psy_desc.type = POWER_SUPPLY_TYPE_USB;
 	port->psy_desc.usb_types = tcpm_psy_usb_types;
 	port->psy_desc.num_usb_types = ARRAY_SIZE(tcpm_psy_usb_types);
-	port->psy_desc.properties = tcpm_psy_props,
-	port->psy_desc.num_properties = ARRAY_SIZE(tcpm_psy_props),
-	port->psy_desc.get_property = tcpm_psy_get_prop,
-	port->psy_desc.set_property = tcpm_psy_set_prop,
-	port->psy_desc.property_is_writeable = tcpm_psy_prop_writeable,
+	port->psy_desc.properties = tcpm_psy_props;
+	port->psy_desc.num_properties = ARRAY_SIZE(tcpm_psy_props);
+	port->psy_desc.get_property = tcpm_psy_get_prop;
+	port->psy_desc.set_property = tcpm_psy_set_prop;
+	port->psy_desc.property_is_writeable = tcpm_psy_prop_writeable;
 
 	port->usb_type = POWER_SUPPLY_USB_TYPE_C;
 
@@ -6551,6 +6559,10 @@ struct tcpm_port *tcpm_register_port(struct device *dev, struct tcpc_dev *tcpc)
 		err = PTR_ERR(port->typec_port);
 		goto out_role_sw_put;
 	}
+
+	typec_port_register_altmodes(port->typec_port,
+				     &tcpm_altmode_ops, port,
+				     port->port_altmode, ALTMODE_DISCOVERY_MAX);
 
 	mutex_lock(&port->lock);
 	tcpm_init(port);

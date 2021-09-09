@@ -2,12 +2,13 @@
 /*
  * SCMI Generic power domain support.
  *
- * Copyright (C) 2018-2020 ARM Ltd.
+ * Copyright (C) 2018-2021 ARM Ltd.
  */
 
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/pm_clock.h>
 #include <linux/pm_domain.h>
 #include <linux/scmi_protocol.h>
 
@@ -52,6 +53,27 @@ static int scmi_pd_power_off(struct generic_pm_domain *domain)
 	return scmi_pd_power(domain, false);
 }
 
+static int scmi_pd_attach_dev(struct generic_pm_domain *pd, struct device *dev)
+{
+	int ret;
+
+	ret = pm_clk_create(dev);
+	if (ret)
+		return ret;
+
+	ret = of_pm_clk_add_clks(dev);
+	if (ret >= 0)
+		return 0;
+
+	pm_clk_destroy(dev);
+	return ret;
+}
+
+static void scmi_pd_detach_dev(struct generic_pm_domain *pd, struct device *dev)
+{
+	pm_clk_destroy(dev);
+}
+
 static int scmi_pm_domain_probe(struct scmi_device *sdev)
 {
 	int num_domains, i;
@@ -66,7 +88,7 @@ static int scmi_pm_domain_probe(struct scmi_device *sdev)
 	if (!handle)
 		return -ENODEV;
 
-	power_ops = handle->devm_get_protocol(sdev, SCMI_PROTOCOL_POWER, &ph);
+	power_ops = handle->devm_protocol_get(sdev, SCMI_PROTOCOL_POWER, &ph);
 	if (IS_ERR(power_ops))
 		return PTR_ERR(power_ops);
 
@@ -102,6 +124,10 @@ static int scmi_pm_domain_probe(struct scmi_device *sdev)
 		scmi_pd->genpd.name = scmi_pd->name;
 		scmi_pd->genpd.power_off = scmi_pd_power_off;
 		scmi_pd->genpd.power_on = scmi_pd_power_on;
+		scmi_pd->genpd.attach_dev = scmi_pd_attach_dev;
+		scmi_pd->genpd.detach_dev = scmi_pd_detach_dev;
+		scmi_pd->genpd.flags = GENPD_FLAG_PM_CLK |
+				       GENPD_FLAG_ACTIVE_WAKEUP;
 
 		pm_genpd_init(&scmi_pd->genpd, NULL,
 			      state == SCMI_POWER_STATE_GENERIC_OFF);

@@ -11,50 +11,60 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-package(
-    default_visibility = [
-        "//private/google-modules:__subpackages__",
-    ],
-)
 
 load("//build/kleaf:kernel.bzl", "kernel_build")
 
-kernel_build(
-    name = "slider",
+common_outs = [
+    "System.map",
+    "modules.builtin",
+    "modules.builtin.modinfo",
+    "vmlinux",
+    "vmlinux.symvers",
+]
+
+aarch64_outs = common_outs + [
+    "Image",
+    "Image.lz4",
+]
+
+x86_64_outs = common_outs + ["bzImage"]
+
+[kernel_build(
+    name = name,
     srcs = glob(
         ["**"],
         exclude = [
-            ".*",
+            "android/*",
             "BUILD.bazel",
             "**/*.bzl",
         ],
     ),
-    outs = [
-        "arch/arm64/boot/dts/google/gs101-a0.dtb",
-        "arch/arm64/boot/dts/google/gs101-b0.dtb",
-        "arch/arm64/boot/dts/google/dtbo.img",
-        "arch/arm64/boot/dts/google/gs101-dpm-eng.dtbo",
-        "arch/arm64/boot/dts/google/gs101-dpm-user.dtbo",
-        "vmlinux",
-        "System.map",
-        "arch/arm64/boot/Image.lz4",
+    outs = outs,
+    build_config = config,
+) for name, config, outs in [
+    (
+        "kernel_aarch64",
+        "build.config.gki.aarch64",
+        aarch64_outs,
+    ),
+    (
+        "kernel_aarch64_debug",
+        "build.config.gki-debug.aarch64",
+        aarch64_outs,
+    ),
+    (
+        "kernel_x86_64",
+        "build.config.gki.x86_64",
+        x86_64_outs,
+    ),
+    (
+        "kernel_x86_64_debug",
+        "build.config.gki-debug.x86_64",
+        x86_64_outs,
+    ),
+]]
 
-        # Not in FILES, but needed to build kernel modules.
-        "Module.symvers",
-        "include/config/kernel.release",
-        "modules.order",
-        "modules.builtin",
-        "modules.builtin.modinfo",
-
-        # TODO(b/197995714): Add other things built by build.sh
-        # "abi_symbollist",
-        # "boot.img",
-        # "vendor_boot.img",
-    ],
-    build_config = "build.config.slider",
-    # Keep in sync with build.config.common
-    toolchain_version = "r416183b",
-    deps = [
-        "//prebuilts/misc/linux-x86/libufdt:mkdtimg",
-    ],
+alias(
+    name = "kernel",
+    actual = ":kernel_aarch64",
 )

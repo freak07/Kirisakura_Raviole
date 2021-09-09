@@ -2,7 +2,7 @@
 /*
  * System Control and Management Interface (SCMI) Reset Protocol
  *
- * Copyright (C) 2019-2020 ARM Ltd.
+ * Copyright (C) 2019-2021 ARM Ltd.
  */
 
 #define pr_fmt(fmt) "SCMI Notifications RESET - " fmt
@@ -326,7 +326,7 @@ static int scmi_reset_protocol_init(const struct scmi_protocol_handle *ph)
 static const struct scmi_protocol scmi_reset = {
 	.id = SCMI_PROTOCOL_RESET,
 	.owner = THIS_MODULE,
-	.init_instance = &scmi_reset_protocol_init,
+	.instance_init = &scmi_reset_protocol_init,
 	.ops = &reset_proto_ops,
 	.events = &reset_protocol_events,
 };

@@ -62,7 +62,7 @@ int irq_set_chip(unsigned int irq, struct irq_chip *chip)
 EXPORT_SYMBOL(irq_set_chip);
 
 /**
- *	irq_set_type - set the irq trigger type for an irq
+ *	irq_set_irq_type - set the irq trigger type for an irq
  *	@irq:	irq number
  *	@type:	IRQ_TYPE_{LEVEL,EDGE}_* value - see include/linux/irq.h
  */
@@ -482,7 +482,7 @@ void handle_nested_irq(unsigned int irq)
 	for_each_action_of_desc(desc, action)
 		action_ret |= action->thread_fn(action->irq, action->dev_id);
 
-	if (!noirqdebug)
+	if (!irq_settings_no_debug(desc))
 		note_interrupt(desc, action_ret);
 
 	raw_spin_lock_irq(&desc->lock);
@@ -776,7 +776,7 @@ EXPORT_SYMBOL_GPL(handle_fasteoi_nmi);
  *	handle_edge_irq - edge type IRQ handler
  *	@desc:	the interrupt description structure for this irq
  *
- *	Interrupt occures on the falling and/or rising edge of a hardware
+ *	Interrupt occurs on the falling and/or rising edge of a hardware
  *	signal. The occurrence is latched into the irq controller hardware
  *	and must be acked in order to be reenabled. After the ack another
  *	interrupt can happen on the same source even before the first one
@@ -823,7 +823,7 @@ void handle_edge_irq(struct irq_desc *desc)
 		/*
 		 * When another irq arrived while we were handling
 		 * one, we could have masked the irq.
-		 * Renable it, if it was not disabled in meantime.
+		 * Reenable it, if it was not disabled in meantime.
 		 */
 		if (unlikely(desc->istate & IRQS_PENDING)) {
 			if (!irqd_irq_disabled(&desc->irq_data) &&
@@ -957,33 +957,6 @@ void handle_percpu_devid_irq(struct irq_desc *desc)
 
 	if (chip->irq_eoi)
 		chip->irq_eoi(&desc->irq_data);
-}
-
-/**
- * handle_percpu_devid_fasteoi_ipi - Per CPU local IPI handler with per cpu
- *				     dev ids
- * @desc:	the interrupt description structure for this irq
- *
- * The biggest difference with the IRQ version is that the interrupt is
- * EOIed early, as the IPI could result in a context switch, and we need to
- * make sure the IPI can fire again. We also assume that the arch code has
- * registered an action. If not, we are positively doomed.
- */
-void handle_percpu_devid_fasteoi_ipi(struct irq_desc *desc)
-{
-	struct irq_chip *chip = irq_desc_get_chip(desc);
-	struct irqaction *action = desc->action;
-	unsigned int irq = irq_desc_get_irq(desc);
-	irqreturn_t res;
-
-	__kstat_incr_irqs_this_cpu(desc);
-
-	if (chip->irq_eoi)
-		chip->irq_eoi(&desc->irq_data);
-
-	trace_irq_handler_entry(irq, action);
-	res = action->handler(irq, raw_cpu_ptr(action->percpu_dev_id));
-	trace_irq_handler_exit(irq, action, res);
 }
 
 /**
@@ -1122,8 +1095,7 @@ irq_set_chip_and_handler_name(unsigned int irq, struct irq_chip *chip,
 }
 EXPORT_SYMBOL_GPL(irq_set_chip_and_handler_name);
 
-void __irq_modify_status(unsigned int irq, unsigned long clr,
-			 unsigned long set, unsigned long mask)
+void irq_modify_status(unsigned int irq, unsigned long clr, unsigned long set)
 {
 	unsigned long flags, trigger, tmp;
 	struct irq_desc *desc = irq_get_desc_lock(irq, &flags, 0);
@@ -1137,9 +1109,7 @@ void __irq_modify_status(unsigned int irq, unsigned long clr,
 	 */
 	WARN_ON_ONCE(!desc->depth && (set & _IRQ_NOAUTOEN));
 
-	/* Warn when trying to clear or set a bit disallowed by the mask */
-	WARN_ON((clr | set) & ~mask);
-	__irq_settings_clr_and_set(desc, clr, set, mask);
+	irq_settings_clr_and_set(desc, clr, set);
 
 	trigger = irqd_get_trigger_type(&desc->irq_data);
 
@@ -1161,11 +1131,6 @@ void __irq_modify_status(unsigned int irq, unsigned long clr,
 	irqd_set(&desc->irq_data, trigger);
 
 	irq_put_desc_unlock(desc, flags);
-}
-
-void irq_modify_status(unsigned int irq, unsigned long clr, unsigned long set)
-{
-	__irq_modify_status(irq, clr, set, _IRQF_MODIFY_MASK);
 }
 EXPORT_SYMBOL_GPL(irq_modify_status);
 
@@ -1469,7 +1434,7 @@ EXPORT_SYMBOL_GPL(irq_chip_eoi_parent);
  * @dest:	The affinity mask to set
  * @force:	Flag to enforce setting (disable online checks)
  *
- * Conditinal, as the underlying parent chip might not implement it.
+ * Conditional, as the underlying parent chip might not implement it.
  */
 int irq_chip_set_affinity_parent(struct irq_data *data,
 				 const struct cpumask *dest, bool force)
@@ -1581,7 +1546,7 @@ EXPORT_SYMBOL_GPL(irq_chip_release_resources_parent);
 #endif
 
 /**
- * irq_chip_compose_msi_msg - Componse msi message for a irq chip
+ * irq_chip_compose_msi_msg - Compose msi message for a irq chip
  * @data:	Pointer to interrupt specific data
  * @msg:	Pointer to the MSI message
  *

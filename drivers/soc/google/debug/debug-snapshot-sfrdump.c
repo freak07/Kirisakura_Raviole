@@ -8,6 +8,7 @@
 #include <linux/module.h>
 #include <linux/dma-mapping.h>
 #include <linux/platform_device.h>
+#include <linux/panic_notifier.h>
 
 #include <soc/google/exynos-pd.h>
 #include <soc/google/cal-if.h>

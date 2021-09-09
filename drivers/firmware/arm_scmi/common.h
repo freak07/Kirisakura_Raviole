@@ -4,7 +4,7 @@
  * driver common header file containing some definitions, structures
  * and function prototypes used in all the different SCMI protocols.
  *
- * Copyright (C) 2018 ARM Ltd.
+ * Copyright (C) 2018-2021 ARM Ltd.
  */
 #ifndef _SCMI_COMMON_H
 #define _SCMI_COMMON_H
@@ -203,7 +203,7 @@ struct scmi_xfer_ops {
 };
 
 struct scmi_revision_info *
-scmi_get_revision_area(const struct scmi_protocol_handle *ph);
+scmi_revision_area_get(const struct scmi_protocol_handle *ph);
 int scmi_handle_put(const struct scmi_handle *handle);
 struct scmi_handle *scmi_handle_get(struct device *dev);
 void scmi_set_handle(struct scmi_device *scmi_dev);
@@ -216,8 +216,8 @@ typedef int (*scmi_prot_init_ph_fn_t)(const struct scmi_protocol_handle *);
  * struct scmi_protocol  - Protocol descriptor
  * @id: Protocol ID.
  * @owner: Module reference if any.
- * @init_instance: Mandatory protocol initialization function.
- * @deinit_instance: Optional protocol de-initialization function.
+ * @instance_init: Mandatory protocol initialization function.
+ * @instance_deinit: Optional protocol de-initialization function.
  * @ops: Optional reference to the operations provided by the protocol and
  *	 exposed in scmi_protocol.h.
  * @events: An optional reference to the events supported by this protocol.
@@ -225,8 +225,8 @@ typedef int (*scmi_prot_init_ph_fn_t)(const struct scmi_protocol_handle *);
 struct scmi_protocol {
 	const u8				id;
 	struct module				*owner;
-	const scmi_prot_init_ph_fn_t		init_instance;
-	const scmi_prot_init_ph_fn_t		deinit_instance;
+	const scmi_prot_init_ph_fn_t		instance_init;
+	const scmi_prot_init_ph_fn_t		instance_deinit;
 	const void				*ops;
 	const struct scmi_protocol_events	*events;
 };
@@ -246,22 +246,24 @@ DECLARE_SCMI_REGISTER_UNREGISTER(sensors);
 DECLARE_SCMI_REGISTER_UNREGISTER(voltage);
 DECLARE_SCMI_REGISTER_UNREGISTER(system);
 
-#define DEFINE_SCMI_PROTOCOL_REGISTER_UNREGISTER(name, proto) \
-int __init scmi_##name##_register(void) \
-{ \
-	return scmi_protocol_register(&(proto)); \
-} \
-\
-void __exit scmi_##name##_unregister(void) \
-{ \
-	scmi_protocol_unregister(&(proto)); \
+#define DEFINE_SCMI_PROTOCOL_REGISTER_UNREGISTER(name, proto)	\
+static const struct scmi_protocol *__this_proto = &(proto);	\
+								\
+int __init scmi_##name##_register(void)				\
+{								\
+	return scmi_protocol_register(__this_proto);		\
+}								\
+								\
+void __exit scmi_##name##_unregister(void)			\
+{								\
+	scmi_protocol_unregister(__this_proto);			\
 }
 
-const struct scmi_protocol *scmi_get_protocol(int protocol_id);
-void scmi_put_protocol(int protocol_id);
+const struct scmi_protocol *scmi_protocol_get(int protocol_id);
+void scmi_protocol_put(int protocol_id);
 
-int scmi_acquire_protocol(const struct scmi_handle *handle, u8 protocol_id);
-void scmi_release_protocol(const struct scmi_handle *handle, u8 protocol_id);
+int scmi_protocol_acquire(const struct scmi_handle *handle, u8 protocol_id);
+void scmi_protocol_release(const struct scmi_handle *handle, u8 protocol_id);
 
 /* SCMI Transport */
 /**
@@ -307,9 +309,9 @@ struct scmi_transport_ops {
 	bool (*poll_done)(struct scmi_chan_info *cinfo, struct scmi_xfer *xfer);
 };
 
-int scmi_request_protocol_device(const struct scmi_device_id *id_table);
-void scmi_unrequest_protocol_device(const struct scmi_device_id *id_table);
-struct scmi_device *scmi_find_child_dev(struct device *parent,
+int scmi_protocol_device_request(const struct scmi_device_id *id_table);
+void scmi_protocol_device_unrequest(const struct scmi_device_id *id_table);
+struct scmi_device *scmi_child_dev_find(struct device *parent,
 					int prot_id, const char *name);
 
 /**
@@ -329,7 +331,7 @@ struct scmi_desc {
 };
 
 extern const struct scmi_desc scmi_mailbox_desc;
-#ifdef CONFIG_HAVE_ARM_SMCCC
+#ifdef CONFIG_HAVE_ARM_SMCCC_DISCOVERY
 extern const struct scmi_desc scmi_smc_desc;
 #endif
 
@@ -350,8 +352,8 @@ void shmem_clear_channel(struct scmi_shared_mem __iomem *shmem);
 bool shmem_poll_done(struct scmi_shared_mem __iomem *shmem,
 		     struct scmi_xfer *xfer);
 
-void scmi_set_notification_instance_data(const struct scmi_handle *handle,
+void scmi_notification_instance_data_set(const struct scmi_handle *handle,
 					 void *priv);
-void *scmi_get_notification_instance_data(const struct scmi_handle *handle);
+void *scmi_notification_instance_data_get(const struct scmi_handle *handle);
 
 #endif /* _SCMI_COMMON_H */

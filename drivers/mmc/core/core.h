@@ -30,6 +30,7 @@ struct mmc_bus_ops {
 	int (*hw_reset)(struct mmc_host *);
 	int (*sw_reset)(struct mmc_host *);
 	bool (*cache_enabled)(struct mmc_host *);
+	int (*flush_cache)(struct mmc_host *);
 
 	ANDROID_VENDOR_DATA_ARRAY(1, 2);
 };
@@ -172,6 +173,14 @@ static inline bool mmc_cache_enabled(struct mmc_host *host)
 		return host->bus_ops->cache_enabled(host);
 
 	return false;
+}
+
+static inline int mmc_flush_cache(struct mmc_host *host)
+{
+	if (host->bus_ops->flush_cache)
+		return host->bus_ops->flush_cache(host);
+
+	return 0;
 }
 
 #endif

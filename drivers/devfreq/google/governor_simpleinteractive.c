@@ -364,7 +364,7 @@ static int devfreq_simple_interactive_register_notifier(struct devfreq *df)
 {
 	int ret;
 	struct devfreq_simple_interactive_data *data = df->data;
-	struct sched_param param = {.sched_priority = (MAX_USER_RT_PRIO / 2)};
+	struct sched_param param = {.sched_priority = (MAX_RT_PRIO / 2)};
 
 	if (!data)
 		return -EINVAL;

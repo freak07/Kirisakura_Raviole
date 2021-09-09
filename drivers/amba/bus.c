@@ -56,30 +56,27 @@ amba_lookup(const struct amba_id *table, struct amba_device *dev)
 	return NULL;
 }
 
-static int amba_match(struct device *dev, struct device_driver *drv)
+static int amba_get_enable_pclk(struct amba_device *pcdev)
 {
-	struct amba_device *pcdev = to_amba_device(dev);
-	struct amba_driver *pcdrv = to_amba_driver(drv);
+	int ret;
 
-	/* When driver_override is set, only bind to the matching driver */
-	if (pcdev->driver_override)
-		return !strcmp(pcdev->driver_override, drv->name);
+	pcdev->pclk = clk_get(&pcdev->dev, "apb_pclk");
+	if (IS_ERR(pcdev->pclk))
+		return PTR_ERR(pcdev->pclk);
 
-	return amba_lookup(pcdrv->id_table, pcdev) != NULL;
+	ret = clk_prepare_enable(pcdev->pclk);
+	if (ret)
+		clk_put(pcdev->pclk);
+
+	return ret;
 }
 
-static int amba_uevent(struct device *dev, struct kobj_uevent_env *env)
+static void amba_put_disable_pclk(struct amba_device *pcdev)
 {
-	struct amba_device *pcdev = to_amba_device(dev);
-	int retval = 0;
-
-	retval = add_uevent_var(env, "AMBA_ID=%08x", pcdev->periphid);
-	if (retval)
-		return retval;
-
-	retval = add_uevent_var(env, "MODALIAS=amba:d%08X", pcdev->periphid);
-	return retval;
+	clk_disable_unprepare(pcdev->pclk);
+	clk_put(pcdev->pclk);
 }
+
 
 static ssize_t driver_override_show(struct device *_dev,
 				    struct device_attribute *attr, char *buf)
@@ -152,102 +149,29 @@ static struct attribute *amba_dev_attrs[] = {
 };
 ATTRIBUTE_GROUPS(amba_dev);
 
-#ifdef CONFIG_PM
-/*
- * Hooks to provide runtime PM of the pclk (bus clock).  It is safe to
- * enable/disable the bus clock at runtime PM suspend/resume as this
- * does not result in loss of context.
- */
-static int amba_pm_runtime_suspend(struct device *dev)
+static int amba_match(struct device *dev, struct device_driver *drv)
 {
 	struct amba_device *pcdev = to_amba_device(dev);
-	int ret = pm_generic_runtime_suspend(dev);
+	struct amba_driver *pcdrv = to_amba_driver(drv);
 
-	if (ret == 0 && dev->driver) {
-		if (pm_runtime_is_irq_safe(dev))
-			clk_disable(pcdev->pclk);
-		else
-			clk_disable_unprepare(pcdev->pclk);
-	}
+	/* When driver_override is set, only bind to the matching driver */
+	if (pcdev->driver_override)
+		return !strcmp(pcdev->driver_override, drv->name);
 
-	return ret;
+	return amba_lookup(pcdrv->id_table, pcdev) != NULL;
 }
 
-static int amba_pm_runtime_resume(struct device *dev)
+static int amba_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	struct amba_device *pcdev = to_amba_device(dev);
-	int ret;
+	int retval = 0;
 
-	if (dev->driver) {
-		if (pm_runtime_is_irq_safe(dev))
-			ret = clk_enable(pcdev->pclk);
-		else
-			ret = clk_prepare_enable(pcdev->pclk);
-		/* Failure is probably fatal to the system, but... */
-		if (ret)
-			return ret;
-	}
+	retval = add_uevent_var(env, "AMBA_ID=%08x", pcdev->periphid);
+	if (retval)
+		return retval;
 
-	return pm_generic_runtime_resume(dev);
-}
-#endif /* CONFIG_PM */
-
-static const struct dev_pm_ops amba_pm = {
-	.suspend	= pm_generic_suspend,
-	.resume		= pm_generic_resume,
-	.freeze		= pm_generic_freeze,
-	.thaw		= pm_generic_thaw,
-	.poweroff	= pm_generic_poweroff,
-	.restore	= pm_generic_restore,
-	SET_RUNTIME_PM_OPS(
-		amba_pm_runtime_suspend,
-		amba_pm_runtime_resume,
-		NULL
-	)
-};
-
-/*
- * Primecells are part of the Advanced Microcontroller Bus Architecture,
- * so we call the bus "amba".
- * DMA configuration for platform and AMBA bus is same. So here we reuse
- * platform's DMA config routine.
- */
-struct bus_type amba_bustype = {
-	.name		= "amba",
-	.dev_groups	= amba_dev_groups,
-	.match		= amba_match,
-	.uevent		= amba_uevent,
-	.dma_configure	= platform_dma_configure,
-	.pm		= &amba_pm,
-};
-EXPORT_SYMBOL_GPL(amba_bustype);
-
-static int __init amba_init(void)
-{
-	return bus_register(&amba_bustype);
-}
-
-postcore_initcall(amba_init);
-
-static int amba_get_enable_pclk(struct amba_device *pcdev)
-{
-	int ret;
-
-	pcdev->pclk = clk_get(&pcdev->dev, "apb_pclk");
-	if (IS_ERR(pcdev->pclk))
-		return PTR_ERR(pcdev->pclk);
-
-	ret = clk_prepare_enable(pcdev->pclk);
-	if (ret)
-		clk_put(pcdev->pclk);
-
-	return ret;
-}
-
-static void amba_put_disable_pclk(struct amba_device *pcdev)
-{
-	clk_disable_unprepare(pcdev->pclk);
-	clk_put(pcdev->pclk);
+	retval = add_uevent_var(env, "MODALIAS=amba:d%08X", pcdev->periphid);
+	return retval;
 }
 
 /*
@@ -318,11 +242,95 @@ static int amba_remove(struct device *dev)
 
 static void amba_shutdown(struct device *dev)
 {
-	struct amba_driver *drv = to_amba_driver(dev->driver);
+	struct amba_driver *drv;
 
+	if (!dev->driver)
+		return;
+
+	drv = to_amba_driver(dev->driver);
 	if (drv->shutdown)
 		drv->shutdown(to_amba_device(dev));
 }
+
+#ifdef CONFIG_PM
+/*
+ * Hooks to provide runtime PM of the pclk (bus clock).  It is safe to
+ * enable/disable the bus clock at runtime PM suspend/resume as this
+ * does not result in loss of context.
+ */
+static int amba_pm_runtime_suspend(struct device *dev)
+{
+	struct amba_device *pcdev = to_amba_device(dev);
+	int ret = pm_generic_runtime_suspend(dev);
+
+	if (ret == 0 && dev->driver) {
+		if (pm_runtime_is_irq_safe(dev))
+			clk_disable(pcdev->pclk);
+		else
+			clk_disable_unprepare(pcdev->pclk);
+	}
+
+	return ret;
+}
+
+static int amba_pm_runtime_resume(struct device *dev)
+{
+	struct amba_device *pcdev = to_amba_device(dev);
+	int ret;
+
+	if (dev->driver) {
+		if (pm_runtime_is_irq_safe(dev))
+			ret = clk_enable(pcdev->pclk);
+		else
+			ret = clk_prepare_enable(pcdev->pclk);
+		/* Failure is probably fatal to the system, but... */
+		if (ret)
+			return ret;
+	}
+
+	return pm_generic_runtime_resume(dev);
+}
+#endif /* CONFIG_PM */
+
+static const struct dev_pm_ops amba_pm = {
+	.suspend	= pm_generic_suspend,
+	.resume		= pm_generic_resume,
+	.freeze		= pm_generic_freeze,
+	.thaw		= pm_generic_thaw,
+	.poweroff	= pm_generic_poweroff,
+	.restore	= pm_generic_restore,
+	SET_RUNTIME_PM_OPS(
+		amba_pm_runtime_suspend,
+		amba_pm_runtime_resume,
+		NULL
+	)
+};
+
+/*
+ * Primecells are part of the Advanced Microcontroller Bus Architecture,
+ * so we call the bus "amba".
+ * DMA configuration for platform and AMBA bus is same. So here we reuse
+ * platform's DMA config routine.
+ */
+struct bus_type amba_bustype = {
+	.name		= "amba",
+	.dev_groups	= amba_dev_groups,
+	.match		= amba_match,
+	.uevent		= amba_uevent,
+	.probe		= amba_probe,
+	.remove		= amba_remove,
+	.shutdown	= amba_shutdown,
+	.dma_configure	= platform_dma_configure,
+	.pm		= &amba_pm,
+};
+EXPORT_SYMBOL_GPL(amba_bustype);
+
+static int __init amba_init(void)
+{
+	return bus_register(&amba_bustype);
+}
+
+postcore_initcall(amba_init);
 
 /**
  *	amba_driver_register - register an AMBA device driver
@@ -338,9 +346,6 @@ int amba_driver_register(struct amba_driver *drv)
 		return -EINVAL;
 
 	drv->drv.bus = &amba_bustype;
-	drv->drv.probe = amba_probe;
-	drv->drv.remove = amba_remove;
-	drv->drv.shutdown = amba_shutdown;
 
 	return driver_register(&drv->drv);
 }

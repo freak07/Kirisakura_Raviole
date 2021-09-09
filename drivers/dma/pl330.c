@@ -26,7 +26,7 @@
 #include <linux/bug.h>
 #include <linux/cpumask.h>
 #include <linux/of_address.h>
-#include <linux/unaligned/access_ok.h>
+#include <asm/unaligned.h>
 
 #include "dmaengine.h"
 
@@ -469,6 +469,7 @@ struct dma_pl330_chan {
 	/* DMA-mapped view of the FIFO; may differ if an IOMMU is present */
 	dma_addr_t fifo_dma;
 	enum dma_data_direction dir;
+	struct dma_slave_config slave_config;
 
 	/* for cyclic capability */
 	bool cyclic;
@@ -527,6 +528,9 @@ struct pl330_dmac {
 	int irqnum_having_multi[AMBA_NR_IRQS];
 
 	int quirks;
+
+	struct reset_control	*rstc;
+	struct reset_control	*rstc_ocp;
 };
 
 static struct pl330_of_quirks {
@@ -1781,8 +1785,6 @@ static int pl330_submit_req(struct pl330_thread *thrd,
 
 	/* First dry run to check if req is acceptable */
 	ret = _setup_req(pl330, 1, thrd, idx, &xs);
-	if (ret < 0)
-		goto xfer_exit;
 
 	if (ret > pl330->mcbufsz / 2) {
 		dev_info(pl330->ddma.dev, "%s:%d Try increasing mcbufsz (%i/%i)\n",
@@ -2996,13 +2998,15 @@ struct dma_async_tx_descriptor *__pl330_prep_dma_cyclic(struct dma_chan *chan,
 	for (i = 0; i < len / period_len; i++) {
 		desc = pl330_get_desc(pch);
 		if (!desc) {
+			unsigned long iflags;
+
 			dev_err(pch->dmac->ddma.dev, "%s:%d Unable to fetch desc\n",
 				__func__, __LINE__);
 
 			if (!first)
 				return NULL;
 
-			spin_lock_irqsave(&pl330->pool_lock, flags);
+			spin_lock_irqsave(&pl330->pool_lock, iflags);
 
 			while (!list_empty(&first->node)) {
 				desc = list_entry(first->node.next,
@@ -3012,7 +3016,7 @@ struct dma_async_tx_descriptor *__pl330_prep_dma_cyclic(struct dma_chan *chan,
 
 			list_move_tail(&first->node, &pl330->desc_pool);
 
-			spin_unlock_irqrestore(&pl330->pool_lock, flags);
+			spin_unlock_irqrestore(&pl330->pool_lock, iflags);
 
 			return NULL;
 		}
@@ -3592,7 +3596,6 @@ static void pl330_remove(struct amba_device *adev)
 	}
 
 	pl330_del(pl330);
-
 }
 
 static const struct amba_id pl330_ids[] = {

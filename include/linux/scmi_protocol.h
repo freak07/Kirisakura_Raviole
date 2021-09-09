@@ -2,7 +2,7 @@
 /*
  * SCMI Message Protocol driver header
  *
- * Copyright (C) 2018 ARM Ltd.
+ * Copyright (C) 2018-2021 ARM Ltd.
  */
 
 #ifndef _LINUX_SCMI_PROTOCOL_H
@@ -104,6 +104,10 @@ struct scmi_clk_proto_ops {
  *	to sustained performance level mapping
  * @est_power_get: gets the estimated power cost for a given performance domain
  *	at a given frequency
+ * @fast_switch_possible: indicates if fast DVFS switching is possible or not
+ *	for a given device
+ * @power_scale_mw_get: indicates if the power values provided are in milliWatts
+ *	or in some other (abstract) scale
  */
 struct scmi_perf_proto_ops {
 	int (*limits_set)(const struct scmi_protocol_handle *ph, u32 domain,
@@ -160,7 +164,7 @@ struct scmi_power_proto_ops {
 };
 
 /**
- * scmi_sensor_reading  - represent a timestamped read
+ * struct scmi_sensor_reading  - represent a timestamped read
  *
  * Used by @reading_get_timestamped method.
  *
@@ -174,7 +178,7 @@ struct scmi_sensor_reading {
 };
 
 /**
- * scmi_range_attrs  - specifies a sensor or axis values' range
+ * struct scmi_range_attrs  - specifies a sensor or axis values' range
  * @min_range: The minimum value which can be represented by the sensor/axis.
  * @max_range: The maximum value which can be represented by the sensor/axis.
  */
@@ -184,7 +188,7 @@ struct scmi_range_attrs {
 };
 
 /**
- * scmi_sensor_axis_info  - describes one sensor axes
+ * struct scmi_sensor_axis_info  - describes one sensor axes
  * @id: The axes ID.
  * @type: Axes type. Chosen amongst one of @enum scmi_sensor_class.
  * @scale: Power-of-10 multiplier applied to the axis unit.
@@ -212,8 +216,8 @@ struct scmi_sensor_axis_info {
 };
 
 /**
- * scmi_sensor_intervals_info  - describes number and type of available update
- * intervals
+ * struct scmi_sensor_intervals_info  - describes number and type of available
+ *	update intervals
  * @segmented: Flag for segmented intervals' representation. When True there
  *	       will be exactly 3 intervals in @desc, with each entry
  *	       representing a member of a segment in this order:
@@ -557,12 +561,12 @@ struct scmi_voltage_proto_ops {
 /**
  * struct scmi_notify_ops  - represents notifications' operations provided by
  * SCMI core
- * @devm_register_event_notifier: Managed registration of a notifier_block for
+ * @devm_event_notifier_register: Managed registration of a notifier_block for
  *				  the requested event
- * @devm_unregister_event_notifier: Managed unregistration of a notifier_block
+ * @devm_event_notifier_unregister: Managed unregistration of a notifier_block
  *				    for the requested event
- * @register_event_notifier: Register a notifier_block for the requested event
- * @unregister_event_notifier: Unregister a notifier_block for the requested
+ * @event_notifier_register: Register a notifier_block for the requested event
+ * @event_notifier_unregister: Unregister a notifier_block for the requested
  *			       event
  *
  * A user can register/unregister its own notifier_block against the wanted
@@ -595,18 +599,21 @@ struct scmi_voltage_proto_ops {
  * @report: A custom struct describing the specific event delivered
  */
 struct scmi_notify_ops {
-	int (*devm_register_event_notifier)(struct scmi_device *sdev,
-					    u8 proto_id, u8 evt_id, u32 *src_id,
+	int (*devm_event_notifier_register)(struct scmi_device *sdev,
+					    u8 proto_id, u8 evt_id,
+					    const u32 *src_id,
 					    struct notifier_block *nb);
-	int (*devm_unregister_event_notifier)(struct scmi_device *sdev,
+	int (*devm_event_notifier_unregister)(struct scmi_device *sdev,
 					      u8 proto_id, u8 evt_id,
-					      u32 *src_id,
+					      const u32 *src_id,
 					      struct notifier_block *nb);
-	int (*register_event_notifier)(const struct scmi_handle *handle,
-				       u8 proto_id, u8 evt_id, u32 *src_id,
+	int (*event_notifier_register)(const struct scmi_handle *handle,
+				       u8 proto_id, u8 evt_id,
+				       const u32 *src_id,
 				       struct notifier_block *nb);
-	int (*unregister_event_notifier)(const struct scmi_handle *handle,
-					 u8 proto_id, u8 evt_id, u32 *src_id,
+	int (*event_notifier_unregister)(const struct scmi_handle *handle,
+					 u8 proto_id, u8 evt_id,
+					 const u32 *src_id,
 					 struct notifier_block *nb);
 };
 
@@ -615,27 +622,19 @@ struct scmi_notify_ops {
  *
  * @dev: pointer to the SCMI device
  * @version: pointer to the structure containing SCMI version information
- * @devm_acquire_protocol: devres managed method to get hold of a protocol,
- *			   causing its initialization and related resource
- *			   accounting
- * @devm_get_protocol: devres managed method to acquire a protocol, causing
- *		       its initialization and resource accounting, while getting
- *		       protocol specific operations and a dedicated protocol
- *		       handler
- * @devm_put_protocol: devres managed method to release a protocol acquired
- *		       with devm_acquire/get_protocol
+ * @devm_protocol_get: devres managed method to acquire a protocol and get specific
+ *		       operations and a dedicated protocol handler
+ * @devm_protocol_put: devres managed method to release a protocol
  * @notify_ops: pointer to set of notifications related operations
  */
 struct scmi_handle {
 	struct device *dev;
 	struct scmi_revision_info *version;
 
-	int __must_check (*devm_acquire_protocol)(struct scmi_device *sdev,
-						  u8 proto);
 	const void __must_check *
-		(*devm_get_protocol)(struct scmi_device *sdev, u8 proto,
+		(*devm_protocol_get)(struct scmi_device *sdev, u8 proto,
 				     struct scmi_protocol_handle **ph);
-	void (*devm_put_protocol)(struct scmi_device *sdev, u8 proto);
+	void (*devm_protocol_put)(struct scmi_device *sdev, u8 proto);
 
 	const struct scmi_notify_ops *notify_ops;
 

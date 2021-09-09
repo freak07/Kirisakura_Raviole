@@ -13,6 +13,7 @@
 #include <linux/io.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
+#include <linux/panic_notifier.h>
 #include <asm/cputype.h>
 #include <asm/smp_plat.h>
 

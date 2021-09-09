@@ -553,15 +553,15 @@ struct binder_transaction {
 	struct binder_thread *to_thread;
 	struct binder_transaction *to_parent;
 	unsigned need_reply:1;
-	/* unsigned is_dead:1; */	/* not used at the moment */
+	/* unsigned is_dead:1; */       /* not used at the moment */
 
 	struct binder_buffer *buffer;
-	unsigned int	code;
-	unsigned int	flags;
-	struct binder_priority	priority;
-	struct binder_priority	saved_priority;
-	bool    set_priority_called;
-	kuid_t	sender_euid;
+	unsigned int    code;
+	unsigned int    flags;
+	struct binder_priority priority;
+	struct binder_priority saved_priority;
+	bool set_priority_called;
+	kuid_t  sender_euid;
 	struct list_head fd_fixups;
 	binder_uintptr_t security_ctx;
 	/**

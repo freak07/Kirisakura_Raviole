@@ -15,8 +15,6 @@ DECLARE_HOOK(android_vh_wq_lockup_pool,
 	TP_PROTO(int cpu, unsigned long pool_ts),
 	TP_ARGS(cpu, pool_ts));
 
-/* macro versions of hooks are no longer required */
-
 #endif /* _TRACE_HOOK_WQLOCKUP_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>

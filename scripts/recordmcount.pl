@@ -254,9 +254,6 @@ if ($arch eq "x86_64") {
     if ($cc =~ /-DCC_USING_HOTPATCH/) {
 	$mcount_regex = "^\\s*([0-9a-fA-F]+):\\s*c0 04 00 00 00 00\\s*brcl\\s*0,[0-9a-f]+ <([^\+]*)>\$";
 	$mcount_adjust = 0;
-    } else {
-	$mcount_regex = "^\\s*([0-9a-fA-F]+):\\s*R_390_(PC|PLT)32DBL\\s+_mcount\\+0x2\$";
-	$mcount_adjust = -14;
     }
     $alignment = 8;
     $type = ".quad";
@@ -269,9 +266,9 @@ if ($arch eq "x86_64") {
     # force flags for this arch
     $ld .= " -m shlelf_linux";
     if ($endian eq "big") {
-        $objcopy .= " -O elf32-shbig-linux";
+	$objcopy .= " -O elf32-shbig-linux";
     } else {
-        $objcopy .= " -O elf32-sh-linux";
+	$objcopy .= " -O elf32-sh-linux";
     }
 
 } elsif ($arch eq "powerpc") {
@@ -292,12 +289,12 @@ if ($arch eq "x86_64") {
 	    $ldemulation = "lppc"
     }
     if ($bits == 64) {
-        $type = ".quad";
-        $cc .= " -m64 ";
-        $ld .= " -m elf64".$ldemulation." ";
+	$type = ".quad";
+	$cc .= " -m64 ";
+	$ld .= " -m elf64".$ldemulation." ";
     } else {
-        $cc .= " -m32 ";
-        $ld .= " -m elf32".$ldemulation." ";
+	$cc .= " -m32 ";
+	$ld .= " -m elf32".$ldemulation." ";
     }
 
 } elsif ($arch eq "arm") {
@@ -316,7 +313,7 @@ if ($arch eq "x86_64") {
     $type = "data8";
 
     if ($is_module eq "0") {
-        $cc .= " -mconstant-gp";
+	$cc .= " -mconstant-gp";
     }
 } elsif ($arch eq "sparc64") {
     # In the objdump output there are giblets like:
@@ -500,7 +497,7 @@ sub update_funcs
 #
 # Step 2: find the sections and mcount call sites
 #
-open(IN, "LANG=C $objdump -hdr $inputfile|") || die "error running $objdump";
+open(IN, "LC_ALL=C $objdump -hdr $inputfile|") || die "error running $objdump";
 
 my $text;
 
@@ -533,10 +530,10 @@ while (<IN>) {
 	$read_function = defined($text_sections{$1});
 	if (!$read_function) {
 	    foreach my $prefix (keys %text_section_prefixes) {
-	        if (substr($1, 0, length $prefix) eq $prefix) {
-	            $read_function = 1;
-	            last;
-	        }
+		if (substr($1, 0, length $prefix) eq $prefix) {
+		    $read_function = 1;
+		    last;
+		}
 	    }
 	}
 	# print out any recorded offsets
@@ -645,3 +642,5 @@ if ($#converts >= 0) {
 `$rm $mcount_o $mcount_s`;
 
 exit(0);
+
+# vim: softtabstop=4

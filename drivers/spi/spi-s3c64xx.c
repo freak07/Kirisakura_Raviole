@@ -17,6 +17,7 @@
 #include <linux/spi/spi.h>
 #include <linux/gpio.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
@@ -151,7 +152,7 @@ static LIST_HEAD(drvdata_list);
 #define USI_SPI_SW_CONF		BIT(1)
 
 /**
- * struct s3c64xx_spi_info - SPI Controller hardware info
+ * struct s3c64xx_spi_port_config - SPI Controller hardware info
  * @fifo_lvl_mask: Bit-mask for {TX|RX}_FIFO_LVL bits in SPI_STATUS register.
  * @rx_lvl_offset: Bit offset of RX_FIFO_LVL bits in SPI_STATUS regiter.
  * @tx_st_done: Bit offset of TX_DONE bit in SPI_STATUS regiter.
@@ -1086,8 +1087,7 @@ try_transfer:
 			goto out;
 		}
 
-		if (xfer->delay_usecs)
-			udelay(xfer->delay_usecs);
+		spi_transfer_delay_exec(xfer);
 
 		if (xfer->cs_change) {
 			/*
@@ -1525,20 +1525,15 @@ static struct s3c64xx_spi_info *s3c64xx_spi_parse_dt(struct device *dev)
 }
 #endif
 
-static const struct of_device_id s3c64xx_spi_dt_match[];
-
-static inline struct s3c64xx_spi_port_config *s3c64xx_spi_get_port_config(struct platform_device *pdev)
+static inline struct s3c64xx_spi_port_config *s3c64xx_spi_get_port_config(
+						struct platform_device *pdev)
 {
 #ifdef CONFIG_OF
-	if (pdev->dev.of_node) {
-		const struct of_device_id *match;
-
-		match = of_match_node(s3c64xx_spi_dt_match, pdev->dev.of_node);
-		return (struct s3c64xx_spi_port_config *)match->data;
-	}
+	if (pdev->dev.of_node)
+		return (struct s3c64xx_spi_port_config *)of_device_get_match_data(&pdev->dev);
 #endif
 	return (struct s3c64xx_spi_port_config *)
-			 platform_get_device_id(pdev)->driver_data;
+			platform_get_device_id(pdev)->driver_data;
 }
 
 static int s3c64xx_spi_probe(struct platform_device *pdev)
@@ -2168,12 +2163,20 @@ static struct s3c64xx_spi_port_config exynos4_spi_port_config = {
 	.clk_from_cmu	= true,
 };
 
-static struct s3c64xx_spi_port_config exynos5_spi_port_config = {
-	.fifo_lvl_mask	= { 0x1ff, 0x7F, 0x7F, 0x1ff, 0x1ff },
+static struct s3c64xx_spi_port_config exynos7_spi_port_config = {
+	.fifo_lvl_mask	= { 0x1ff, 0x7F, 0x7F, 0x7F, 0x7F, 0x1ff},
 	.rx_lvl_offset	= 15,
 	.tx_st_done	= 25,
 	.high_speed	= true,
 	.clk_from_cmu	= true,
+};
+
+static struct s3c64xx_spi_port_config exynos5_spi_port_config = {
+	.fifo_lvl_mask  = { 0x1ff, 0x7F, 0x7F, 0x1ff, 0x1ff },
+	.rx_lvl_offset  = 15,
+	.tx_st_done     = 25,
+	.high_speed     = true,
+	.clk_from_cmu   = true,
 };
 
 static struct s3c64xx_spi_port_config exynos543x_spi_port_config = {

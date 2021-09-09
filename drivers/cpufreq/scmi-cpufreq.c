@@ -2,7 +2,7 @@
 /*
  * System Control and Power Interface (SCMI) based CPUFreq Interface driver
  *
- * Copyright (C) 2018 ARM Ltd.
+ * Copyright (C) 2018-2021 ARM Ltd.
  * Sudeep Holla <sudeep.holla@arm.com>
  */
 
@@ -124,6 +124,7 @@ static int scmi_cpufreq_init(struct cpufreq_policy *policy)
 	struct scmi_data *priv;
 	struct cpufreq_frequency_table *freq_table;
 	struct em_data_callback em_cb = EM_DATA_CB(scmi_get_cpu_power);
+	cpumask_var_t opp_shared_cpus;
 	bool power_scale_mw;
 
 	cpu_dev = get_cpu_device(policy->cpu);
@@ -132,30 +133,64 @@ static int scmi_cpufreq_init(struct cpufreq_policy *policy)
 		return -ENODEV;
 	}
 
-	ret = perf_ops->device_opps_add(ph, cpu_dev);
-	if (ret) {
-		dev_warn(cpu_dev, "failed to add opps to the device\n");
-		return ret;
-	}
+	if (!zalloc_cpumask_var(&opp_shared_cpus, GFP_KERNEL))
+		ret = -ENOMEM;
 
+	/* Obtain CPUs that share SCMI performance controls */
 	ret = scmi_get_sharing_cpus(cpu_dev, policy->cpus);
 	if (ret) {
 		dev_warn(cpu_dev, "failed to get sharing cpumask\n");
-		return ret;
+		goto out_free_cpumask;
 	}
 
-	ret = dev_pm_opp_set_sharing_cpus(cpu_dev, policy->cpus);
-	if (ret) {
-		dev_err(cpu_dev, "%s: failed to mark OPPs as shared: %d\n",
-			__func__, ret);
-		return ret;
+	/*
+	 * Obtain CPUs that share performance levels.
+	 * The OPP 'sharing cpus' info may come from DT through an empty opp
+	 * table and opp-shared.
+	 */
+	ret = dev_pm_opp_of_get_sharing_cpus(cpu_dev, opp_shared_cpus);
+	if (ret || !cpumask_weight(opp_shared_cpus)) {
+		/*
+		 * Either opp-table is not set or no opp-shared was found.
+		 * Use the CPU mask from SCMI to designate CPUs sharing an OPP
+		 * table.
+		 */
+		cpumask_copy(opp_shared_cpus, policy->cpus);
 	}
 
+	 /*
+	  * A previous CPU may have marked OPPs as shared for a few CPUs, based on
+	  * what OPP core provided. If the current CPU is part of those few, then
+	  * there is no need to add OPPs again.
+	  */
 	nr_opp = dev_pm_opp_get_opp_count(cpu_dev);
 	if (nr_opp <= 0) {
-		dev_dbg(cpu_dev, "OPP table is not ready, deferring probe\n");
-		ret = -EPROBE_DEFER;
-		goto out_free_opp;
+		ret = perf_ops->device_opps_add(ph, cpu_dev);
+		if (ret) {
+			dev_warn(cpu_dev, "failed to add opps to the device\n");
+			goto out_free_cpumask;
+		}
+
+		nr_opp = dev_pm_opp_get_opp_count(cpu_dev);
+		if (nr_opp <= 0) {
+			dev_err(cpu_dev, "%s: No OPPs for this device: %d\n",
+				__func__, nr_opp);
+
+			ret = -ENODEV;
+			goto out_free_opp;
+		}
+
+		ret = dev_pm_opp_set_sharing_cpus(cpu_dev, opp_shared_cpus);
+		if (ret) {
+			dev_err(cpu_dev, "%s: failed to mark OPPs as shared: %d\n",
+				__func__, ret);
+
+			goto out_free_opp;
+		}
+
+		power_scale_mw = perf_ops->power_scale_mw_get(ph);
+		em_dev_register_perf_domain(cpu_dev, nr_opp, &em_cb,
+					    opp_shared_cpus, power_scale_mw);
 	}
 
 	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
@@ -188,16 +223,17 @@ static int scmi_cpufreq_init(struct cpufreq_policy *policy)
 	policy->fast_switch_possible =
 		perf_ops->fast_switch_possible(ph, cpu_dev);
 
-	power_scale_mw = perf_ops->power_scale_mw_get(ph);
-	em_dev_register_perf_domain(cpu_dev, nr_opp, &em_cb, policy->cpus,
-				    power_scale_mw);
-
+	free_cpumask_var(opp_shared_cpus);
 	return 0;
 
 out_free_priv:
 	kfree(priv);
+
 out_free_opp:
 	dev_pm_opp_remove_all_dynamic(cpu_dev);
+
+out_free_cpumask:
+	free_cpumask_var(opp_shared_cpus);
 
 	return ret;
 }
@@ -215,7 +251,7 @@ static int scmi_cpufreq_exit(struct cpufreq_policy *policy)
 
 static struct cpufreq_driver scmi_cpufreq_driver = {
 	.name	= "scmi",
-	.flags	= CPUFREQ_STICKY | CPUFREQ_HAVE_GOVERNOR_PER_POLICY |
+	.flags	= CPUFREQ_HAVE_GOVERNOR_PER_POLICY |
 		  CPUFREQ_NEED_INITIAL_FREQ_CHECK |
 		  CPUFREQ_IS_COOLING_DEV,
 	.verify	= cpufreq_generic_frequency_table_verify,
@@ -238,7 +274,7 @@ static int scmi_cpufreq_probe(struct scmi_device *sdev)
 	if (!handle)
 		return -ENODEV;
 
-	perf_ops = handle->devm_get_protocol(sdev, SCMI_PROTOCOL_PERF, &ph);
+	perf_ops = handle->devm_protocol_get(sdev, SCMI_PROTOCOL_PERF, &ph);
 	if (IS_ERR(perf_ops))
 		return PTR_ERR(perf_ops);
 

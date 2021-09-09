@@ -582,7 +582,7 @@ do_sync:
 static int __submit_flush_wait(struct f2fs_sb_info *sbi,
 				struct block_device *bdev)
 {
-	int ret = blkdev_issue_flush(bdev, GFP_NOFS);
+	int ret = blkdev_issue_flush(bdev);
 
 	trace_f2fs_issue_flush(bdev, test_opt(sbi, NOBARRIER),
 				test_opt(sbi, FLUSH_MERGE), ret);
@@ -4464,7 +4464,7 @@ static int build_sit_entries(struct f2fs_sb_info *sbi)
 	block_t total_node_blocks = 0;
 
 	do {
-		readed = f2fs_ra_meta_pages(sbi, start_blk, BIO_MAX_PAGES,
+		readed = f2fs_ra_meta_pages(sbi, start_blk, BIO_MAX_VECS,
 							META_SIT, true);
 
 		start = start_blk * sit_i->sents_per_block;

@@ -16,10 +16,6 @@
 #define VDO_MAX_OBJECTS		6
 #define VDO_MAX_SIZE		(VDO_MAX_OBJECTS + 1)
 
-#define SVDM_V10		0
-#define SVDM_V20		1
-#define SVDM_MAX_VER		SVDM_V20
-
 /*
  * VDM header
  * ----------
@@ -126,14 +122,12 @@
 #define IDH_PTYPE_HUB		1
 #define IDH_PTYPE_PERIPH	2
 #define IDH_PTYPE_PSD		3
+#define IDH_PTYPE_AMA		5
 
 /* SOP' Product Type (Cable Plug / VPD) */
 #define IDH_PTYPE_NOT_CABLE	0
 #define IDH_PTYPE_PCABLE	3
-#define IDH_PTYPE_BRICK		3
 #define IDH_PTYPE_ACABLE	4
-#define IDH_PTYPE_AMC		4
-#define IDH_PTYPE_AMA		5
 #define IDH_PTYPE_VPD		6
 
 /* SOP Product Type (DFP) */
@@ -142,13 +136,6 @@
 #define IDH_PTYPE_DFP_HOST	2
 #define IDH_PTYPE_DFP_PB	3
 
-#define IDH_USB_HOST		BIT(31)
-#define IDH_USB_DEVICE		BIT(30)
-#define IDH_PT_UFP_PLUG_SHIFT	27
-#define IDH_PT_UFP_PLUG_MASK	(0x7 << IDH_PT_UFP_PLUG_SHIFT)
-#define IDH_MODAL_SUPP		BIT(26)
-#define IDH_PT_DFP_SHIFT	23
-#define IDH_PT_DFP_MASK		(0x7 << IDH_PT_DFP_SHIFT)
 /* ID Header Mask */
 #define IDH_DFP_MASK		GENMASK(25, 23)
 #define IDH_CONN_MASK		GENMASK(22, 21)
@@ -158,12 +145,7 @@
 	 | (is_modal) << 26 | ((dfp) & 0x7) << 23 | ((conn) & 0x3) << 21	\
 	 | ((vid) & 0xffff))
 
-#define IDH_PT_UFP_PLUG(type)	(((type) << IDH_PT_UFP_PLUG_SHIFT)	\
-				 & IDH_PT_UFP_PLUG_MASK)
-#define IDH_PT_DFP(type)	(((type) << IDH_PT_DFP_SHIFT) & IDH_PT_DFP_MASK)
-
-#define PD_IDH_PTYPE(vdo)	(((vdo) >> IDH_PT_UFP_PLUG_SHIFT) & 0x7)
-#define PD_IDH_PTYPE_DFP(vdo)	(((vdo) >> IDH_PT_DFP_SHIFT) & 0x7)
+#define PD_IDH_PTYPE(vdo)	(((vdo) >> 27) & 0x7)
 #define PD_IDH_VID(vdo)		((vdo) & 0xffff)
 #define PD_IDH_MODAL_SUPP(vdo)	((vdo) & (1 << 26))
 #define PD_IDH_DFP_PTYPE(vdo)	(((vdo) >> 23) & 0x7)
@@ -321,6 +303,8 @@
  * <8>     :: SBU supported (0b == supported, 1b == not supported)
  * <7>     :: SBU type (0b == passive, 1b == active)
  * <6:5>   :: Vbus current handling capability (01b == 3A, 10b == 5A)
+ * <4>     :: Vbus through cable (0b == no, 1b == yes)
+ * <3>     :: SOP" controller present? (0b == no, 1b == yes)
  * <2:0>   :: USB highest speed
  */
 /* Cable VDO Version */
@@ -413,7 +397,6 @@
  * <1>     :: Reserved, Shall be set to zero
  * <0>     :: USB gen (0b == gen1, 1b == gen2+)
  */
-
 /* U3/CLd Power*/
 #define ACAB2_U3_CLD_10MW_PLUS	0
 #define ACAB2_U3_CLD_10MW	1

@@ -2,7 +2,7 @@
 /*
  * System Control and Power Interface (SCMI) Protocol based clock driver
  *
- * Copyright (C) 2018-2020 ARM Ltd.
+ * Copyright (C) 2018-2021 ARM Ltd.
  */
 
 #include <linux/clk-provider.h>
@@ -13,7 +13,7 @@
 #include <linux/scmi_protocol.h>
 #include <asm/div64.h>
 
-static const struct scmi_clk_proto_ops *clk_ops;
+static const struct scmi_clk_proto_ops *scmi_proto_clk_ops;
 
 struct scmi_clk {
 	u32 id;
@@ -31,7 +31,7 @@ static unsigned long scmi_clk_recalc_rate(struct clk_hw *hw,
 	u64 rate;
 	struct scmi_clk *clk = to_scmi_clk(hw);
 
-	ret = clk_ops->rate_get(clk->ph, clk->id, &rate);
+	ret = scmi_proto_clk_ops->rate_get(clk->ph, clk->id, &rate);
 	if (ret)
 		return 0;
 	return rate;
@@ -71,21 +71,21 @@ static int scmi_clk_set_rate(struct clk_hw *hw, unsigned long rate,
 {
 	struct scmi_clk *clk = to_scmi_clk(hw);
 
-	return clk_ops->rate_set(clk->ph, clk->id, rate);
+	return scmi_proto_clk_ops->rate_set(clk->ph, clk->id, rate);
 }
 
 static int scmi_clk_enable(struct clk_hw *hw)
 {
 	struct scmi_clk *clk = to_scmi_clk(hw);
 
-	return clk_ops->enable(clk->ph, clk->id);
+	return scmi_proto_clk_ops->enable(clk->ph, clk->id);
 }
 
 static void scmi_clk_disable(struct clk_hw *hw)
 {
 	struct scmi_clk *clk = to_scmi_clk(hw);
 
-	clk_ops->disable(clk->ph, clk->id);
+	scmi_proto_clk_ops->disable(clk->ph, clk->id);
 }
 
 static const struct clk_ops scmi_clk_ops = {
@@ -149,11 +149,12 @@ static int scmi_clocks_probe(struct scmi_device *sdev)
 	if (!handle)
 		return -ENODEV;
 
-	clk_ops = handle->devm_get_protocol(sdev, SCMI_PROTOCOL_CLOCK, &ph);
-	if (IS_ERR(clk_ops))
-		return PTR_ERR(clk_ops);
+	scmi_proto_clk_ops =
+		handle->devm_protocol_get(sdev, SCMI_PROTOCOL_CLOCK, &ph);
+	if (IS_ERR(scmi_proto_clk_ops))
+		return PTR_ERR(scmi_proto_clk_ops);
 
-	count = clk_ops->count_get(ph);
+	count = scmi_proto_clk_ops->count_get(ph);
 	if (count < 0) {
 		dev_err(dev, "%pOFn: invalid clock output count\n", np);
 		return -EINVAL;
@@ -174,7 +175,7 @@ static int scmi_clocks_probe(struct scmi_device *sdev)
 		if (!sclk)
 			return -ENOMEM;
 
-		sclk->info = clk_ops->info_get(ph, idx);
+		sclk->info = scmi_proto_clk_ops->info_get(ph, idx);
 		if (!sclk->info) {
 			dev_dbg(dev, "invalid clock info for idx %d\n", idx);
 			continue;

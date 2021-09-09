@@ -122,7 +122,7 @@ static bool regs_within_kernel_stack(struct pt_regs *regs, unsigned long addr)
 {
 	return ((addr & ~(THREAD_SIZE - 1))  ==
 		(kernel_stack_pointer(regs) & ~(THREAD_SIZE - 1))) ||
-		on_irq_stack(addr, NULL);
+		on_irq_stack(addr, sizeof(unsigned long), NULL);
 }
 
 /**
@@ -194,6 +194,7 @@ static void ptrace_hbptriggered(struct perf_event *bp,
 		}
 		arm64_force_sig_ptrace_errno_trap(si_errno, bkpt->trigger,
 						  desc);
+		return;
 	}
 #endif
 	arm64_force_sig_fault(SIGTRAP, TRAP_HWBKPT, bkpt->trigger, desc);

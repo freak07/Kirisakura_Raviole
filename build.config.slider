@@ -35,6 +35,9 @@ function modify_vendor_ramdisk() {
   ln -f init.recovery.gs101.rc init.recovery.raven.rc
 }
 
+DISABLED_MODULES+="
+"
+
 EXT_MODULES+="
 private/google-modules/display/samsung
 private/google-modules/wlan/bcmdhd43752

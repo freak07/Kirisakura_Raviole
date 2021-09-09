@@ -27,6 +27,7 @@ struct vb2_mem_ops *mfc_mem_ops(void)
 int mfc_mem_get_user_shared_handle(struct mfc_ctx *ctx,
 	struct mfc_user_shared_handle *handle)
 {
+	struct dma_buf_map map;
 	int ret = 0;
 
 	handle->dma_buf = dma_buf_get(handle->fd);
@@ -36,12 +37,13 @@ int mfc_mem_get_user_shared_handle(struct mfc_ctx *ctx,
 		goto import_dma_fail;
 	}
 
-	handle->vaddr = dma_buf_vmap(handle->dma_buf);
-	if (handle->vaddr == NULL) {
+	ret = dma_buf_vmap(handle->dma_buf, &map);
+	if (ret) {
 		mfc_ctx_err("Failed to get kernel virtual address\n");
 		ret = -EINVAL;
 		goto map_kernel_fail;
 	}
+	handle->vaddr = map.vaddr;
 
 	return 0;
 
@@ -208,12 +210,16 @@ static int mfc_mem_dma_heap_alloc(struct mfc_dev *dev,
 	}
 
 	if (special_buf->buftype != MFCBUF_DRM) {
-		special_buf->vaddr = dma_buf_vmap(special_buf->dma_buf);
-		if (IS_ERR(special_buf->vaddr)) {
+		struct dma_buf_map map;
+		int ret;
+
+		ret = dma_buf_vmap(special_buf->dma_buf, &map);
+		if (ret) {
 			mfc_dev_err("Failed to get vaddr (err 0x%p)\n",
-					&special_buf->vaddr);
+					ERR_PTR(ret));
 			goto err_vaddr;
 		}
+		special_buf->vaddr = map.vaddr;
 	}
 
 	special_buf->paddr = page_to_phys(sg_page(special_buf->sgt->sgl));

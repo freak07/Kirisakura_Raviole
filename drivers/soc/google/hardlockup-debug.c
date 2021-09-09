@@ -15,6 +15,7 @@
 #include <linux/platform_device.h>
 #include <linux/soc/samsung/exynos-smc.h>
 #include <linux/slab.h>
+#include <linux/panic_notifier.h>
 
 #include <linux/suspend.h>
 #include <linux/sched/task.h>
@@ -212,7 +213,7 @@ static int hardlockup_debug_bug_handler(struct pt_regs *regs, unsigned int esr)
 		if (pm_suspend_task) {
 			pr_emerg("pm_suspend_task '%s' %d hung (state=%d)",
 					pm_suspend_task->comm, pm_suspend_task->pid,
-					pm_suspend_task->state);
+					pm_suspend_task->__state);
 			sched_show_task(pm_suspend_task);
 			panic("PM suspend timeout");
 		}

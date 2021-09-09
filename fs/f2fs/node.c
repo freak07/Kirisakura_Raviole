@@ -1549,13 +1549,10 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 	trace_f2fs_writepage(page, NODE);
 
 	if (unlikely(f2fs_cp_error(sbi))) {
-		if (is_sbi_flag_set(sbi, SBI_IS_CLOSE)) {
-			ClearPageUptodate(page);
-			dec_page_count(sbi, F2FS_DIRTY_NODES);
-			unlock_page(page);
-			return 0;
-		}
-		goto redirty_out;
+		ClearPageUptodate(page);
+		dec_page_count(sbi, F2FS_DIRTY_NODES);
+		unlock_page(page);
+		return 0;
 	}
 
 	if (unlikely(is_sbi_flag_set(sbi, SBI_POR_DOING)))
@@ -2770,7 +2767,7 @@ int f2fs_restore_node_summary(struct f2fs_sb_info *sbi,
 	sum_entry = &sum->entries[0];
 
 	for (i = 0; i < last_offset; i += nrpages, addr += nrpages) {
-		nrpages = min(last_offset - i, BIO_MAX_PAGES);
+		nrpages = bio_max_segs(last_offset - i);
 
 		/* readahead node pages */
 		f2fs_ra_meta_pages(sbi, addr, nrpages, META_POR, true);

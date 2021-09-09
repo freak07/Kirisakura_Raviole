@@ -18,8 +18,6 @@ DECLARE_HOOK(android_vh_show_resume_epoch_val,
 	TP_PROTO(u64 resume_cycles),
 	TP_ARGS(resume_cycles));
 
-/* macro versions of hooks are no longer required */
-
 #endif /* _TRACE_HOOK_EPOCH_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>

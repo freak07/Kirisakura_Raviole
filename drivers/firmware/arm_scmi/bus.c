@@ -2,7 +2,7 @@
 /*
  * System Control and Management Interface (SCMI) Message Protocol bus layer
  *
- * Copyright (C) 2018 ARM Ltd.
+ * Copyright (C) 2018-2021 ARM Ltd.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -16,7 +16,7 @@
 #include "common.h"
 
 static DEFINE_IDA(scmi_bus_id);
-static DEFINE_IDR(scmi_available_protocols);
+static DEFINE_IDR(scmi_protocols);
 static DEFINE_SPINLOCK(protocol_lock);
 
 static const struct scmi_device_id *
@@ -60,7 +60,7 @@ static int scmi_match_by_id_table(struct device *dev, void *data)
 		!strcmp(sdev->name, id_table->name);
 }
 
-struct scmi_device *scmi_find_child_dev(struct device *parent,
+struct scmi_device *scmi_child_dev_find(struct device *parent,
 					int prot_id, const char *name)
 {
 	struct scmi_device_id id_table;
@@ -76,26 +76,26 @@ struct scmi_device *scmi_find_child_dev(struct device *parent,
 	return to_scmi_dev(dev);
 }
 
-const struct scmi_protocol *scmi_get_protocol(int protocol_id)
+const struct scmi_protocol *scmi_protocol_get(int protocol_id)
 {
 	const struct scmi_protocol *proto;
 
-	proto = idr_find(&scmi_available_protocols, protocol_id);
+	proto = idr_find(&scmi_protocols, protocol_id);
 	if (!proto || !try_module_get(proto->owner)) {
 		pr_warn("SCMI Protocol 0x%x not found!\n", protocol_id);
 		return NULL;
 	}
 
-	pr_debug("GOT SCMI Protocol 0x%x\n", protocol_id);
+	pr_debug("Found SCMI Protocol 0x%x\n", protocol_id);
 
 	return proto;
 }
 
-void scmi_put_protocol(int protocol_id)
+void scmi_protocol_put(int protocol_id)
 {
 	const struct scmi_protocol *proto;
 
-	proto = idr_find(&scmi_available_protocols, protocol_id);
+	proto = idr_find(&scmi_protocols, protocol_id);
 	if (proto)
 		module_put(proto->owner);
 }
@@ -104,11 +104,6 @@ static int scmi_dev_probe(struct device *dev)
 {
 	struct scmi_driver *scmi_drv = to_scmi_driver(dev->driver);
 	struct scmi_device *scmi_dev = to_scmi_dev(dev);
-	const struct scmi_device_id *id;
-
-	id = scmi_dev_match_id(scmi_dev, scmi_drv);
-	if (!id)
-		return -ENODEV;
 
 	if (!scmi_dev->handle)
 		return -EPROBE_DEFER;
@@ -139,7 +134,10 @@ int scmi_driver_register(struct scmi_driver *driver, struct module *owner,
 {
 	int retval;
 
-	retval = scmi_request_protocol_device(driver->id_table);
+	if (!driver->probe)
+		return -EINVAL;
+
+	retval = scmi_protocol_device_request(driver->id_table);
 	if (retval)
 		return retval;
 
@@ -159,7 +157,7 @@ EXPORT_SYMBOL_GPL(scmi_driver_register);
 void scmi_driver_unregister(struct scmi_driver *driver)
 {
 	driver_unregister(&driver->driver);
-	scmi_unrequest_protocol_device(driver->id_table);
+	scmi_protocol_device_unrequest(driver->id_table);
 }
 EXPORT_SYMBOL_GPL(scmi_driver_unregister);
 
@@ -234,13 +232,13 @@ int scmi_protocol_register(const struct scmi_protocol *proto)
 		return -EINVAL;
 	}
 
-	if (!proto->init_instance) {
-		pr_err("missing .init() for protocol 0x%x\n", proto->id);
+	if (!proto->instance_init) {
+		pr_err("missing init for protocol 0x%x\n", proto->id);
 		return -EINVAL;
 	}
 
 	spin_lock(&protocol_lock);
-	ret = idr_alloc(&scmi_available_protocols, (void *)proto,
+	ret = idr_alloc(&scmi_protocols, (void *)proto,
 			proto->id, proto->id + 1, GFP_ATOMIC);
 	spin_unlock(&protocol_lock);
 	if (ret != proto->id) {
@@ -258,7 +256,7 @@ EXPORT_SYMBOL_GPL(scmi_protocol_register);
 void scmi_protocol_unregister(const struct scmi_protocol *proto)
 {
 	spin_lock(&protocol_lock);
-	idr_remove(&scmi_available_protocols, proto->id);
+	idr_remove(&scmi_protocols, proto->id);
 	spin_unlock(&protocol_lock);
 
 	pr_debug("Unregistered SCMI Protocol 0x%x\n", proto->id);

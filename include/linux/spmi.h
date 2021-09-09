@@ -140,6 +140,7 @@ struct spmi_driver {
 	struct device_driver driver;
 	int	(*probe)(struct spmi_device *sdev);
 	void	(*remove)(struct spmi_device *sdev);
+	void	(*shutdown)(struct spmi_device *sdev);
 	ANDROID_KABI_RESERVE(1);
 };
 

@@ -27,8 +27,6 @@ DECLARE_RESTRICTED_HOOK(android_rvh_irqs_enable,
 	TP_PROTO(unsigned long ip, unsigned long parent_ip),
 	TP_ARGS(ip, parent_ip), 1);
 
-/* macro versions of hooks are no longer required */
-
 #endif /* _TRACE_HOOK_PREEMPTIRQ_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>

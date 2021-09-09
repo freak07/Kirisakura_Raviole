@@ -208,7 +208,7 @@ static void process_delayed_work(struct work_struct *work)
 	mutex_lock(&t->lock);
 
 	/*
-	 * There is a atleast one thread to process the IO.
+	 * There is at least one thread to process the IO.
 	 */
 	if (is_user_space_thread_present(t)) {
 		mutex_unlock(&t->lock);
@@ -644,12 +644,12 @@ static struct message *msg_get_from_user(struct channel *c, u64 seq)
  * When called without the lock it may spuriously indicate there is remaining
  * work, but when called with the lock it must be accurate.
  */
-int target_poll(struct target *t)
+static int target_poll(struct target *t)
 {
 	return !list_empty(&t->to_user) || t->dm_destroyed;
 }
 
-void target_release(struct kref *ref)
+static void target_release(struct kref *ref)
 {
 	struct target *t = container_of(ref, struct target, references);
 	struct list_head *cur, *tmp;
@@ -680,7 +680,7 @@ void target_release(struct kref *ref)
 	kfree(t);
 }
 
-void target_put(struct target *t)
+static void target_put(struct target *t)
 {
 	/*
 	 * This both releases a reference to the target and the lock.  We leave
@@ -734,7 +734,7 @@ static struct channel *channel_alloc(struct target *t)
 	return c;
 }
 
-void channel_free(struct channel *c)
+static void channel_free(struct channel *c)
 {
 	struct list_head *cur, *tmp;
 

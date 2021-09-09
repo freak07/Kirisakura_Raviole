@@ -19,7 +19,7 @@ int iommu_get_msi_cookie(struct iommu_domain *domain, dma_addr_t base);
 void iommu_put_dma_cookie(struct iommu_domain *domain);
 
 /* Setup call for arch DMA mapping code */
-void iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 size);
+void iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 dma_limit);
 
 /* The DMA API isn't _quite_ the whole story, though... */
 /*
@@ -37,10 +37,10 @@ void iommu_dma_compose_msi_msg(struct msi_desc *desc,
 
 void iommu_dma_get_resv_regions(struct device *dev, struct list_head *list);
 
-int iommu_dma_reserve_iova(struct device *dev, dma_addr_t base,
-			   u64 size);
+void iommu_dma_free_cpu_cached_iovas(unsigned int cpu,
+		struct iommu_domain *domain);
 
-int iommu_dma_enable_best_fit_algo(struct device *dev);
+extern bool iommu_dma_forcedac;
 
 #else /* CONFIG_IOMMU_DMA */
 
@@ -50,7 +50,7 @@ struct msi_msg;
 struct device;
 
 static inline void iommu_setup_dma_ops(struct device *dev, u64 dma_base,
-		u64 size)
+				       u64 dma_limit)
 {
 }
 
@@ -81,17 +81,6 @@ static inline void iommu_dma_compose_msi_msg(struct msi_desc *desc,
 
 static inline void iommu_dma_get_resv_regions(struct device *dev, struct list_head *list)
 {
-}
-
-static inline int iommu_dma_reserve_iova(struct device *dev, dma_addr_t base,
-					 u64 size)
-{
-	return -ENODEV;
-}
-
-static inline int iommu_dma_enable_best_fit_algo(struct device *dev)
-{
-	return -ENODEV;
 }
 
 #endif	/* CONFIG_IOMMU_DMA */

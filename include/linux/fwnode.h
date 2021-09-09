@@ -60,6 +60,13 @@ struct fwnode_endpoint {
 	const struct fwnode_handle *local_fwnode;
 };
 
+/*
+ * ports and endpoints defined as software_nodes should all follow a common
+ * naming scheme; use these macros to ensure commonality.
+ */
+#define SWNODE_GRAPH_PORT_NAME_FMT		"port@%u"
+#define SWNODE_GRAPH_ENDPOINT_NAME_FMT		"endpoint@%u"
+
 #define NR_FWNODE_REFERENCE_ARGS	8
 
 /**
@@ -185,5 +192,6 @@ extern u32 fw_devlink_get_flags(void);
 extern bool fw_devlink_is_strict(void);
 int fwnode_link_add(struct fwnode_handle *con, struct fwnode_handle *sup);
 void fwnode_links_purge(struct fwnode_handle *fwnode);
+void fw_devlink_purge_absent_suppliers(struct fwnode_handle *fwnode);
 
 #endif

@@ -7,16 +7,13 @@
 #include <linux/list_sort.h>
 #include <linux/list.h>
 
-typedef int __attribute__((nonnull(2,3))) (*cmp_func)(void *,
-		struct list_head *, struct list_head *);
-
 /*
  * Returns a list organized in an intermediate format suited
  * to chaining of merge() calls: null-terminated, no reserved or
  * sentinel head node, "prev" links not maintained.
  */
 __attribute__((nonnull(2,3,4)))
-static struct list_head *merge(void *priv, cmp_func cmp,
+static struct list_head *merge(void *priv, list_cmp_func_t cmp,
 				struct list_head *a, struct list_head *b)
 {
 	struct list_head *head, **tail = &head;
@@ -52,7 +49,7 @@ static struct list_head *merge(void *priv, cmp_func cmp,
  * throughout.
  */
 __attribute__((nonnull(2,3,4,5)))
-static void merge_final(void *priv, cmp_func cmp, struct list_head *head,
+static void merge_final(void *priv, list_cmp_func_t cmp, struct list_head *head,
 			struct list_head *a, struct list_head *b)
 {
 	struct list_head *tail = head;
@@ -107,7 +104,7 @@ static void merge_final(void *priv, cmp_func cmp, struct list_head *head,
  * @head: the list to sort
  * @cmp: the elements comparison function
  *
- * The comparison funtion @cmp must return > 0 if @a should sort after
+ * The comparison function @cmp must return > 0 if @a should sort after
  * @b ("@a > @b" if you want an ascending sort), and <= 0 if @a should
  * sort before @b *or* their original order should be preserved.  It is
  * always called with the element that came first in the input in @a,
@@ -140,7 +137,7 @@ static void merge_final(void *priv, cmp_func cmp, struct list_head *head,
  *
  *
  * The merging is controlled by "count", the number of elements in the
- * pending lists.  This is beautiully simple code, but rather subtle.
+ * pending lists.  This is beautifully simple code, but rather subtle.
  *
  * Each time we increment "count", we set one bit (bit k) and clear
  * bits k-1 .. 0.  Each time this happens (except the very first time
@@ -185,9 +182,7 @@ static void merge_final(void *priv, cmp_func cmp, struct list_head *head,
  * 2^(k+1) - 1 (second merge of case 5 when x == 2^(k-1) - 1).
  */
 __attribute__((nonnull(2,3)))
-void list_sort(void *priv, struct list_head *head,
-		int (*cmp)(void *priv, struct list_head *a,
-			struct list_head *b))
+void list_sort(void *priv, struct list_head *head, list_cmp_func_t cmp)
 {
 	struct list_head *list = head->next, *pending = NULL;
 	size_t count = 0;	/* Count of pending */

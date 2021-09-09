@@ -31,11 +31,25 @@ allOf:
 properties:
   compatible:
     contains:
-      const: snps,dwc3
+      oneOf:
+        - const: snps,dwc3
+        - const: synopsys,dwc3
+          deprecated: true
 
   interrupts:
+    description:
+      It's either a single common DWC3 interrupt (dwc_usb3) or individual
+      interrupts for the host, gadget and DRD modes.
     minItems: 1
     maxItems: 3
+
+  interrupt-names:
+    minItems: 1
+    maxItems: 3
+    oneOf:
+      - const: dwc_usb3
+      - items:
+          enum: [host, peripheral, otg]
 
   clocks:
     description:
@@ -73,11 +87,17 @@ properties:
     minItems: 1
 
   snps,usb2-lpm-disable:
-    description: Indicate if we don't want to enable USB2 HW LPM
+    description: Indicate if we don't want to enable USB2 HW LPM for host
+      mode.
     type: boolean
 
   snps,usb3_lpm_capable:
     description: Determines if platform is USB3 LPM capable
+    type: boolean
+
+  snps,usb2-gadget-lpm-disable:
+    description: Indicate if we don't want to enable USB2 HW LPM for gadget
+      mode.
     type: boolean
 
   snps,dis-start-transfer-quirk:
@@ -142,6 +162,10 @@ properties:
       The value driven to the PHY is controlled by the LTSSM during USB3
       Compliance mode.
     $ref: /schemas/types.yaml#/definitions/uint8
+    enum:
+      - 0 # -6dB de-emphasis
+      - 1 # -3.5dB de-emphasis
+      - 2 # No de-emphasis
 
   snps,dis_u3_susphy_quirk:
     description: When set core will disable USB3 suspend phy
@@ -225,6 +249,8 @@ properties:
       length adjustment when the fladj_30mhz_sdbnd signal is invalid or
       incorrect.
     $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 0
+    maximum: 0x3f
 
   snps,rx-thr-num-pkt-prd:
     description:
@@ -263,20 +289,9 @@ properties:
     maximum: 16
 
   tx-fifo-resize:
-    description: Determines if the TX fifos can be dynamically resized depending
-      on the number of IN endpoints used and if bursting is supported.  This
-      may help improve bandwidth on platforms with higher system latencies, as
-      increased fifo space allows for the controller to prefetch data into its
-      internal memory.
+    description: Determines if the FIFO *has* to be reallocated
+    deprecated: true
     type: boolean
-
-  tx-fifo-max-num:
-    description: Specifies the max number of packets the txfifo resizing logic
-      can account for when higher endpoint bursting is used. (bMaxBurst > 6) The
-      higher the number, the more fifo space the txfifo resizing logic will
-      allocate for that endpoint.
-    $ref: /schemas/types.yaml#/definitions/uint8
-    minimum: 3
 
   snps,incr-burst-type-adjustment:
     description:

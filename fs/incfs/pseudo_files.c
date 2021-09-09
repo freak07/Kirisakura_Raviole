@@ -9,6 +9,7 @@
 #include <linux/namei.h>
 #include <linux/poll.h>
 #include <linux/syscalls.h>
+#include <linux/fdtable.h>
 
 #include <uapi/linux/incrementalfs.h>
 
@@ -193,7 +194,7 @@ retry_deleg:
 	inode_lock(inode);
 	newattrs.ia_mode = (mode & S_IALLUGO) | (inode->i_mode & ~S_IALLUGO);
 	newattrs.ia_valid = ATTR_MODE | ATTR_CTIME;
-	error = notify_change(dentry, &newattrs, &delegated_inode);
+	error = notify_change(&init_user_ns, dentry, &newattrs, &delegated_inode);
 	inode_unlock(inode);
 	if (delegated_inode) {
 		error = break_deleg_wait(&delegated_inode);
@@ -263,7 +264,7 @@ static int dir_relative_path_resolve(
 		LOOKUP_FOLLOW | LOOKUP_DIRECTORY, result_path, NULL);
 
 out:
-	ksys_close(dir_fd);
+	close_fd(dir_fd);
 	if (error)
 		pr_debug("Error: %d\n", error);
 	return error;
@@ -585,8 +586,8 @@ static long ioctl_create_file(struct file *file,
 	/* Creating a file in the .index dir. */
 	index_dir_inode = d_inode(mi->mi_index_dir);
 	inode_lock_nested(index_dir_inode, I_MUTEX_PARENT);
-	error = vfs_create(index_dir_inode, index_file_dentry, args.mode | 0222,
-			   true);
+	error = vfs_create(&init_user_ns, index_dir_inode, index_file_dentry,
+			   args.mode | 0222, true);
 	inode_unlock(index_dir_inode);
 
 	if (error)
@@ -603,7 +604,7 @@ static long ioctl_create_file(struct file *file,
 	}
 
 	/* Save the file's ID as an xattr for easy fetching in future. */
-	error = vfs_setxattr(index_file_dentry, INCFS_XATTR_ID_NAME,
+	error = vfs_setxattr(&init_user_ns, index_file_dentry, INCFS_XATTR_ID_NAME,
 		file_id_str, strlen(file_id_str), XATTR_CREATE);
 	if (error) {
 		pr_debug("incfs: vfs_setxattr err:%d\n", error);
@@ -612,7 +613,7 @@ static long ioctl_create_file(struct file *file,
 
 	/* Save the file's size as an xattr for easy fetching in future. */
 	size_attr_value = cpu_to_le64(args.size);
-	error = vfs_setxattr(index_file_dentry, INCFS_XATTR_SIZE_NAME,
+	error = vfs_setxattr(&init_user_ns, index_file_dentry, INCFS_XATTR_SIZE_NAME,
 		(char *)&size_attr_value, sizeof(size_attr_value),
 		XATTR_CREATE);
 	if (error) {
@@ -640,7 +641,7 @@ static long ioctl_create_file(struct file *file,
 			goto out;
 		}
 
-		error = vfs_setxattr(index_file_dentry,
+		error = vfs_setxattr(&init_user_ns, index_file_dentry,
 				INCFS_XATTR_METADATA_NAME,
 				attr_value, args.file_attr_len,
 				XATTR_CREATE);
@@ -808,7 +809,7 @@ static long ioctl_create_mapped_file(struct file *file, void __user *arg)
 		goto out;
 	}
 
-	error = vfs_getxattr(source_file_dentry, INCFS_XATTR_SIZE_NAME,
+	error = vfs_getxattr(&init_user_ns, source_file_dentry, INCFS_XATTR_SIZE_NAME,
 			     (char *)&size_attr_value, sizeof(size_attr_value));
 	if (error < 0)
 		goto out;
@@ -858,7 +859,8 @@ static long ioctl_create_mapped_file(struct file *file, void __user *arg)
 
 	parent_inode = d_inode(parent_dir_path.dentry);
 	inode_lock_nested(parent_inode, I_MUTEX_PARENT);
-	error = vfs_create(parent_inode, file_dentry, args.mode | 0222, true);
+	error = vfs_create(&init_user_ns, parent_inode, file_dentry,
+			   args.mode | 0222, true);
 	inode_unlock(parent_inode);
 	if (error)
 		goto out;
@@ -871,7 +873,7 @@ static long ioctl_create_mapped_file(struct file *file, void __user *arg)
 
 	/* Save the file's size as an xattr for easy fetching in future. */
 	size_attr_value = cpu_to_le64(args.size);
-	error = vfs_setxattr(file_dentry, INCFS_XATTR_SIZE_NAME,
+	error = vfs_setxattr(&init_user_ns, file_dentry, INCFS_XATTR_SIZE_NAME,
 		(char *)&size_attr_value, sizeof(size_attr_value),
 		XATTR_CREATE);
 	if (error) {
@@ -1302,7 +1304,7 @@ static bool get_pseudo_inode(int ino, struct inode *inode)
 	inode->i_size = 0;
 	inode->i_ino = ino;
 	inode->i_private = NULL;
-	inode_init_owner(inode, NULL, S_IFREG | READ_WRITE_FILE_MODE);
+	inode_init_owner(&init_user_ns, inode, NULL, S_IFREG | READ_WRITE_FILE_MODE);
 	inode->i_op = &incfs_file_inode_ops;
 	inode->i_fop = pseudo_file_operations[i];
 	return true;

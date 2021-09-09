@@ -35,6 +35,7 @@
 #include <linux/preempt.h>
 #include <linux/of_address.h>
 #include <soc/google/exynos-el3_mon.h>
+#include <linux/panic_notifier.h>
 
 #define S3C2410_WTCON		0x00
 #define S3C2410_WTDAT		0x04

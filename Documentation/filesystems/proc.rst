@@ -210,6 +210,7 @@ read the file /proc/PID/status::
   NoNewPrivs:     0
   Seccomp:        0
   Speculation_Store_Bypass:       thread vulnerable
+  SpeculationIndirectBranch:      conditional enabled
   voluntary_ctxt_switches:        0
   nonvoluntary_ctxt_switches:     1
 
@@ -292,6 +293,7 @@ It's slow but very precise.
  NoNewPrivs                  no_new_privs, like prctl(PR_GET_NO_NEW_PRIV, ...)
  Seccomp                     seccomp mode, like prctl(PR_GET_SECCOMP, ...)
  Speculation_Store_Bypass    speculative store bypass mitigation status
+ SpeculationIndirectBranch   indirect branch speculation mode
  Cpus_allowed                mask of CPUs on which this process may run
  Cpus_allowed_list           Same as previous, but in "list format"
  Mems_allowed                mask of memory nodes allowed to this process
@@ -541,7 +543,9 @@ encoded manner. The codes are the following:
     ac    area is accountable
     nr    swap space is not reserved for the area
     ht    area uses huge tlb pages
+    sf    synchronous page fault
     ar    architecture specific flag
+    wf    wipe on fork
     dd    do not include area into core dump
     sd    soft dirty flag
     mm    mixed map area
@@ -550,6 +554,8 @@ encoded manner. The codes are the following:
     mg    mergable advise flag
     bt    arm64 BTI guarded page
     mt    arm64 MTE allocation tags are enabled
+    um    userfaultfd missing tracking
+    uw    userfaultfd wr-protect tracking
     ==    =======================================
 
 Note that there is no guarantee that every flag and associated mnemonic will
@@ -691,7 +697,14 @@ files are there, and which are missing.
  kcore        Kernel core image (can be ELF or A.OUT(deprecated in 2.4))
  kmsg         Kernel messages
  ksyms        Kernel symbol table
- loadavg      Load average of last 1, 5 & 15 minutes
+ loadavg      Load average of last 1, 5 & 15 minutes;
+                number of processes currently runnable (running or on ready queue);
+                total number of processes in system;
+                last pid created.
+                All fields are separated by one space except "number of
+                processes currently runnable" and "total number of processes
+                in system", which are separated by a slash ('/'). Example:
+                0.61 0.61 0.55 3/828 22084
  locks        Kernel locks
  meminfo      Memory info
  misc         Miscellaneous
@@ -926,8 +939,15 @@ meminfo
 ~~~~~~~
 
 Provides information about distribution and utilization of memory.  This
-varies by architecture and compile options.  The following is from a
-16GB PIII, which has highmem enabled.  You may not have all of these fields.
+varies by architecture and compile options.  Some of the counters reported
+here overlap.  The memory reported by the non overlapping counters may not
+add up to the overall memory usage and the difference for some workloads
+can be substantial.  In many cases there are other means to find out
+additional memory using subsystem specific interfaces, for instance
+/proc/net/sockstat for TCP memory allocations.
+
+The following is from a 16GB PIII, which has highmem enabled.
+You may not have all of these fields.
 
 ::
 

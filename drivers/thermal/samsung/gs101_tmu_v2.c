@@ -991,51 +991,6 @@ static void gs101_throttle_cpu_hotplug(struct kthread_work *work)
 	mutex_unlock(&data->lock);
 }
 
-static void gs101_throttle_cpu_pause(struct kthread_work *work)
-{
-	struct gs101_tmu_data *data = container_of(work,
-						   struct gs101_tmu_data, cpu_pause_work);
-	struct cpumask mask;
-
-	mutex_lock(&data->lock);
-	cpumask_and(&mask, cpu_possible_mask, &data->pause_cpus);
-
-	if (data->is_cpu_paused) {
-		if (data->temperature < data->resume_threshold) {
-			if (resume_cpus(&mask)) {
-				// queue the work again in case failure
-				// also do not queue again when prepare to suspend
-				if (!atomic_read(&gs101_tmu_in_suspend))
-					kthread_queue_work(&data->pause_worker,
-							   &data->cpu_pause_work);
-			} else {
-				data->is_cpu_paused = false;
-				pr_info_ratelimited("%s resume cpus: %*pbl\n",
-					data->tmu_name, cpumask_pr_args(&mask));
-			}
-		}
-	} else {
-		if (data->temperature >= data->pause_threshold) {
-			if (pause_cpus(&mask)) {
-				// queue the work again in case of failure
-				// also do not queue again when prepare to suspend
-				if (!atomic_read(&gs101_tmu_in_suspend))
-					kthread_queue_work(&data->pause_worker,
-							   &data->cpu_pause_work);
-			} else {
-				data->is_cpu_paused = true;
-				pr_info_ratelimited("%s pause cpus: %*pbl\n",
-					data->tmu_name, cpumask_pr_args(&mask));
-			}
-		}
-	}
-	trace_thermal_exynos_cpu_pause(data->tmu_name, &mask, data->is_cpu_paused);
-
-	disable_stats_update(data->disable_stats, data->is_cpu_paused);
-
-	mutex_unlock(&data->lock);
-}
-
 static void gs101_throttle_hard_limit(struct kthread_work *work)
 {
 	struct gs101_tmu_data *data = container_of(work,
@@ -1216,9 +1171,8 @@ static int gs101_tmu_irq_work_init(struct platform_device *pdev)
 			kthread_init_work(&data->hotplug_work, gs101_throttle_cpu_hotplug);
 		}
 
-		if (data->pause_enable) {
-			kthread_init_work(&data->cpu_pause_work, gs101_throttle_cpu_pause);
-		}
+		if (data->pause_enable)
+			dev_warn(&pdev->dev, "cpu_pause disabled");
 
 		kthread_init_worker(&data->pause_worker);
 		scnprintf(kworker_name, CPUHP_USER_NAME_LEN, "%s_pause", data->tmu_name);

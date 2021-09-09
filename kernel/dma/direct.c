@@ -43,7 +43,6 @@ u64 dma_direct_get_required_mask(struct device *dev)
 
 	return (1ULL << (fls64(max_dma) - 1)) * 2 - 1;
 }
-EXPORT_SYMBOL_GPL(dma_direct_get_required_mask);
 
 static gfp_t dma_direct_optimal_gfp_mask(struct device *dev, u64 dma_mask,
 				  u64 *phys_limit)
@@ -314,7 +313,6 @@ out_free_pages:
 	dma_free_contiguous(dev, page, size);
 	return NULL;
 }
-EXPORT_SYMBOL_GPL(dma_direct_alloc);
 
 void dma_direct_free_pages(struct device *dev, size_t size,
 		struct page *page, dma_addr_t dma_addr,
@@ -333,7 +331,6 @@ void dma_direct_free_pages(struct device *dev, size_t size,
 
 	dma_free_contiguous(dev, page, size);
 }
-EXPORT_SYMBOL_GPL(dma_direct_free);
 
 #if defined(CONFIG_ARCH_HAS_SYNC_DMA_FOR_DEVICE) || \
     defined(CONFIG_SWIOTLB)
@@ -347,8 +344,8 @@ void dma_direct_sync_sg_for_device(struct device *dev,
 		phys_addr_t paddr = dma_to_phys(dev, sg_dma_address(sg));
 
 		if (unlikely(is_swiotlb_buffer(paddr)))
-			swiotlb_tbl_sync_single(dev, paddr, sg->length,
-					dir, SYNC_FOR_DEVICE);
+			swiotlb_sync_single_for_device(dev, paddr, sg->length,
+						       dir);
 
 		if (!dev_is_dma_coherent(dev))
 			arch_sync_dma_for_device(paddr, sg->length,
@@ -373,8 +370,8 @@ void dma_direct_sync_sg_for_cpu(struct device *dev,
 			arch_sync_dma_for_cpu(paddr, sg->length, dir);
 
 		if (unlikely(is_swiotlb_buffer(paddr)))
-			swiotlb_tbl_sync_single(dev, paddr, sg->length, dir,
-					SYNC_FOR_CPU);
+			swiotlb_sync_single_for_cpu(dev, paddr, sg->length,
+						    dir);
 
 		if (dir == DMA_FROM_DEVICE)
 			arch_dma_mark_clean(paddr, sg->length);
@@ -550,4 +547,3 @@ int dma_direct_set_offset(struct device *dev, phys_addr_t cpu_start,
 	dev->dma_range_map = map;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(dma_direct_set_offset);

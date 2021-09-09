@@ -23,6 +23,7 @@
 #include <linux/if_ether.h>
 #include <linux/mpls.h>
 #include <linux/tcp.h>
+#include <linux/ptp_classify.h>
 #include <net/flow_dissector.h>
 #include <scsi/fc/fc_fcoe.h>
 #include <uapi/linux/batadv_packet.h>
@@ -48,7 +49,7 @@ void skb_flow_dissector_init(struct flow_dissector *flow_dissector,
 	memset(flow_dissector, 0, sizeof(*flow_dissector));
 
 	for (i = 0; i < key_count; i++, key++) {
-		/* User should make sure that every key target offset is withing
+		/* User should make sure that every key target offset is within
 		 * boundaries of unsigned short.
 		 */
 		BUG_ON(key->offset > USHRT_MAX);
@@ -113,7 +114,7 @@ int flow_dissector_bpf_prog_attach_check(struct net *net,
  * is the protocol port offset returned from proto_ports_offset
  */
 __be32 __skb_flow_get_ports(const struct sk_buff *skb, int thoff, u8 ip_proto,
-			    void *data, int hlen)
+			    const void *data, int hlen)
 {
 	int poff = proto_ports_offset(ip_proto);
 
@@ -160,7 +161,7 @@ static bool icmp_has_id(u8 type)
  */
 void skb_flow_get_icmp_tci(const struct sk_buff *skb,
 			   struct flow_dissector_key_icmp *key_icmp,
-			   void *data, int thoff, int hlen)
+			   const void *data, int thoff, int hlen)
 {
 	struct icmphdr *ih, _ih;
 
@@ -186,8 +187,8 @@ EXPORT_SYMBOL(skb_flow_get_icmp_tci);
  */
 static void __skb_flow_dissect_icmp(const struct sk_buff *skb,
 				    struct flow_dissector *flow_dissector,
-				    void *target_container,
-				    void *data, int thoff, int hlen)
+				    void *target_container, const void *data,
+				    int thoff, int hlen)
 {
 	struct flow_dissector_key_icmp *key_icmp;
 
@@ -236,9 +237,8 @@ skb_flow_dissect_set_enc_addr_type(enum flow_dissector_key_id type,
 void
 skb_flow_dissect_ct(const struct sk_buff *skb,
 		    struct flow_dissector *flow_dissector,
-		    void *target_container,
-		    u16 *ctinfo_map,
-		    size_t mapsize)
+		    void *target_container, u16 *ctinfo_map,
+		    size_t mapsize, bool post_ct)
 {
 #if IS_ENABLED(CONFIG_NF_CONNTRACK)
 	struct flow_dissector_key_ct *key;
@@ -250,12 +250,18 @@ skb_flow_dissect_ct(const struct sk_buff *skb,
 		return;
 
 	ct = nf_ct_get(skb, &ctinfo);
-	if (!ct)
+	if (!ct && !post_ct)
 		return;
 
 	key = skb_flow_dissector_target(flow_dissector,
 					FLOW_DISSECTOR_KEY_CT,
 					target_container);
+
+	if (!ct) {
+		key->ct_state = TCA_FLOWER_KEY_CT_FLAGS_TRACKED |
+				TCA_FLOWER_KEY_CT_FLAGS_INVALID;
+		return;
+	}
 
 	if (ctinfo < mapsize)
 		key->ct_state = ctinfo_map[ctinfo];
@@ -403,8 +409,8 @@ EXPORT_SYMBOL(skb_flow_dissect_hash);
 static enum flow_dissect_ret
 __skb_flow_dissect_mpls(const struct sk_buff *skb,
 			struct flow_dissector *flow_dissector,
-			void *target_container, void *data, int nhoff, int hlen,
-			int lse_index, bool *entropy_label)
+			void *target_container, const void *data, int nhoff,
+			int hlen, int lse_index, bool *entropy_label)
 {
 	struct mpls_label *hdr, _hdr;
 	u32 entry, label, bos;
@@ -461,7 +467,8 @@ __skb_flow_dissect_mpls(const struct sk_buff *skb,
 static enum flow_dissect_ret
 __skb_flow_dissect_arp(const struct sk_buff *skb,
 		       struct flow_dissector *flow_dissector,
-		       void *target_container, void *data, int nhoff, int hlen)
+		       void *target_container, const void *data,
+		       int nhoff, int hlen)
 {
 	struct flow_dissector_key_arp *key_arp;
 	struct {
@@ -517,7 +524,7 @@ static enum flow_dissect_ret
 __skb_flow_dissect_gre(const struct sk_buff *skb,
 		       struct flow_dissector_key_control *key_control,
 		       struct flow_dissector *flow_dissector,
-		       void *target_container, void *data,
+		       void *target_container, const void *data,
 		       __be16 *p_proto, int *p_nhoff, int *p_hlen,
 		       unsigned int flags)
 {
@@ -657,8 +664,8 @@ __skb_flow_dissect_gre(const struct sk_buff *skb,
 static enum flow_dissect_ret
 __skb_flow_dissect_batadv(const struct sk_buff *skb,
 			  struct flow_dissector_key_control *key_control,
-			  void *data, __be16 *p_proto, int *p_nhoff, int hlen,
-			  unsigned int flags)
+			  const void *data, __be16 *p_proto, int *p_nhoff,
+			  int hlen, unsigned int flags)
 {
 	struct {
 		struct batadv_unicast_packet batadv_unicast;
@@ -689,7 +696,8 @@ __skb_flow_dissect_batadv(const struct sk_buff *skb,
 static void
 __skb_flow_dissect_tcp(const struct sk_buff *skb,
 		       struct flow_dissector *flow_dissector,
-		       void *target_container, void *data, int thoff, int hlen)
+		       void *target_container, const void *data,
+		       int thoff, int hlen)
 {
 	struct flow_dissector_key_tcp *key_tcp;
 	struct tcphdr *th, _th;
@@ -713,8 +721,8 @@ __skb_flow_dissect_tcp(const struct sk_buff *skb,
 static void
 __skb_flow_dissect_ports(const struct sk_buff *skb,
 			 struct flow_dissector *flow_dissector,
-			 void *target_container, void *data, int nhoff,
-			 u8 ip_proto, int hlen)
+			 void *target_container, const void *data,
+			 int nhoff, u8 ip_proto, int hlen)
 {
 	enum flow_dissector_key_id dissector_ports = FLOW_DISSECTOR_KEY_MAX;
 	struct flow_dissector_key_ports *key_ports;
@@ -738,7 +746,8 @@ __skb_flow_dissect_ports(const struct sk_buff *skb,
 static void
 __skb_flow_dissect_ipv4(const struct sk_buff *skb,
 			struct flow_dissector *flow_dissector,
-			void *target_container, void *data, const struct iphdr *iph)
+			void *target_container, const void *data,
+			const struct iphdr *iph)
 {
 	struct flow_dissector_key_ip *key_ip;
 
@@ -755,7 +764,8 @@ __skb_flow_dissect_ipv4(const struct sk_buff *skb,
 static void
 __skb_flow_dissect_ipv6(const struct sk_buff *skb,
 			struct flow_dissector *flow_dissector,
-			void *target_container, void *data, const struct ipv6hdr *iph)
+			void *target_container, const void *data,
+			const struct ipv6hdr *iph)
 {
 	struct flow_dissector_key_ip *key_ip;
 
@@ -904,9 +914,8 @@ bool bpf_flow_dissect(struct bpf_prog *prog, struct bpf_flow_dissector *ctx,
 bool __skb_flow_dissect(const struct net *net,
 			const struct sk_buff *skb,
 			struct flow_dissector *flow_dissector,
-			void *target_container,
-			void *data, __be16 proto, int nhoff, int hlen,
-			unsigned int flags)
+			void *target_container, const void *data,
+			__be16 proto, int nhoff, int hlen, unsigned int flags)
 {
 	struct flow_dissector_key_control *key_control;
 	struct flow_dissector_key_basic *key_basic;
@@ -934,8 +943,8 @@ bool __skb_flow_dissect(const struct net *net,
 			int offset = 0;
 
 			ops = skb->dev->dsa_ptr->tag_ops;
-			/* Tail taggers don't break flow dissection */
-			if (!ops->tail_tag) {
+			/* Only DSA header taggers break flow dissection */
+			if (ops->needed_headroom) {
 				if (ops->flow_dissect)
 					ops->flow_dissect(skb, &proto, &offset);
 				else
@@ -1252,6 +1261,21 @@ proto_again:
 		fdret = __skb_flow_dissect_batadv(skb, key_control, data,
 						  &proto, &nhoff, hlen, flags);
 		break;
+
+	case htons(ETH_P_1588): {
+		struct ptp_header *hdr, _hdr;
+
+		hdr = __skb_header_pointer(skb, nhoff, sizeof(_hdr), data,
+					   hlen, &_hdr);
+		if (!hdr) {
+			fdret = FLOW_DISSECT_RET_OUT_BAD;
+			break;
+		}
+
+		nhoff += ntohs(hdr->message_length);
+		fdret = FLOW_DISSECT_RET_OUT_GOOD;
+		break;
+	}
 
 	default:
 		fdret = FLOW_DISSECT_RET_OUT_BAD;
@@ -1623,7 +1647,7 @@ __u32 skb_get_hash_perturb(const struct sk_buff *skb,
 }
 EXPORT_SYMBOL(skb_get_hash_perturb);
 
-u32 __skb_get_poff(const struct sk_buff *skb, void *data,
+u32 __skb_get_poff(const struct sk_buff *skb, const void *data,
 		   const struct flow_keys_basic *keys, int hlen)
 {
 	u32 poff = keys->control.thoff;

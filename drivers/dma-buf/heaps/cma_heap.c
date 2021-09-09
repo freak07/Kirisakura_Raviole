@@ -202,31 +202,34 @@ static void *cma_heap_do_vmap(struct cma_heap_buffer *buffer)
 	return vaddr;
 }
 
-static void *cma_heap_vmap(struct dma_buf *dmabuf)
+static int cma_heap_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
 {
 	struct cma_heap_buffer *buffer = dmabuf->priv;
 	void *vaddr;
+	int ret = 0;
 
 	mutex_lock(&buffer->lock);
 	if (buffer->vmap_cnt) {
 		buffer->vmap_cnt++;
-		vaddr = buffer->vaddr;
+		dma_buf_map_set_vaddr(map, buffer->vaddr);
 		goto out;
 	}
 
 	vaddr = cma_heap_do_vmap(buffer);
-	if (IS_ERR(vaddr))
+	if (IS_ERR(vaddr)) {
+		ret = PTR_ERR(vaddr);
 		goto out;
-
+	}
 	buffer->vaddr = vaddr;
 	buffer->vmap_cnt++;
+	dma_buf_map_set_vaddr(map, buffer->vaddr);
 out:
 	mutex_unlock(&buffer->lock);
 
-	return vaddr;
+	return ret;
 }
 
-static void cma_heap_vunmap(struct dma_buf *dmabuf, void *vaddr)
+static void cma_heap_vunmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
 {
 	struct cma_heap_buffer *buffer = dmabuf->priv;
 
@@ -236,6 +239,7 @@ static void cma_heap_vunmap(struct dma_buf *dmabuf, void *vaddr)
 		buffer->vaddr = NULL;
 	}
 	mutex_unlock(&buffer->lock);
+	dma_buf_map_clear(map);
 }
 
 static void cma_heap_dma_buf_release(struct dma_buf *dmabuf)
@@ -246,6 +250,7 @@ static void cma_heap_dma_buf_release(struct dma_buf *dmabuf)
 	if (buffer->vmap_cnt > 0) {
 		WARN(1, "%s: buffer still mapped in the kernel\n", __func__);
 		vunmap(buffer->vaddr);
+		buffer->vaddr = NULL;
 	}
 
 	/* free page list */
@@ -346,7 +351,6 @@ static struct dma_buf *cma_heap_allocate(struct dma_heap *heap,
 		ret = PTR_ERR(dmabuf);
 		goto free_pages;
 	}
-
 	return dmabuf;
 
 free_pages:

@@ -84,7 +84,6 @@ enum tcpm_transmit_type {
  *		automatically if a connection is established.
  * @try_role:	Optional; called to set a preferred role
  * @pd_transmit:Called to transmit PD message
- * @mux:	Pointer to multiplexer data
  * @set_bist_data: Turn on/off bist data mode for compliance testing
  * @enable_frs:
  *		Optional; Called to enable/disable PD 3.0 fast role swap.
@@ -105,14 +104,6 @@ enum tcpm_transmit_type {
  *		will be turned on. requested_vbus_voltage is set to 0 when vbus
  *		is going to disappear knowingly i.e. during PR_SWAP and
  *		HARD_RESET etc.
- * @check_contaminant:
- *		Optional; The callback is called when CC pins report open status
- *		at the end of the toggling period. Chip level drivers are
- *		expected to check for contaminant and re-enable toggling if
- *		needed. Return > 0 when contaminant will restart toggling
- *		when the connector is free of contaminant; this forces the TCPM
- *		state machine to tranistion to TOGGLING state without calling
- *		start_toggling.
  * @is_vbus_vsafe0v:
  *		Optional; TCPCI spec based TCPC implementations are expected to
  *		detect VSAFE0V voltage level at vbus. When detection of VSAFE0V
@@ -123,6 +114,14 @@ enum tcpm_transmit_type {
  *              Optional; The USB Communications Capable bit indicates if port
  *              partner is capable of communication over the USB data lines
  *              (e.g. D+/- or SS Tx/Rx). Called to notify the status of the bit.
+ * @check_contaminant:
+ *		Optional; The callback is called when CC pins report open status
+ *		at the end of the toggling period. Chip level drivers are
+ *		expected to check for contaminant and re-enable toggling if
+ *		needed. When 0 is not returned, check_contaminant is expected to
+ *		restart toggling after checking the connector for contaminant.
+ *		This forces the TCPM state machine to tranistion to TOGGLING state
+ *		without calling start_toggling callback.
  */
 struct tcpc_dev {
 	struct fwnode_handle *fwnode;
@@ -155,9 +154,9 @@ struct tcpc_dev {
 	int (*enable_auto_vbus_discharge)(struct tcpc_dev *dev, bool enable);
 	int (*set_auto_vbus_discharge_threshold)(struct tcpc_dev *dev, enum typec_pwr_opmode mode,
 						 bool pps_active, u32 requested_vbus_voltage);
-	int (*check_contaminant)(struct tcpc_dev *dev);
 	bool (*is_vbus_vsafe0v)(struct tcpc_dev *dev);
 	void (*set_partner_usb_comm_capable)(struct tcpc_dev *dev, bool enable);
+	int (*check_contaminant)(struct tcpc_dev *dev);
 };
 
 struct tcpm_port;

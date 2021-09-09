@@ -14,8 +14,6 @@ DECLARE_HOOK(android_vh_printk_hotplug,
 	TP_PROTO(int *flag),
 	TP_ARGS(flag));
 
-/* macro versions of hooks are no longer required */
-
 #endif /* _TRACE_HOOK_PRINTK_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>

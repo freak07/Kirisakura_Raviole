@@ -62,12 +62,9 @@
 #define MAIR_EL1_SET							\
 	(MAIR_ATTRIDX(MAIR_ATTR_DEVICE_nGnRnE, MT_DEVICE_nGnRnE) |	\
 	 MAIR_ATTRIDX(MAIR_ATTR_DEVICE_nGnRE, MT_DEVICE_nGnRE) |	\
-	 MAIR_ATTRIDX(MAIR_ATTR_DEVICE_GRE, MT_DEVICE_GRE) |		\
 	 MAIR_ATTRIDX(MAIR_ATTR_NORMAL_NC, MT_NORMAL_NC) |		\
 	 MAIR_ATTRIDX(MAIR_ATTR_NORMAL, MT_NORMAL) |			\
-	 MAIR_ATTRIDX(MAIR_ATTR_NORMAL_WT, MT_NORMAL_WT) |		\
-	 MAIR_ATTRIDX(MAIR_ATTR_NORMAL, MT_NORMAL_TAGGED) |		\
-	 MAIR_ATTRIDX(MAIR_ATTR_NORMAL_iNC_oWB, MT_NORMAL_iNC_oWB))
+	 MAIR_ATTRIDX(MAIR_ATTR_NORMAL, MT_NORMAL_TAGGED))
 
 #ifdef CONFIG_CPU_PM
 /**
@@ -88,11 +85,7 @@ SYM_FUNC_START(cpu_do_suspend)
 	mrs	x9, mdscr_el1
 	mrs	x10, oslsr_el1
 	mrs	x11, sctlr_el1
-alternative_if_not ARM64_HAS_VIRT_HOST_EXTN
-	mrs	x12, tpidr_el1
-alternative_else
-	mrs	x12, tpidr_el2
-alternative_endif
+	get_this_cpu_offset x12
 	mrs	x13, sp_el0
 	stp	x2, x3, [x0]
 	stp	x4, x5, [x0, #16]
@@ -150,11 +143,7 @@ SYM_FUNC_START(cpu_do_resume)
 	msr	mdscr_el1, x10
 
 	msr	sctlr_el1, x12
-alternative_if_not ARM64_HAS_VIRT_HOST_EXTN
-	msr	tpidr_el1, x13
-alternative_else
-	msr	tpidr_el2, x13
-alternative_endif
+	set_this_cpu_offset x13
 	msr	sp_el0, x14
 	/*
 	 * Restore oslsr_el1 by writing oslar_el1
@@ -179,7 +168,7 @@ SYM_FUNC_END(cpu_do_resume)
 	.pushsection ".idmap.text", "awx"
 
 .macro	__idmap_cpu_set_reserved_ttbr1, tmp1, tmp2
-	adrp	\tmp1, empty_zero_page
+	adrp	\tmp1, reserved_pg_dir
 	phys_to_ttbr \tmp2, \tmp1
 	offset_ttbr1 \tmp2, \tmp1
 	msr	ttbr1_el1, \tmp2
@@ -424,14 +413,17 @@ SYM_FUNC_START(__cpu_setup)
 	reset_amuserenr_el0 x1			// Disable AMU access from EL0
 
 	/*
-	 * Memory region attributes
+	 * Default values for VMSA control registers. These will be adjusted
+	 * below depending on detected CPU features.
 	 */
-	mov_q	x5, MAIR_EL1_SET
+	mair	.req	x17
+	tcr	.req	x16
+	mov_q	mair, MAIR_EL1_SET
+	mov_q	tcr, TCR_TxSZ(VA_BITS) | TCR_CACHE_FLAGS | TCR_SMP_FLAGS | \
+			TCR_TG_FLAGS | TCR_KASLR_FLAGS | TCR_ASID16 | \
+			TCR_TBI0 | TCR_A1 | TCR_KASAN_SW_FLAGS
+
 #ifdef CONFIG_ARM64_MTE
-	mte_tcr	.req	x20
-
-	mov	mte_tcr, #0
-
 	/*
 	 * Update MAIR_EL1, GCR_EL1 and TFSR*_EL1 if MTE is supported
 	 * (ID_AA64PFR1_EL1[11:8] > 1).
@@ -443,7 +435,7 @@ SYM_FUNC_START(__cpu_setup)
 
 	/* Normal Tagged memory type at the corresponding MAIR index */
 	mov	x10, #MAIR_ATTR_NORMAL_TAGGED
-	bfi	x5, x10, #(8 *  MT_NORMAL_TAGGED), #8
+	bfi	mair, x10, #(8 *  MT_NORMAL_TAGGED), #8
 
 	/* initialize GCR_EL1: all non-zero tags excluded by default */
 	mov	x10, #(SYS_GCR_EL1_RRND | SYS_GCR_EL1_EXCL_MASK)
@@ -466,37 +458,26 @@ SYM_FUNC_START(__cpu_setup)
 	msr_s	SYS_TFSRE0_EL1, xzr
 
 	/* set the TCR_EL1 bits */
-	mov_q	mte_tcr, TCR_MTE_FLAGS
+	mov_q	x10, TCR_MTE_FLAGS
+	orr	tcr, tcr, x10
 1:
 #endif
-	msr	mair_el1, x5
-	/*
-	 * Set/prepare TCR and TTBR. TCR_EL1.T1SZ gets further
-	 * adjusted if the kernel is compiled with 52bit VA support.
-	 */
-	mov_q	x10, TCR_TxSZ(VA_BITS) | TCR_CACHE_FLAGS | TCR_SMP_FLAGS | \
-			TCR_TG_FLAGS | TCR_KASLR_FLAGS | TCR_ASID16 | \
-			TCR_TBI0 | TCR_A1 | TCR_KASAN_SW_FLAGS
-#ifdef CONFIG_ARM64_MTE
-	orr	x10, x10, mte_tcr
-	.unreq	mte_tcr
-#endif
-	tcr_clear_errata_bits x10, x9, x5
+	tcr_clear_errata_bits tcr, x9, x5
 
 #ifdef CONFIG_ARM64_VA_BITS_52
 	ldr_l		x9, vabits_actual
 	sub		x9, xzr, x9
 	add		x9, x9, #64
-	tcr_set_t1sz	x10, x9
+	tcr_set_t1sz	tcr, x9
 #else
 	ldr_l		x9, idmap_t0sz
 #endif
-	tcr_set_t0sz	x10, x9
+	tcr_set_t0sz	tcr, x9
 
 	/*
 	 * Set the IPS bits in TCR_EL1.
 	 */
-	tcr_compute_pa_size x10, #TCR_IPS_SHIFT, x5, x6
+	tcr_compute_pa_size tcr, #TCR_IPS_SHIFT, x5, x6
 #ifdef CONFIG_ARM64_HW_AFDBM
 	/*
 	 * Enable hardware update of the Access Flags bit.
@@ -506,13 +487,17 @@ SYM_FUNC_START(__cpu_setup)
 	mrs	x9, ID_AA64MMFR1_EL1
 	and	x9, x9, #0xf
 	cbz	x9, 1f
-	orr	x10, x10, #TCR_HA		// hardware Access flag update
+	orr	tcr, tcr, #TCR_HA		// hardware Access flag update
 1:
 #endif	/* CONFIG_ARM64_HW_AFDBM */
-	msr	tcr_el1, x10
+	msr	mair_el1, mair
+	msr	tcr_el1, tcr
 	/*
 	 * Prepare SCTLR
 	 */
 	mov_q	x0, INIT_SCTLR_EL1_MMU_ON
 	ret					// return to head.S
+
+	.unreq	mair
+	.unreq	tcr
 SYM_FUNC_END(__cpu_setup)

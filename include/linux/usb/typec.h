@@ -18,6 +18,7 @@ struct typec_partner;
 struct typec_cable;
 struct typec_plug;
 struct typec_port;
+struct typec_altmode_ops;
 
 struct fwnode_handle;
 struct device;
@@ -139,6 +140,11 @@ struct typec_altmode
 struct typec_altmode
 *typec_port_register_altmode(struct typec_port *port,
 			     const struct typec_altmode_desc *desc);
+
+void typec_port_register_altmodes(struct typec_port *port,
+	const struct typec_altmode_ops *ops, void *drvdata,
+	struct typec_altmode **altmodes, size_t n);
+
 void typec_unregister_altmode(struct typec_altmode *altmode);
 
 struct typec_port *typec_altmode2port(struct typec_altmode *alt);
@@ -292,6 +298,7 @@ int typec_set_mode(struct typec_port *port, int mode);
 
 void *typec_get_drvdata(struct typec_port *port);
 
+int typec_find_pwr_opmode(const char *name);
 int typec_find_orientation(const char *name);
 int typec_find_port_power_role(const char *name);
 int typec_find_power_role(const char *name);
@@ -300,4 +307,17 @@ int typec_find_port_data_role(const char *name);
 void typec_partner_set_svdm_version(struct typec_partner *partner,
 				    enum usb_pd_svdm_ver svdm_version);
 int typec_get_negotiated_svdm_version(struct typec_port *port);
+
+#if IS_REACHABLE(CONFIG_TYPEC)
+int typec_link_port(struct device *port);
+void typec_unlink_port(struct device *port);
+#else
+static inline int typec_link_port(struct device *port)
+{
+	return 0;
+}
+
+static inline void typec_unlink_port(struct device *port) { }
+#endif
+
 #endif /* __LINUX_USB_TYPEC_H */

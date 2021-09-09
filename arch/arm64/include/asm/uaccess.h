@@ -27,44 +27,16 @@
 
 #define HAVE_GET_KERNEL_NOFAULT
 
-#define get_fs()	(current_thread_info()->addr_limit)
-
-static inline void set_fs(mm_segment_t fs)
-{
-	current_thread_info()->addr_limit = fs;
-
-	/*
-	 * Prevent a mispredicted conditional call to set_fs from forwarding
-	 * the wrong address limit to access_ok under speculation.
-	 */
-	spec_bar();
-
-	/* On user-mode return, check fs is correct */
-	set_thread_flag(TIF_FSCHECK);
-
-	/*
-	 * Enable/disable UAO so that copy_to_user() etc can access
-	 * kernel memory with the unprivileged instructions.
-	 */
-	if (IS_ENABLED(CONFIG_ARM64_UAO) && fs == KERNEL_DS)
-		asm(ALTERNATIVE("nop", SET_PSTATE_UAO(1), ARM64_HAS_UAO));
-	else
-		asm(ALTERNATIVE("nop", SET_PSTATE_UAO(0), ARM64_HAS_UAO,
-				CONFIG_ARM64_UAO));
-}
-
-#define uaccess_kernel()	(get_fs() == KERNEL_DS)
-
 /*
  * Test whether a block of memory is a valid user space address.
  * Returns 1 if the range is valid, 0 otherwise.
  *
  * This is equivalent to the following test:
- * (u65)addr + (u65)size <= (u65)current->addr_limit + 1
+ * (u65)addr + (u65)size <= (u65)TASK_SIZE_MAX
  */
 static inline unsigned long __range_ok(const void __user *addr, unsigned long size)
 {
-	unsigned long ret, limit = current_thread_info()->addr_limit;
+	unsigned long ret, limit = TASK_SIZE_MAX - 1;
 
 	/*
 	 * Asynchronous I/O running in a kernel thread does not have the
@@ -97,7 +69,6 @@ static inline unsigned long __range_ok(const void __user *addr, unsigned long si
 }
 
 #define access_ok(addr, size)	__range_ok(addr, size)
-#define user_addr_max			get_fs
 
 #define _ASM_EXTABLE(from, to)						\
 	"	.pushsection	__ex_table, \"a\"\n"			\
@@ -116,8 +87,8 @@ static inline void __uaccess_ttbr0_disable(void)
 	local_irq_save(flags);
 	ttbr = read_sysreg(ttbr1_el1);
 	ttbr &= ~TTBR_ASID_MASK;
-	/* reserved_ttbr0 placed before swapper_pg_dir */
-	write_sysreg(ttbr - RESERVED_TTBR0_SIZE, ttbr0_el1);
+	/* reserved_pg_dir placed before swapper_pg_dir */
+	write_sysreg(ttbr - RESERVED_SWAPPER_OFFSET, ttbr0_el1);
 	isb();
 	/* Set reserved ASID */
 	write_sysreg(ttbr, ttbr1_el1);
@@ -189,20 +160,6 @@ static inline void __uaccess_enable_hw_pan(void)
 			CONFIG_ARM64_PAN));
 }
 
-#define __uaccess_disable(alt)						\
-do {									\
-	if (!uaccess_ttbr0_disable())					\
-		asm(ALTERNATIVE("nop", SET_PSTATE_PAN(1), alt,		\
-				CONFIG_ARM64_PAN));			\
-} while (0)
-
-#define __uaccess_enable(alt)						\
-do {									\
-	if (!uaccess_ttbr0_enable())					\
-		asm(ALTERNATIVE("nop", SET_PSTATE_PAN(0), alt,		\
-				CONFIG_ARM64_PAN));			\
-} while (0)
-
 /*
  * The Tag Check Flag (TCF) mode for MTE is per EL, hence TCF0
  * affects EL0 and TCF affects EL1 irrespective of which TTBR is
@@ -253,33 +210,26 @@ static inline void uaccess_disable_privileged(void)
 {
 	__uaccess_disable_tco();
 
-	__uaccess_disable(ARM64_HAS_PAN);
+	if (uaccess_ttbr0_disable())
+		return;
+
+	__uaccess_enable_hw_pan();
 }
 
 static inline void uaccess_enable_privileged(void)
 {
 	__uaccess_enable_tco();
 
-	__uaccess_enable(ARM64_HAS_PAN);
+	if (uaccess_ttbr0_enable())
+		return;
+
+	__uaccess_disable_hw_pan();
 }
 
 /*
- * These functions are no-ops when UAO is present.
- */
-static inline void uaccess_disable_not_uao(void)
-{
-	__uaccess_disable(ARM64_ALT_PAN_NOT_UAO);
-}
-
-static inline void uaccess_enable_not_uao(void)
-{
-	__uaccess_enable(ARM64_ALT_PAN_NOT_UAO);
-}
-
-/*
- * Sanitise a uaccess pointer such that it becomes NULL if above the
- * current addr_limit. In case the pointer is tagged (has the top byte set),
- * untag the pointer before checking.
+ * Sanitise a uaccess pointer such that it becomes NULL if above the maximum
+ * user address. In case the pointer is tagged (has the top byte set), untag
+ * the pointer before checking.
  */
 #define uaccess_mask_ptr(ptr) (__typeof__(ptr))__uaccess_mask_ptr(ptr)
 static inline void __user *__uaccess_mask_ptr(const void __user *ptr)
@@ -290,7 +240,7 @@ static inline void __user *__uaccess_mask_ptr(const void __user *ptr)
 	"	bics	xzr, %3, %2\n"
 	"	csel	%0, %1, xzr, eq\n"
 	: "=&r" (safe_ptr)
-	: "r" (ptr), "r" (current_thread_info()->addr_limit),
+	: "r" (ptr), "r" (TASK_SIZE_MAX - 1),
 	  "r" (untagged_addr(ptr))
 	: "cc");
 
@@ -345,9 +295,9 @@ do {									\
 #define __raw_get_user(x, ptr, err)					\
 do {									\
 	__chk_user_ptr(ptr);						\
-	uaccess_enable_not_uao();					\
+	uaccess_ttbr0_enable();						\
 	__raw_get_mem("ldtr", x, ptr, err);				\
-	uaccess_disable_not_uao();					\
+	uaccess_ttbr0_disable();					\
 } while (0)
 
 #define __get_user_error(x, ptr, err)					\
@@ -420,9 +370,9 @@ do {									\
 #define __raw_put_user(x, ptr, err)					\
 do {									\
 	__chk_user_ptr(ptr);						\
-	uaccess_enable_not_uao();					\
+	uaccess_ttbr0_enable();						\
 	__raw_put_mem("sttr", x, ptr, err);				\
-	uaccess_disable_not_uao();					\
+	uaccess_ttbr0_disable();					\
 } while (0)
 
 #define __put_user_error(x, ptr, err)					\
@@ -462,10 +412,10 @@ extern unsigned long __must_check __arch_copy_from_user(void *to, const void __u
 #define raw_copy_from_user(to, from, n)					\
 ({									\
 	unsigned long __acfu_ret;					\
-	uaccess_enable_not_uao();					\
+	uaccess_ttbr0_enable();						\
 	__acfu_ret = __arch_copy_from_user((to),			\
 				      __uaccess_mask_ptr(from), (n));	\
-	uaccess_disable_not_uao();					\
+	uaccess_ttbr0_disable();					\
 	__acfu_ret;							\
 })
 
@@ -473,10 +423,10 @@ extern unsigned long __must_check __arch_copy_to_user(void __user *to, const voi
 #define raw_copy_to_user(to, from, n)					\
 ({									\
 	unsigned long __actu_ret;					\
-	uaccess_enable_not_uao();					\
+	uaccess_ttbr0_enable();						\
 	__actu_ret = __arch_copy_to_user(__uaccess_mask_ptr(to),	\
 				    (from), (n));			\
-	uaccess_disable_not_uao();					\
+	uaccess_ttbr0_disable();					\
 	__actu_ret;							\
 })
 
@@ -484,10 +434,10 @@ extern unsigned long __must_check __arch_copy_in_user(void __user *to, const voi
 #define raw_copy_in_user(to, from, n)					\
 ({									\
 	unsigned long __aciu_ret;					\
-	uaccess_enable_not_uao();					\
+	uaccess_ttbr0_enable();						\
 	__aciu_ret = __arch_copy_in_user(__uaccess_mask_ptr(to),	\
 				    __uaccess_mask_ptr(from), (n));	\
-	uaccess_disable_not_uao();					\
+	uaccess_ttbr0_disable();					\
 	__aciu_ret;							\
 })
 
@@ -498,9 +448,9 @@ extern unsigned long __must_check __arch_clear_user(void __user *to, unsigned lo
 static inline unsigned long __must_check __clear_user(void __user *to, unsigned long n)
 {
 	if (access_ok(to, n)) {
-		uaccess_enable_not_uao();
+		uaccess_ttbr0_enable();
 		n = __arch_clear_user(__uaccess_mask_ptr(to), n);
-		uaccess_disable_not_uao();
+		uaccess_ttbr0_disable();
 	}
 	return n;
 }

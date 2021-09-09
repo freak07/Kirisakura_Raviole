@@ -69,10 +69,11 @@ static inline void *sve_pffr(struct thread_struct *thread)
 extern void sve_save_state(void *state, u32 *pfpsr);
 extern void sve_load_state(void const *state, u32 const *pfpsr,
 			   unsigned long vq_minus_1);
-extern void sve_flush_live(void);
+extern void sve_flush_live(unsigned long vq_minus_1);
 extern void sve_load_from_fpsimd_state(struct user_fpsimd_state const *state,
 				       unsigned long vq_minus_1);
 extern unsigned int sve_get_vl(void);
+extern void sve_set_vq(unsigned long vq_minus_1);
 
 struct arm64_cpu_capabilities;
 extern void sve_kernel_enable(const struct arm64_cpu_capabilities *__unused);
@@ -167,6 +168,8 @@ static inline int sve_get_current_vl(void)
 
 static inline void sve_user_disable(void) { BUILD_BUG(); }
 static inline void sve_user_enable(void) { BUILD_BUG(); }
+
+#define sve_cond_update_zcr_vq(val, reg) do { } while (0)
 
 static inline void sve_init_vq_map(void) { }
 static inline void sve_update_vq_map(void) { }

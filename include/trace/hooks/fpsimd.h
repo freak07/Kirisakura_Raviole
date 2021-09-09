@@ -16,8 +16,6 @@ DECLARE_HOOK(android_vh_is_fpsimd_save,
 	TP_PROTO(struct task_struct *prev, struct task_struct *next),
 	TP_ARGS(prev, next))
 
-/* macro versions of hooks are no longer required */
-
 #endif /* _TRACE_HOOK_FPSIMD_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>

@@ -18,6 +18,7 @@
 #include <linux/smc.h>
 #include <linux/kdebug.h>
 #include <linux/arm-smccc.h>
+#include <linux/panic_notifier.h>
 
 #include <asm/cputype.h>
 #include <asm/smp_plat.h>
@@ -235,12 +236,12 @@ static void dbg_snapshot_dump_one_task_info(struct task_struct *tsk, bool is_mai
 	unsigned long state, pc = 0;
 
 	if ((!tsk) || !try_get_task_stack(tsk) || (tsk->flags & PF_FROZEN) ||
-			!(tsk->state == TASK_RUNNING ||
-				tsk->state == TASK_UNINTERRUPTIBLE ||
-				tsk->state == TASK_KILLABLE))
+			!(tsk->__state == TASK_RUNNING ||
+				tsk->__state == TASK_UNINTERRUPTIBLE ||
+				tsk->__state == TASK_KILLABLE))
 		return;
 
-	state = tsk->state | tsk->exit_state;
+	state = tsk->__state | tsk->exit_state;
 	pc = KSTK_EIP(tsk);
 	while (state) {
 		idx++;
@@ -255,7 +256,7 @@ static void dbg_snapshot_dump_one_task_info(struct task_struct *tsk, bool is_mai
 
 	pr_info("%8d %16llu %16llu %16llu %c(%ld) %3d %16pK %16pK %c %16s\n",
 		tsk->pid, tsk->utime, tsk->stime,
-		tsk->se.exec_start, state_array[idx], (tsk->state),
+		tsk->se.exec_start, state_array[idx], (tsk->__state),
 		task_cpu(tsk), pc, tsk, is_main ? '*' : ' ', tsk->comm);
 
 	sched_show_task(tsk);

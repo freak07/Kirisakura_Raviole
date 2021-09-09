@@ -268,31 +268,35 @@ static void *system_heap_do_vmap(struct system_heap_buffer *buffer)
 	return vaddr;
 }
 
-static void *system_heap_vmap(struct dma_buf *dmabuf)
+static int system_heap_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
 {
 	struct system_heap_buffer *buffer = dmabuf->priv;
 	void *vaddr;
+	int ret = 0;
 
 	mutex_lock(&buffer->lock);
 	if (buffer->vmap_cnt) {
 		buffer->vmap_cnt++;
-		vaddr = buffer->vaddr;
+		dma_buf_map_set_vaddr(map, buffer->vaddr);
 		goto out;
 	}
 
 	vaddr = system_heap_do_vmap(buffer);
-	if (IS_ERR(vaddr))
+	if (IS_ERR(vaddr)) {
+		ret = PTR_ERR(vaddr);
 		goto out;
+	}
 
 	buffer->vaddr = vaddr;
 	buffer->vmap_cnt++;
+	dma_buf_map_set_vaddr(map, buffer->vaddr);
 out:
 	mutex_unlock(&buffer->lock);
 
-	return vaddr;
+	return ret;
 }
 
-static void system_heap_vunmap(struct dma_buf *dmabuf, void *vaddr)
+static void system_heap_vunmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
 {
 	struct system_heap_buffer *buffer = dmabuf->priv;
 
@@ -302,6 +306,7 @@ static void system_heap_vunmap(struct dma_buf *dmabuf, void *vaddr)
 		buffer->vaddr = NULL;
 	}
 	mutex_unlock(&buffer->lock);
+	dma_buf_map_clear(map);
 }
 
 static int system_heap_zero_buffer(struct system_heap_buffer *buffer)
@@ -428,8 +433,10 @@ static struct dma_buf *system_heap_do_allocate(struct dma_heap *heap,
 		 * Avoid trying to allocate memory if the process
 		 * has been killed by SIGKILL
 		 */
-		if (fatal_signal_pending(current))
+		if (fatal_signal_pending(current)) {
+			ret = -EINTR;
 			goto free_buffer;
+		}
 
 		page = alloc_largest_available(size_remaining, max_order);
 		if (!page)
@@ -518,6 +525,28 @@ static long system_get_pool_size(struct dma_heap *heap)
 static const struct dma_heap_ops system_heap_ops = {
 	.allocate = system_heap_allocate,
 	.get_pool_size = system_get_pool_size,
+};
+
+static struct dma_buf *system_uncached_heap_allocate(struct dma_heap *heap,
+						     unsigned long len,
+						     unsigned long fd_flags,
+						     unsigned long heap_flags)
+{
+	return system_heap_do_allocate(heap, len, fd_flags, heap_flags, true);
+}
+
+/* Dummy function to be used until we can call coerce_mask_and_coherent */
+static struct dma_buf *system_uncached_heap_not_initialized(struct dma_heap *heap,
+							    unsigned long len,
+							    unsigned long fd_flags,
+							    unsigned long heap_flags)
+{
+	return ERR_PTR(-EBUSY);
+}
+
+static struct dma_heap_ops system_uncached_heap_ops = {
+	/* After system_heap_create is complete, we will swap this */
+	.allocate = system_uncached_heap_not_initialized,
 };
 
 static struct dma_buf *system_uncached_heap_allocate(struct dma_heap *heap,

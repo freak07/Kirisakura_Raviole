@@ -198,7 +198,7 @@ static void set_nat_params(struct adapter *adap, struct filter_entry *f,
 				      WORD_MASK, f->fs.nat_lip[3] |
 				      f->fs.nat_lip[2] << 8 |
 				      f->fs.nat_lip[1] << 16 |
-				      (u64)f->fs.nat_lip[0] << 25, 1);
+				      (u64)f->fs.nat_lip[0] << 24, 1);
 		}
 	}
 
@@ -979,7 +979,7 @@ void clear_filter(struct adapter *adap, struct filter_entry *f)
 {
 	struct port_info *pi = netdev_priv(f->dev);
 
-	/* If the new or old filter have loopback rewriteing rules then we'll
+	/* If the new or old filter have loopback rewriting rules then we'll
 	 * need to free any existing L2T, SMT, CLIP entries of filter
 	 * rule.
 	 */

@@ -47,6 +47,7 @@
 #include <linux/sched/clock.h>
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
+#include <linux/panic_notifier.h>
 
 #include <asm/irq.h>
 

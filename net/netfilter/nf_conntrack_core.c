@@ -150,7 +150,15 @@ static void nf_conntrack_all_lock(void)
 
 	spin_lock(&nf_conntrack_locks_all_lock);
 
-	nf_conntrack_locks_all = true;
+	/* For nf_contrack_locks_all, only the latest time when another
+	 * CPU will see an update is controlled, by the "release" of the
+	 * spin_lock below.
+	 * The earliest time is not controlled, an thus KCSAN could detect
+	 * a race when nf_conntract_lock() reads the variable.
+	 * WRITE_ONCE() is used to ensure the compiler will not
+	 * optimize the write.
+	 */
+	WRITE_ONCE(nf_conntrack_locks_all, true);
 
 	for (i = 0; i < CONNTRACK_LOCKS; i++) {
 		spin_lock(&nf_conntrack_locks[i]);
@@ -657,6 +665,7 @@ static void nf_ct_delete_from_lists(struct nf_conn *ct)
 bool nf_ct_delete(struct nf_conn *ct, u32 portid, int report)
 {
 	struct nf_conn_tstamp *tstamp;
+	struct net *net;
 
 	if (test_and_set_bit(IPS_DYING_BIT, &ct->status))
 		return false;
@@ -671,11 +680,13 @@ bool nf_ct_delete(struct nf_conn *ct, u32 portid, int report)
 		 * be done by event cache worker on redelivery.
 		 */
 		nf_ct_delete_from_lists(ct);
-		nf_conntrack_ecache_delayed_work(nf_ct_net(ct));
+		nf_conntrack_ecache_work(nf_ct_net(ct), NFCT_ECACHE_DESTROY_FAIL);
 		return false;
 	}
 
-	nf_conntrack_ecache_work(nf_ct_net(ct));
+	net = nf_ct_net(ct);
+	if (nf_conntrack_ecache_dwork_pending(net))
+		nf_conntrack_ecache_work(net, NFCT_ECACHE_DESTROY_SENT);
 	nf_ct_delete_from_lists(ct);
 	nf_ct_put(ct);
 	return true;
@@ -1377,6 +1388,7 @@ static void gc_worker(struct work_struct *work)
 			i = 0;
 
 		hlist_nulls_for_each_entry_rcu(h, n, &ct_hash[i], hnnode) {
+			struct nf_conntrack_net *cnet;
 			struct net *net;
 
 			tmp = nf_ct_tuplehash_to_ctrack(h);
@@ -1397,7 +1409,8 @@ static void gc_worker(struct work_struct *work)
 				continue;
 
 			net = nf_ct_net(tmp);
-			if (atomic_read(&net->ct.count) < nf_conntrack_max95)
+			cnet = nf_ct_pernet(net);
+			if (atomic_read(&cnet->count) < nf_conntrack_max95)
 				continue;
 
 			/* need to take reference to avoid possible races */
@@ -1476,17 +1489,18 @@ __nf_conntrack_alloc(struct net *net,
 		     const struct nf_conntrack_tuple *repl,
 		     gfp_t gfp, u32 hash)
 {
+	struct nf_conntrack_net *cnet = nf_ct_pernet(net);
+	unsigned int ct_count;
 	struct nf_conn *ct;
 
 	/* We don't want any race condition at early drop stage */
-	atomic_inc(&net->ct.count);
+	ct_count = atomic_inc_return(&cnet->count);
 
-	if (nf_conntrack_max &&
-	    unlikely(atomic_read(&net->ct.count) > nf_conntrack_max)) {
+	if (nf_conntrack_max && unlikely(ct_count > nf_conntrack_max)) {
 		if (!early_drop(net, hash)) {
 			if (!conntrack_gc_work.early_drop)
 				conntrack_gc_work.early_drop = true;
-			atomic_dec(&net->ct.count);
+			atomic_dec(&cnet->count);
 			net_warn_ratelimited("nf_conntrack: table full, dropping packet\n");
 			return ERR_PTR(-ENOMEM);
 		}
@@ -1523,7 +1537,7 @@ __nf_conntrack_alloc(struct net *net,
 	atomic_set(&ct->ct_general.use, 0);
 	return ct;
 out:
-	atomic_dec(&net->ct.count);
+	atomic_dec(&cnet->count);
 	return ERR_PTR(-ENOMEM);
 }
 
@@ -1540,6 +1554,7 @@ EXPORT_SYMBOL_GPL(nf_conntrack_alloc);
 void nf_conntrack_free(struct nf_conn *ct)
 {
 	struct net *net = nf_ct_net(ct);
+	struct nf_conntrack_net *cnet;
 
 	/* A freed object has refcnt == 0, that's
 	 * the golden rule for SLAB_TYPESAFE_BY_RCU
@@ -1548,9 +1563,11 @@ void nf_conntrack_free(struct nf_conn *ct)
 
 	nf_ct_ext_destroy(ct);
 	kmem_cache_free(nf_conntrack_cachep, ct);
+	cnet = nf_ct_pernet(net);
+
 	smp_mb__before_atomic();
 	trace_android_rvh_nf_conn_free(ct);
-	atomic_dec(&net->ct.count);
+	atomic_dec(&cnet->count);
 }
 EXPORT_SYMBOL_GPL(nf_conntrack_free);
 
@@ -1571,6 +1588,7 @@ init_conntrack(struct net *net, struct nf_conn *tmpl,
 	const struct nf_conntrack_zone *zone;
 	struct nf_conn_timeout *timeout_ext;
 	struct nf_conntrack_zone tmp;
+	struct nf_conntrack_net *cnet;
 
 	if (!nf_ct_invert_tuple(&repl_tuple, tuple)) {
 		pr_debug("Can't invert tuple.\n");
@@ -1604,7 +1622,8 @@ init_conntrack(struct net *net, struct nf_conn *tmpl,
 			     GFP_ATOMIC);
 
 	local_bh_disable();
-	if (net->ct.expect_count) {
+	cnet = nf_ct_pernet(net);
+	if (cnet->expect_count) {
 		spin_lock(&nf_conntrack_expect_lock);
 		exp = nf_ct_find_expectation(net, zone, tuple);
 		if (exp) {
@@ -2306,9 +2325,11 @@ __nf_ct_unconfirmed_destroy(struct net *net)
 
 void nf_ct_unconfirmed_destroy(struct net *net)
 {
+	struct nf_conntrack_net *cnet = nf_ct_pernet(net);
+
 	might_sleep();
 
-	if (atomic_read(&net->ct.count) > 0) {
+	if (atomic_read(&cnet->count) > 0) {
 		__nf_ct_unconfirmed_destroy(net);
 		nf_queue_nf_hook_drop(net);
 		synchronize_net();
@@ -2320,11 +2341,12 @@ void nf_ct_iterate_cleanup_net(struct net *net,
 			       int (*iter)(struct nf_conn *i, void *data),
 			       void *data, u32 portid, int report)
 {
+	struct nf_conntrack_net *cnet = nf_ct_pernet(net);
 	struct iter_data d;
 
 	might_sleep();
 
-	if (atomic_read(&net->ct.count) == 0)
+	if (atomic_read(&cnet->count) == 0)
 		return;
 
 	d.iter = iter;
@@ -2353,7 +2375,9 @@ nf_ct_iterate_destroy(int (*iter)(struct nf_conn *i, void *data), void *data)
 
 	down_read(&net_rwsem);
 	for_each_net(net) {
-		if (atomic_read(&net->ct.count) == 0)
+		struct nf_conntrack_net *cnet = nf_ct_pernet(net);
+
+		if (atomic_read(&cnet->count) == 0)
 			continue;
 		__nf_ct_unconfirmed_destroy(net);
 		nf_queue_nf_hook_drop(net);
@@ -2433,8 +2457,10 @@ void nf_conntrack_cleanup_net_list(struct list_head *net_exit_list)
 i_see_dead_people:
 	busy = 0;
 	list_for_each_entry(net, net_exit_list, exit_list) {
+		struct nf_conntrack_net *cnet = nf_ct_pernet(net);
+
 		nf_ct_iterate_cleanup(kill_all, net, 0, 0);
-		if (atomic_read(&net->ct.count) != 0)
+		if (atomic_read(&cnet->count) != 0)
 			busy = 1;
 	}
 	if (busy) {
@@ -2443,7 +2469,6 @@ i_see_dead_people:
 	}
 
 	list_for_each_entry(net, net_exit_list, exit_list) {
-		nf_conntrack_proto_pernet_fini(net);
 		nf_conntrack_ecache_pernet_fini(net);
 		nf_conntrack_expect_pernet_fini(net);
 		free_percpu(net->ct.stat);
@@ -2715,12 +2740,13 @@ void nf_conntrack_init_end(void)
 
 int nf_conntrack_init_net(struct net *net)
 {
+	struct nf_conntrack_net *cnet = nf_ct_pernet(net);
 	int ret = -ENOMEM;
 	int cpu;
 
 	BUILD_BUG_ON(IP_CT_UNTRACKED == IP_CT_NUMBER);
 	BUILD_BUG_ON_NOT_POWER_OF_2(CONNTRACK_LOCKS);
-	atomic_set(&net->ct.count, 0);
+	atomic_set(&cnet->count, 0);
 
 	net->ct.pcpu_lists = alloc_percpu(struct ct_pcpu);
 	if (!net->ct.pcpu_lists)

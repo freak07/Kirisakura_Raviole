@@ -94,9 +94,18 @@ typedef int (*dm_message_fn) (struct dm_target *ti, unsigned argc, char **argv,
 
 typedef int (*dm_prepare_ioctl_fn) (struct dm_target *ti, struct block_device **bdev);
 
+#ifdef CONFIG_BLK_DEV_ZONED
 typedef int (*dm_report_zones_fn) (struct dm_target *ti,
 				   struct dm_report_zones_args *args,
 				   unsigned int nr_zones);
+#else
+/*
+ * Define dm_report_zones_fn so that targets can assign to NULL if
+ * CONFIG_BLK_DEV_ZONED disabled. Otherwise each target needs to do
+ * awkward #ifdefs in their target_type, etc.
+ */
+typedef int (*dm_report_zones_fn) (struct dm_target *dummy);
+#endif
 
 /*
  * These iteration functions are typically used to check (and combine)
@@ -188,9 +197,7 @@ struct target_type {
 	dm_status_fn status;
 	dm_message_fn message;
 	dm_prepare_ioctl_fn prepare_ioctl;
-#ifdef CONFIG_BLK_DEV_ZONED
 	dm_report_zones_fn report_zones;
-#endif
 	dm_busy_fn busy;
 	dm_iterate_devices_fn iterate_devices;
 	dm_io_hints_fn io_hints;
@@ -256,8 +263,13 @@ struct target_type {
  * - DM_TARGET_MIXED_ZONED_MODEL: the target supports combining multiple
  *   devices with different zoned models.
  */
+#ifdef CONFIG_BLK_DEV_ZONED
 #define DM_TARGET_ZONED_HM		0x00000040
 #define dm_target_supports_zoned_hm(type) ((type)->features & DM_TARGET_ZONED_HM)
+#else
+#define DM_TARGET_ZONED_HM		0x00000000
+#define dm_target_supports_zoned_hm(type) (false)
+#endif
 
 /*
  * A target handles REQ_NOWAIT
@@ -353,6 +365,12 @@ struct dm_target {
 	 * Set if we need to limit the number of in-flight bios when swapping.
 	 */
 	bool limit_swap_bios:1;
+
+	/*
+	 * Set if this target implements a a zoned device and needs emulation of
+	 * zone append operations using regular writes.
+	 */
+	bool emulate_zone_append:1;
 
 	ANDROID_KABI_RESERVE(1);
 	ANDROID_KABI_RESERVE(2);
@@ -473,7 +491,8 @@ struct dm_report_zones_args {
 	/* must be filled by ->report_zones before calling dm_report_zones_cb */
 	sector_t start;
 };
-int dm_report_zones_cb(struct blk_zone *zone, unsigned int idx, void *data);
+int dm_report_zones(struct block_device *bdev, sector_t start, sector_t sector,
+		    struct dm_report_zones_args *args, unsigned int nr_zones);
 #endif /* CONFIG_BLK_DEV_ZONED */
 
 /*
@@ -568,11 +587,6 @@ struct dm_table *dm_swap_table(struct mapped_device *md,
  * Table keyslot manager functions
  */
 void dm_destroy_keyslot_manager(struct blk_keyslot_manager *ksm);
-
-/*
- * A wrapper around vmalloc.
- */
-void *dm_vcalloc(unsigned long nmemb, unsigned long elem_size);
 
 /*-----------------------------------------------------------------
  * Macros.

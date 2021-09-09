@@ -2,7 +2,7 @@
 /*
  * System Control and Management Interface (SCMI) Clock Protocol
  *
- * Copyright (C) 2018-2020 ARM Ltd.
+ * Copyright (C) 2018-2021 ARM Ltd.
  */
 
 #include <linux/module.h>
@@ -369,7 +369,7 @@ static int scmi_clock_protocol_init(const struct scmi_protocol_handle *ph)
 static const struct scmi_protocol scmi_clock = {
 	.id = SCMI_PROTOCOL_CLOCK,
 	.owner = THIS_MODULE,
-	.init_instance = &scmi_clock_protocol_init,
+	.instance_init = &scmi_clock_protocol_init,
 	.ops = &clk_proto_ops,
 };
 

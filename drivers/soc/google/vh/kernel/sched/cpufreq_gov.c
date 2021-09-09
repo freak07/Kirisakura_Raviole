@@ -368,7 +368,7 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
  * required to meet deadlines.
  */
 unsigned long schedutil_cpu_util_pixel_mod(int cpu, unsigned long util_cfs,
-				 unsigned long max, enum schedutil_type type,
+				 unsigned long max, enum cpu_util_type type,
 				 struct task_struct *p)
 {
 	unsigned long dl_util, util, irq;
@@ -918,7 +918,7 @@ static int sugov_kthread_create(struct sugov_policy *sg_policy)
 
 	memset(&attr, 0, sizeof(struct sched_attr));
 	attr.sched_policy = SCHED_FIFO;
-	attr.sched_priority = MAX_USER_RT_PRIO / 2;
+	attr.sched_priority = MAX_RT_PRIO / 2;
 
 	kthread_init_work(&sg_policy->work, sugov_work);
 	kthread_init_worker(&sg_policy->worker);

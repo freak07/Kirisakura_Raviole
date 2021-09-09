@@ -55,8 +55,6 @@ DECLARE_HOOK(android_vh_mutex_unlock_slowpath,
 	TP_PROTO(struct mutex *lock),
 	TP_ARGS(lock));
 
-/* macro versions of hooks are no longer required */
-
 #endif /* _TRACE_HOOK_DTASK_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>

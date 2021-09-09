@@ -67,8 +67,8 @@
 #include <linux/crash_dump.h>
 #include <linux/sort.h>
 #include <linux/stop_machine.h>
-#include <linux/sysfs.h>
 #include <linux/types.h>
+#include <linux/minmax.h>
 #include <linux/mm.h>
 #include <linux/cpu.h>
 #include <linux/kasan.h>
@@ -76,10 +76,12 @@
 #include <asm/cpufeature.h>
 #include <asm/cpu_ops.h>
 #include <asm/fpsimd.h>
+#include <asm/insn.h>
 #include <asm/kvm_host.h>
 #include <asm/mmu_context.h>
 #include <asm/mte.h>
 #include <asm/processor.h>
+#include <asm/smp.h>
 #include <asm/sysreg.h>
 #include <asm/traps.h>
 #include <asm/virt.h>
@@ -173,10 +175,6 @@ EXPORT_SYMBOL(cpu_hwcap_keys);
 	{						\
 		.width = 0,				\
 	}
-
-/* meta feature for alternatives */
-static bool __maybe_unused
-cpufeature_pan_not_uao(const struct arm64_cpu_capabilities *entry, int __unused);
 
 static void cpu_enable_cnp(struct arm64_cpu_capabilities const *cap);
 
@@ -422,6 +420,11 @@ static const struct arm64_ftr_bits ftr_dczid[] = {
 	ARM64_FTR_END,
 };
 
+static const struct arm64_ftr_bits ftr_gmid[] = {
+	ARM64_FTR_BITS(FTR_HIDDEN, FTR_STRICT, FTR_LOWER_SAFE, SYS_GMID_EL1_BS_SHIFT, 4, 0),
+	ARM64_FTR_END,
+};
+
 static const struct arm64_ftr_bits ftr_id_isar0[] = {
 	ARM64_FTR_BITS(FTR_HIDDEN, FTR_STRICT, FTR_LOWER_SAFE, ID_ISAR0_DIVIDE_SHIFT, 4, 0),
 	ARM64_FTR_BITS(FTR_HIDDEN, FTR_STRICT, FTR_LOWER_SAFE, ID_ISAR0_DEBUG_SHIFT, 4, 0),
@@ -639,6 +642,9 @@ static const struct __ftr_reg_entry {
 	/* Op1 = 0, CRn = 1, CRm = 2 */
 	ARM64_FTR_REG(SYS_ZCR_EL1, ftr_zcr),
 
+	/* Op1 = 1, CRn = 0, CRm = 0 */
+	ARM64_FTR_REG(SYS_GMID_EL1, ftr_gmid),
+
 	/* Op1 = 3, CRn = 0, CRm = 0 */
 	{ SYS_CTR_EL0, &arm64_ftr_reg_ctrel0 },
 	ARM64_FTR_REG(SYS_DCZID_EL0, ftr_dczid),
@@ -717,14 +723,14 @@ static s64 arm64_ftr_safe_value(const struct arm64_ftr_bits *ftrp, s64 new,
 		ret = ftrp->safe_val;
 		break;
 	case FTR_LOWER_SAFE:
-		ret = new < cur ? new : cur;
+		ret = min(new, cur);
 		break;
 	case FTR_HIGHER_OR_ZERO_SAFE:
 		if (!cur || !new)
 			break;
 		fallthrough;
 	case FTR_HIGHER_SAFE:
-		ret = new > cur ? new : cur;
+		ret = max(new, cur);
 		break;
 	default:
 		BUG();
@@ -831,6 +837,12 @@ static void init_cpu_ftr_reg(u32 sys_reg, u64 new)
 					reg->name,
 					ftrp->shift + ftrp->width - 1,
 					ftrp->shift, str, tmp);
+		} else if ((ftr_mask & reg->override->val) == ftr_mask) {
+			reg->override->val &= ~ftr_mask;
+			pr_warn("%s[%d:%d]: impossible override, ignored\n",
+				reg->name,
+				ftrp->shift + ftrp->width - 1,
+				ftrp->shift);
 		}
 
 		val = arm64_ftr_set_value(ftrp, val, ftr_new);
@@ -931,6 +943,9 @@ void __init init_cpu_features(struct cpuinfo_arm64 *info)
 		sve_init_vq_map();
 	}
 
+	if (id_aa64pfr1_mte(info->reg_id_aa64pfr1))
+		init_cpu_ftr_reg(SYS_GMID_EL1, info->reg_gmid);
+
 	/*
 	 * Initialize the indirect array of CPU hwcaps capabilities pointers
 	 * before we handle the boot CPU below.
@@ -995,8 +1010,8 @@ static void relax_cpu_ftr_reg(u32 sys_id, int field)
 	WARN_ON(!ftrp->width);
 }
 
-static void update_mismatched_32bit_el0_cpu_features(struct cpuinfo_arm64 *info,
-						     struct cpuinfo_arm64 *boot)
+static void lazy_init_32bit_cpu_features(struct cpuinfo_arm64 *info,
+					 struct cpuinfo_arm64 *boot)
 {
 	static bool boot_cpu_32bit_regs_overridden = false;
 
@@ -1163,6 +1178,17 @@ void update_cpu_features(int cpu,
 	}
 
 	/*
+	 * The kernel uses the LDGM/STGM instructions and the number of tags
+	 * they read/write depends on the GMID_EL1.BS field. Check that the
+	 * value is the same on all CPUs.
+	 */
+	if (IS_ENABLED(CONFIG_ARM64_MTE) &&
+	    id_aa64pfr1_mte(info->reg_id_aa64pfr1)) {
+		taint |= check_update_ftr_reg(SYS_GMID_EL1, cpu,
+					      info->reg_gmid, boot->reg_gmid);
+	}
+
+	/*
 	 * If we don't have AArch32 at all then skip the checks entirely
 	 * as the register values may be UNKNOWN and we're not going to be
 	 * using them for anything.
@@ -1171,7 +1197,7 @@ void update_cpu_features(int cpu,
 	 * (e.g. SYS_ID_AA64PFR0_EL1), so we call it last.
 	 */
 	if (id_aa64pfr0_32bit_el0(info->reg_id_aa64pfr0)) {
-		update_mismatched_32bit_el0_cpu_features(info, boot);
+		lazy_init_32bit_cpu_features(info, boot);
 		taint |= update_32bit_cpu_features(cpu, &info->aarch32,
 						   &boot->aarch32);
 	}
@@ -1294,32 +1320,6 @@ const struct cpumask *system_32bit_el0_cpumask(void)
 
 	return cpu_possible_mask;
 }
-EXPORT_SYMBOL_GPL(system_32bit_el0_cpumask);
-
-static int __init parse_32bit_el0_param(char *str)
-{
-	allow_mismatched_32bit_el0 = true;
-	return 0;
-}
-early_param("allow_mismatched_32bit_el0", parse_32bit_el0_param);
-
-static ssize_t aarch32_el0_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	const struct cpumask *mask = system_32bit_el0_cpumask();
-
-	return sysfs_emit(buf, "%*pbl\n", cpumask_pr_args(mask));
-}
-static const DEVICE_ATTR_RO(aarch32_el0);
-
-static int __init aarch32_el0_sysfs_init(void)
-{
-	if (!allow_mismatched_32bit_el0)
-		return 0;
-
-	return device_create_file(cpu_subsys.dev_root, &dev_attr_aarch32_el0);
-}
-device_initcall(aarch32_el0_sysfs_init);
 
 static bool has_32bit_el0(const struct arm64_cpu_capabilities *entry, int scope)
 {
@@ -1411,7 +1411,10 @@ has_useable_cnp(const struct arm64_cpu_capabilities *entry, int scope)
 	 * may share TLB entries with a CPU stuck in the crashed
 	 * kernel.
 	 */
-	 if (is_kdump_kernel())
+	if (is_kdump_kernel())
+		return false;
+
+	if (cpus_have_const_cap(ARM64_WORKAROUND_NVIDIA_CARMEL_CNP))
 		return false;
 
 	return has_cpuid_feature(entry, scope);
@@ -1550,7 +1553,7 @@ kpti_install_ng_mappings(const struct arm64_cpu_capabilities *__unused)
 	if (arm64_use_ng_mappings)
 		return;
 
-	remap_fn = (void *)__pa_function(idmap_kpti_install_ng_mappings);
+	remap_fn = (void *)__pa_symbol(function_nocfi(idmap_kpti_install_ng_mappings));
 
 	cpu_install_idmap();
 	remap_fn(cpu, num_online_cpus(), __pa_symbol(swapper_pg_dir));
@@ -1667,8 +1670,10 @@ bool cpu_has_amu_feat(int cpu)
 	return cpumask_test_cpu(cpu, &amu_cpus);
 }
 
-/* Initialize the use of AMU counters for frequency invariance */
-extern void init_cpu_freq_invariance_counters(void);
+int get_cpu_with_amu_feat(void)
+{
+	return cpumask_any(&amu_cpus);
+}
 
 static void cpu_amu_enable(struct arm64_cpu_capabilities const *cap)
 {
@@ -1676,7 +1681,7 @@ static void cpu_amu_enable(struct arm64_cpu_capabilities const *cap)
 		pr_info("detected CPU%d: Activity Monitors Unit (AMU)\n",
 			smp_processor_id());
 		cpumask_set_cpu(smp_processor_id(), &amu_cpus);
-		init_cpu_freq_invariance_counters();
+		update_freq_counters_refs();
 	}
 }
 
@@ -1698,9 +1703,13 @@ static bool has_amu(const struct arm64_cpu_capabilities *cap,
 
 	return true;
 }
+#else
+int get_cpu_with_amu_feat(void)
+{
+	return nr_cpu_ids;
+}
 #endif
 
-#ifdef CONFIG_ARM64_VHE
 static bool runs_at_el2(const struct arm64_cpu_capabilities *entry, int __unused)
 {
 	return is_kernel_in_hyp_mode();
@@ -1719,7 +1728,6 @@ static void cpu_copy_el2regs(const struct arm64_cpu_capabilities *__unused)
 	if (!alternative_is_applied(ARM64_HAS_VIRT_HOST_EXTN))
 		write_sysreg(read_sysreg(tpidr_el1), tpidr_el2);
 }
-#endif
 
 static void cpu_has_fwb(const struct arm64_cpu_capabilities *__unused)
 {
@@ -1904,6 +1912,18 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.cpu_enable = cpu_enable_pan,
 	},
 #endif /* CONFIG_ARM64_PAN */
+#ifdef CONFIG_ARM64_EPAN
+	{
+		.desc = "Enhanced Privileged Access Never",
+		.capability = ARM64_HAS_EPAN,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.matches = has_cpuid_feature,
+		.sys_reg = SYS_ID_AA64MMFR1_EL1,
+		.field_pos = ID_AA64MMFR1_PAN_SHIFT,
+		.sign = FTR_UNSIGNED,
+		.min_field_value = 3,
+	},
+#endif /* CONFIG_ARM64_EPAN */
 #ifdef CONFIG_ARM64_LSE_ATOMICS
 	{
 		.desc = "LSE atomic instructions",
@@ -1922,29 +1942,6 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.type = ARM64_CPUCAP_WEAK_LOCAL_CPU_FEATURE,
 		.matches = has_no_hw_prefetch,
 	},
-#ifdef CONFIG_ARM64_UAO
-	{
-		.desc = "User Access Override",
-		.capability = ARM64_HAS_UAO,
-		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
-		.matches = has_cpuid_feature,
-		.sys_reg = SYS_ID_AA64MMFR2_EL1,
-		.field_pos = ID_AA64MMFR2_UAO_SHIFT,
-		.min_field_value = 1,
-		/*
-		 * We rely on stop_machine() calling uao_thread_switch() to set
-		 * UAO immediately after patching.
-		 */
-	},
-#endif /* CONFIG_ARM64_UAO */
-#ifdef CONFIG_ARM64_PAN
-	{
-		.capability = ARM64_ALT_PAN_NOT_UAO,
-		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
-		.matches = cpufeature_pan_not_uao,
-	},
-#endif /* CONFIG_ARM64_PAN */
-#ifdef CONFIG_ARM64_VHE
 	{
 		.desc = "Virtualization Host Extensions",
 		.capability = ARM64_HAS_VIRT_HOST_EXTN,
@@ -1952,7 +1949,6 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.matches = runs_at_el2,
 		.cpu_enable = cpu_copy_el2regs,
 	},
-#endif	/* CONFIG_ARM64_VHE */
 	{
 		.capability = ARM64_HAS_32BIT_EL0_DO_NOT_USE,
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
@@ -2823,7 +2819,7 @@ bool this_cpu_has_cap(unsigned int n)
  * - The SYSTEM_FEATURE cpu_hwcaps may not have been set.
  * In all other cases cpus_have_{const_}cap() should be used.
  */
-static bool __system_matches_cap(unsigned int n)
+static bool __maybe_unused __system_matches_cap(unsigned int n)
 {
 	if (n < ARM64_NCAPS) {
 		const struct arm64_cpu_capabilities *cap = cpu_hwcaps_ptrs[n];
@@ -2905,33 +2901,15 @@ void __init setup_cpu_features(void)
 
 static int enable_mismatched_32bit_el0(unsigned int cpu)
 {
-	static int lucky_winner = -1;
-
 	struct cpuinfo_arm64 *info = &per_cpu(cpu_data, cpu);
 	bool cpu_32bit = id_aa64pfr0_32bit_el0(info->reg_id_aa64pfr0);
 
 	if (cpu_32bit) {
 		cpumask_set_cpu(cpu, cpu_32bit_el0_mask);
 		static_branch_enable_cpuslocked(&arm64_mismatched_32bit_el0);
+		setup_elf_hwcaps(compat_elf_hwcaps);
 	}
 
-	if (cpumask_test_cpu(0, cpu_32bit_el0_mask) == cpu_32bit)
-		return 0;
-
-	if (lucky_winner >= 0)
-		return 0;
-
-	/*
-	 * We've detected a mismatch. We need to keep one of our CPUs with
-	 * 32-bit EL0 online so that is_cpu_allowed() doesn't end up rejecting
-	 * every CPU in the system for a 32-bit task.
-	 */
-	lucky_winner = cpu_32bit ? cpu : cpumask_any_and(cpu_32bit_el0_mask,
-							 cpu_active_mask);
-	get_cpu_device(lucky_winner)->offline_disabled = true;
-	setup_elf_hwcaps(compat_elf_hwcaps);
-	pr_info("Asymmetric 32-bit EL0 support detected on CPU %u; CPU hot-unplug disabled on CPU %u\n",
-		cpu, lucky_winner);
 	return 0;
 }
 
@@ -2948,12 +2926,6 @@ static int __init init_32bit_el0_mask(void)
 				 enable_mismatched_32bit_el0, NULL);
 }
 subsys_initcall_sync(init_32bit_el0_mask);
-
-static bool __maybe_unused
-cpufeature_pan_not_uao(const struct arm64_cpu_capabilities *entry, int __unused)
-{
-	return (__system_matches_cap(ARM64_HAS_PAN) && !__system_matches_cap(ARM64_HAS_UAO));
-}
 
 static void __maybe_unused cpu_enable_cnp(struct arm64_cpu_capabilities const *cap)
 {
@@ -3048,8 +3020,8 @@ static int emulate_mrs(struct pt_regs *regs, u32 insn)
 }
 
 static struct undef_hook mrs_hook = {
-	.instr_mask = 0xfff00000,
-	.instr_val  = 0xd5300000,
+	.instr_mask = 0xffff0000,
+	.instr_val  = 0xd5380000,
 	.pstate_mask = PSR_AA32_MODE_MASK,
 	.pstate_val = PSR_MODE_EL0t,
 	.fn = emulate_mrs,

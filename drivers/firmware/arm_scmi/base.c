@@ -2,7 +2,7 @@
 /*
  * System Control and Management Interface (SCMI) Base Protocol
  *
- * Copyright (C) 2018 ARM Ltd.
+ * Copyright (C) 2018-2021 ARM Ltd.
  */
 
 #define pr_fmt(fmt) "SCMI Notifications BASE - " fmt
@@ -336,7 +336,7 @@ static int scmi_base_protocol_init(const struct scmi_protocol_handle *ph)
 	u32 version;
 	char name[SCMI_MAX_STR_SIZE];
 	struct device *dev = ph->dev;
-	struct scmi_revision_info *rev = scmi_get_revision_area(ph);
+	struct scmi_revision_info *rev = scmi_revision_area_get(ph);
 
 	ret = ph->xops->version_get(ph, &version);
 	if (ret)
@@ -375,7 +375,7 @@ static int scmi_base_protocol_init(const struct scmi_protocol_handle *ph)
 static const struct scmi_protocol scmi_base = {
 	.id = SCMI_PROTOCOL_BASE,
 	.owner = NULL,
-	.init_instance = &scmi_base_protocol_init,
+	.instance_init = &scmi_base_protocol_init,
 	.ops = NULL,
 	.events = &base_protocol_events,
 };

@@ -14,6 +14,7 @@
 #include <linux/log2.h>
 #include <linux/miscdevice.h>
 #include <linux/seq_file.h>
+#include <linux/panic_notifier.h>
 #include <asm/page.h>
 #include "trusty-log.h"
 

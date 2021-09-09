@@ -30,8 +30,6 @@ DECLARE_HOOK(android_vh_rwsem_wake_finish,
 	TP_PROTO(struct rw_semaphore *sem),
 	TP_ARGS(sem));
 
-/* macro versions of hooks are no longer required */
-
 #endif /* _TRACE_HOOK_RWSEM_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>

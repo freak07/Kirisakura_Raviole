@@ -9,6 +9,8 @@
 #include <linux/sync_file.h>
 #include <linux/slab.h>
 #include <linux/sched/mm.h>
+#include <linux/panic_notifier.h>
+#include <media/frame_vector.h>
 
 #include <asm/cacheflush.h>
 
@@ -220,7 +222,7 @@ static int g2d_get_userptr(struct g2d_task *task,
 	if (!vec)
 		goto err_vector;
 
-	ret = get_vaddr_frames(begin << PAGE_SHIFT, nr_pages, flags, vec);
+	ret = get_vaddr_frames(begin << PAGE_SHIFT, nr_pages, vec);
 	if (ret < 0)
 		goto err_get_frames;
 	if (ret != (int)nr_pages) {

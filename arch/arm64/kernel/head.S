@@ -16,6 +16,7 @@
 #include <asm/asm_pointer_auth.h>
 #include <asm/assembler.h>
 #include <asm/boot.h>
+#include <asm/bug.h>
 #include <asm/ptrace.h>
 #include <asm/asm-offsets.h>
 #include <asm/cache.h>
@@ -58,21 +59,11 @@
  * in the entry routines.
  */
 	__HEAD
-_head:
 	/*
 	 * DO NOT MODIFY. Image header expected by Linux boot-loaders.
 	 */
-#ifdef CONFIG_EFI
-	/*
-	 * This add instruction has no meaningful effect except that
-	 * its opcode forms the magic "MZ" signature required by UEFI.
-	 */
-	add	x13, x18, #0x16
-	b	primary_entry
-#else
+	efi_signature_nop			// special NOP to identity as PE/COFF executable
 	b	primary_entry			// branch to kernel start, magic
-	.long	0				// reserved
-#endif
 	.quad	0				// Image load offset from start of RAM, little-endian
 	le64sym	_kernel_size_le			// Effective size of kernel image, little-endian
 	le64sym	_kernel_flags_le		// Informative flags, little-endian
@@ -80,14 +71,9 @@ _head:
 	.quad	0				// reserved
 	.quad	0				// reserved
 	.ascii	ARM64_IMAGE_MAGIC		// Magic number
-#ifdef CONFIG_EFI
-	.long	pe_header - _head		// Offset to the PE header.
+	.long	.Lpe_header_offset		// Offset to the PE header.
 
-pe_header:
 	__EFI_PE_HEADER
-#else
-	.long	0				// reserved
-#endif
 
 	__INIT
 
@@ -132,8 +118,8 @@ SYM_CODE_START_LOCAL(preserve_boot_args)
 	dmb	sy				// needed before dc ivac with
 						// MMU off
 
-	mov	x1, #0x20			// 4 x 8 bytes
-	b	__inval_dcache_area		// tail call
+	add	x1, x0, #0x20			// 4 x 8 bytes
+	b	dcache_inval_poc		// tail call
 SYM_CODE_END(preserve_boot_args)
 
 /*
@@ -210,7 +196,7 @@ SYM_CODE_END(preserve_boot_args)
 	and	\iend, \iend, \istart	// iend = (vend >> shift) & (ptrs - 1)
 	mov	\istart, \ptrs
 	mul	\istart, \istart, \count
-	add	\iend, \iend, \istart	// iend += (count - 1) * ptrs
+	add	\iend, \iend, \istart	// iend += count * ptrs
 					// our entries span multiple tables
 
 	lsr	\istart, \vstart, \shift
@@ -283,8 +269,7 @@ SYM_FUNC_START_LOCAL(__create_page_tables)
 	 */
 	adrp	x0, init_pg_dir
 	adrp	x1, init_pg_end
-	sub	x1, x1, x0
-	bl	__inval_dcache_area
+	bl	dcache_inval_poc
 
 	/*
 	 * Clear the init page tables.
@@ -369,7 +354,6 @@ SYM_FUNC_START_LOCAL(__create_page_tables)
 #endif
 1:
 	ldr_l	x4, idmap_ptrs_per_pgd
-	mov	x5, x3				// __pa(__idmap_text_start)
 	adr_l	x6, __idmap_text_end		// __pa(__idmap_text_end)
 
 	map_memory x0, x1, x3, x6, x7, x3, x4, x10, x11, x12, x13, x14
@@ -397,16 +381,40 @@ SYM_FUNC_START_LOCAL(__create_page_tables)
 
 	adrp	x0, idmap_pg_dir
 	adrp	x1, idmap_pg_end
-	sub	x1, x1, x0
-	bl	__inval_dcache_area
+	bl	dcache_inval_poc
 
 	adrp	x0, init_pg_dir
 	adrp	x1, init_pg_end
-	sub	x1, x1, x0
-	bl	__inval_dcache_area
+	bl	dcache_inval_poc
 
 	ret	x28
 SYM_FUNC_END(__create_page_tables)
+
+	/*
+	 * Initialize CPU registers with task-specific and cpu-specific context.
+	 *
+	 * Create a final frame record at task_pt_regs(current)->stackframe, so
+	 * that the unwinder can identify the final frame record of any task by
+	 * its location in the task stack. We reserve the entire pt_regs space
+	 * for consistency with user tasks and kthreads.
+	 */
+	.macro	init_cpu_task tsk, tmp1, tmp2
+	msr	sp_el0, \tsk
+
+	ldr	\tmp1, [\tsk, #TSK_STACK]
+	add	sp, \tmp1, #THREAD_SIZE
+	sub	sp, sp, #PT_REGS_SIZE
+
+	stp	xzr, xzr, [sp, #S_STACKFRAME]
+	add	x29, sp, #S_STACKFRAME
+
+	scs_load \tsk
+
+	adr_l	\tmp1, __per_cpu_offset
+	ldr	w\tmp2, [\tsk, #TSK_CPU]
+	ldr	\tmp1, [\tmp1, \tmp2, lsl #3]
+	set_this_cpu_offset \tmp1
+	.endm
 
 /*
  * The following fragment of code is executed with the MMU enabled.
@@ -414,21 +422,15 @@ SYM_FUNC_END(__create_page_tables)
  *   x0 = __PHYS_OFFSET
  */
 SYM_FUNC_START_LOCAL(__primary_switched)
-	adrp	x4, init_thread_union
-	add	sp, x4, #THREAD_SIZE
-	adr_l	x5, init_task
-	msr	sp_el0, x5			// Save thread_info
+	adr_l	x4, init_task
+	init_cpu_task x4, x5, x6
 
 	adr_l	x8, vectors			// load VBAR_EL1 with virtual
 	msr	vbar_el1, x8			// vector table address
 	isb
 
-	stp	xzr, x30, [sp, #-16]!
+	stp	x29, x30, [sp, #-16]!
 	mov	x29, sp
-
-#ifdef CONFIG_SHADOW_CALL_STACK
-	adr_l	scs_sp, init_shadow_call_stack	// Set shadow call stack
-#endif
 
 	str_l	x21, __fdt_pointer, x5		// Save FDT pointer
 
@@ -461,10 +463,9 @@ SYM_FUNC_START_LOCAL(__primary_switched)
 0:
 #endif
 	bl	switch_to_vhe			// Prefer VHE if possible
-	add	sp, sp, #16
-	mov	x29, #0
-	mov	x30, #0
-	b	start_kernel
+	ldp	x29, x30, [sp], #16
+	bl	start_kernel
+	ASM_BUG()
 SYM_FUNC_END(__primary_switched)
 
 	.pushsection ".rodata", "a"
@@ -492,14 +493,13 @@ EXPORT_SYMBOL(kimage_vaddr)
  * booted in EL1 or EL2 respectively.
  */
 SYM_FUNC_START(init_kernel_el)
-	mov_q	x0, INIT_SCTLR_EL1_MMU_OFF
-	msr	sctlr_el1, x0
-
 	mrs	x0, CurrentEL
 	cmp	x0, #CurrentEL_EL2
 	b.eq	init_el2
 
 SYM_INNER_LABEL(init_el1, SYM_L_LOCAL)
+	mov_q	x0, INIT_SCTLR_EL1_MMU_OFF
+	msr	sctlr_el1, x0
 	isb
 	mov_q	x0, INIT_PSTATE_EL1
 	msr	spsr_el1, x0
@@ -519,9 +519,43 @@ SYM_INNER_LABEL(init_el2, SYM_L_LOCAL)
 	msr	vbar_el2, x0
 	isb
 
+	/*
+	 * Fruity CPUs seem to have HCR_EL2.E2H set to RES1,
+	 * making it impossible to start in nVHE mode. Is that
+	 * compliant with the architecture? Absolutely not!
+	 */
+	mrs	x0, hcr_el2
+	and	x0, x0, #HCR_E2H
+	cbz	x0, 1f
+
+	/* Switching to VHE requires a sane SCTLR_EL1 as a start */
+	mov_q	x0, INIT_SCTLR_EL1_MMU_OFF
+	msr_s	SYS_SCTLR_EL12, x0
+
+	/*
+	 * Force an eret into a helper "function", and let it return
+	 * to our original caller... This makes sure that we have
+	 * initialised the basic PSTATE state.
+	 */
+	mov	x0, #INIT_PSTATE_EL2
+	msr	spsr_el1, x0
+	adr	x0, __cpu_stick_to_vhe
+	msr	elr_el1, x0
+	eret
+
+1:
+	mov_q	x0, INIT_SCTLR_EL1_MMU_OFF
+	msr	sctlr_el1, x0
+
 	msr	elr_el2, lr
 	mov	w0, #BOOT_CPU_MODE_EL2
 	eret
+
+__cpu_stick_to_vhe:
+	mov	x0, #HVC_VHE_RESTART
+	hvc	#0
+	mov	x0, #BOOT_CPU_MODE_EL2
+	ret
 SYM_FUNC_END(init_kernel_el)
 
 /*
@@ -533,7 +567,7 @@ SYM_FUNC_START_LOCAL(set_cpu_boot_mode_flag)
 	cmp	w0, #BOOT_CPU_MODE_EL2
 	b.ne	1f
 	add	x1, x1, #4
-1:	str	w0, [x1]			// This CPU has booted in EL1
+1:	str	w0, [x1]			// Save CPU boot mode
 	dmb	sy
 	dc	ivac, x1			// Invalidate potentially stale cache line
 	ret
@@ -614,21 +648,17 @@ SYM_FUNC_START_LOCAL(__secondary_switched)
 	isb
 
 	adr_l	x0, secondary_data
-	ldr	x1, [x0, #CPU_BOOT_STACK]	// get secondary_data.stack
-	cbz	x1, __secondary_too_slow
-	mov	sp, x1
 	ldr	x2, [x0, #CPU_BOOT_TASK]
 	cbz	x2, __secondary_too_slow
-	msr	sp_el0, x2
-	scs_load x2, x3
-	mov	x29, #0
-	mov	x30, #0
+
+	init_cpu_task x2, x1, x3
 
 #ifdef CONFIG_ARM64_PTR_AUTH
 	ptrauth_keys_init_cpu x2, x3, x4, x5
 #endif
 
-	b	secondary_start_kernel
+	bl	secondary_start_kernel
+	ASM_BUG()
 SYM_FUNC_END(__secondary_switched)
 
 SYM_FUNC_START_LOCAL(__secondary_too_slow)
@@ -670,8 +700,10 @@ SYM_FUNC_END(__secondary_too_slow)
 SYM_FUNC_START(__enable_mmu)
 	mrs	x2, ID_AA64MMFR0_EL1
 	ubfx	x2, x2, #ID_AA64MMFR0_TGRAN_SHIFT, 4
-	cmp	x2, #ID_AA64MMFR0_TGRAN_SUPPORTED
-	b.ne	__no_granule_support
+	cmp     x2, #ID_AA64MMFR0_TGRAN_SUPPORTED_MIN
+	b.lt    __no_granule_support
+	cmp     x2, #ID_AA64MMFR0_TGRAN_SUPPORTED_MAX
+	b.gt    __no_granule_support
 	update_early_cpu_boot_status 0, x2, x3
 	adrp	x2, idmap_pg_dir
 	phys_to_ttbr x1, x1

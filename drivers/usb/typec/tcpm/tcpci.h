@@ -196,7 +196,7 @@ struct tcpci_data {
 				  enum typec_cc_status cc);
 	int (*set_vbus)(struct tcpci *tcpci, struct tcpci_data *data, bool source, bool sink);
 	void (*frs_sourcing_vbus)(struct tcpci *tcpci, struct tcpci_data *data);
-  	void (*set_partner_usb_comm_capable)(struct tcpci *tcpci, struct tcpci_data *data,
+	void (*set_partner_usb_comm_capable)(struct tcpci *tcpci, struct tcpci_data *data,
 					     bool capable);
 };
 

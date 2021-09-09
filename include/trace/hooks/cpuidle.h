@@ -19,8 +19,6 @@ DECLARE_HOOK(android_vh_cpu_idle_exit,
 	TP_PROTO(int state, struct cpuidle_device *dev),
 	TP_ARGS(state, dev))
 
-/* macro versions of hooks are no longer required */
-
 #endif /* _TRACE_HOOK_CPUIDLE_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>

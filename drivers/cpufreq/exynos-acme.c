@@ -488,7 +488,7 @@ static struct notifier_block exynos_cpufreq_pm = {
 
 static struct cpufreq_driver exynos_driver = {
 	.name		= "exynos_cpufreq",
-	.flags		= CPUFREQ_STICKY | CPUFREQ_HAVE_GOVERNOR_PER_POLICY |
+	.flags		= CPUFREQ_HAVE_GOVERNOR_PER_POLICY |
 				CPUFREQ_NEED_UPDATE_LIMITS, // force update dm->governor_freq
 	.init		= exynos_cpufreq_init,
 	.verify		= exynos_cpufreq_verify,
