@@ -8,27 +8,6 @@ function exit_if_error {
   fi
 }
 
-function build_gki_and_device_kernels {
-  echo "Building GKI kernel with ${GKI_KERNEL_BUILD_CONFIG} and"
-  echo "  device kernel with ${DEVICE_KERNEL_BUILD_CONFIG}"
-    GKI_BUILD_CONFIG=${GKI_KERNEL_BUILD_CONFIG} \
-    GKI_OUT_DIR=${BASE_OUT}/${GKI_KERNEL_OUT_DIR}/ \
-    GKI_SKIP_CP_KERNEL_HDR=1 \
-    BUILD_CONFIG=${DEVICE_KERNEL_BUILD_CONFIG} \
-    OUT_DIR=${BASE_OUT}/device-kernel/ \
-    build/build.sh "$@"
-  exit_if_error $? "Failed to compile GKI and device kernels"
-}
-
-function build_device_kernel {
-  echo "Building device kernel with ${DEVICE_KERNEL_BUILD_CONFIG}"
-    BUILD_CONFIG=${DEVICE_KERNEL_BUILD_CONFIG} \
-    OUT_DIR=${BASE_OUT}/device-kernel/ \
-    GKI_PREBUILTS_DIR=${GKI_KERNEL_PREBUILTS_DIR} \
-    build/build.sh "$@"
-  exit_if_error $? "Failed to compile device kernel"
-}
-
 EXPERIMENTAL_BUILD=${EXPERIMENTAL_BUILD:-0}
 TRIM_NONLISTED_KMI=${TRIM_NONLISTED_KMI:-0}
 LTO=${LTO:-thin}
@@ -98,7 +77,7 @@ if [ "${EXPERIMENTAL_BUILD}" = "0" -a "${BUILD_KERNEL}" != "0" ]; then
       echo "  latest AOSP merge point. This is not supported, currently, as"
       echo "  it is prone to errors. Please base any changes on the latest"
       echo "  merge point as specified in the manifest."
-      echo "aosp/ is not based on latest merge point"
+      exit_if_error 1 "aosp/ is not based on latest merge point"
     fi
   popd > /dev/null
 fi
@@ -110,13 +89,13 @@ export TRIM_NONLISTED_KMI
 export BASE_OUT=${OUT_DIR:-out}/mixed/
 export DIST_DIR=${DIST_DIR:-${BASE_OUT}/dist/}
 export USING_PREBUILTS
-export MIXED_BUILD=1
 
-if [ "${BUILD_KERNEL}" = "0" ]; then
-  build_device_kernel
-else
-  build_gki_and_device_kernels
-fi
+DEVICE_KERNEL_BUILD_CONFIG=${DEVICE_KERNEL_BUILD_CONFIG} \
+  GKI_KERNEL_BUILD_CONFIG=${GKI_KERNEL_BUILD_CONFIG} \
+  GKI_KERNEL_OUT_DIR=${GKI_KERNEL_OUT_DIR} \
+  GKI_KERNEL_PREBUILTS_DIR=${GKI_KERNEL_PREBUILTS_DIR} \
+  GKI_DEFCONFIG_FRAGMENT=${GKI_DEFCONFIG_FRAGMENT} \
+  ./build_mixed.sh
 
 exit_if_error $? "Failed to create mixed build"
 
