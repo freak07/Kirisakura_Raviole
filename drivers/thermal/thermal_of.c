@@ -300,6 +300,8 @@ static int of_thermal_set_trip_temp(struct thermal_zone_device *tz, int trip,
 
 	if (trip >= data->ntrips || trip < 0)
 		return -EDOM;
+	if (!data->ops)
+		return -EINVAL;
 
 	if (data->ops->set_trip_temp) {
 		int ret;
