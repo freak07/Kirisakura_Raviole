@@ -148,6 +148,7 @@ $(if $(filter-out $(words $(required_mixed_files)), \
 endif
 
 mixed-build-prefix = $(if $(KBUILD_MIXED_TREE),$(KBUILD_MIXED_TREE)/)
+export mixed-build-prefix
 export KBUILD_MIXED_TREE
 
 # Kbuild will save output files in the current working directory.
