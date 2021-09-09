@@ -280,7 +280,11 @@ static int fusb307_set_vbus(struct tcpci *tcpci, struct tcpci_data *tdata,
 	if (source) {
 		if (!chip->vbus_enabled) {
 			if (chip->turn_on_vbus) {
-				regulator_enable(chip->vbus);
+				ret = regulator_enable(chip->vbus);
+				if (ret) {
+					dev_err(chip->dev, "Error enabling vbus regulator, ret=%d\n", ret);
+					return ret;
+				}
 			} else if (chip->uic_gpio) {
 				ret = enable_load_switch(chip);
 				if (ret < 0)

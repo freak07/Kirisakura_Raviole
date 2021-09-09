@@ -618,7 +618,9 @@ static int power_stats_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, ps_dev);
 
-	devm_device_add_groups(&pdev->dev, power_stats_groups);
+	ret = devm_device_add_groups(&pdev->dev, power_stats_groups);
+	if (ret)
+		dev_err(&pdev->dev, "Failed to add device groups\n");
 
 	return 0;
 }
