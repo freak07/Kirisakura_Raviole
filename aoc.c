@@ -207,6 +207,14 @@ static bool aoc_autoload_firmware;
 module_param(aoc_autoload_firmware, bool, 0644);
 MODULE_PARM_DESC(aoc_autoload_firmware, "Automatically load firmware if true");
 
+static int aoc_core_suspend(struct device *dev);
+static int aoc_core_resume(struct device *dev);
+
+const static struct dev_pm_ops aoc_core_pm_ops = {
+	.suspend = aoc_core_suspend,
+	.resume = aoc_core_resume,
+};
+
 static int aoc_bus_match(struct device *dev, struct device_driver *drv);
 static int aoc_bus_probe(struct device *dev);
 static int aoc_bus_remove(struct device *dev);
@@ -1688,6 +1696,7 @@ static struct platform_driver aoc_driver = {
 	.driver = {
 			.name = "aoc",
 			.owner = THIS_MODULE,
+			.pm = &aoc_core_pm_ops,
 			.of_match_table = of_match_ptr(aoc_match),
 		},
 };
@@ -1839,6 +1848,9 @@ static struct aoc_service_dev *create_service_device(struct aoc_prvdata *prvdata
 	dev->service = s;
 	dev->ipc_base = prvdata->ipc_base;
 	dev->dead = false;
+
+	if (aoc_service_is_queue(s))
+		dev->wake_capable = true;
 
 	init_waitqueue_head(&dev->read_queue);
 	init_waitqueue_head(&dev->write_queue);
@@ -2744,6 +2756,44 @@ static int find_gsa_device(struct aoc_prvdata *prvdata)
 	prvdata->gsa_dev = &gsa_pdev->dev;
 	return devm_add_action_or_reset(prvdata->dev, release_gsa_device,
 					prvdata);
+}
+
+static int aoc_core_suspend(struct device *dev)
+{
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+	size_t total_services = aoc_num_services();
+	int i = 0;
+
+	for (i = 0; i < total_services; i++) {
+		struct aoc_service_dev *s = service_dev_at_index(prvdata, i);
+
+		if (s->wake_capable)
+			s->suspend_rx_count = aoc_service_slots_available_to_read(s->service,
+										  AOC_UP);
+	}
+
+	return 0;
+}
+
+static int aoc_core_resume(struct device *dev)
+{
+	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
+	size_t total_services = aoc_num_services();
+	int i = 0;
+
+	for (i = 0; i < total_services; i++) {
+		struct aoc_service_dev *s = service_dev_at_index(prvdata, i);
+
+		if (s->wake_capable) {
+			size_t available = aoc_service_slots_available_to_read(s->service, AOC_UP);
+
+			if (available != s->suspend_rx_count)
+				dev_notice(dev, "Service \"%s\" has %zu messages to read on wake\n",
+					   dev_name(&s->dev), available);
+		}
+	}
+
+	return 0;
 }
 
 static int aoc_platform_probe(struct platform_device *pdev)

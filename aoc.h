@@ -28,10 +28,13 @@ struct aoc_service_dev {
 	void *ipc_base;
 	aoc_service_dev_handler handler;
 	void *prvdata;
+	uint64_t suspend_rx_count;
 
-	bool dead;
 	uint8_t mbox_index;
 	uint8_t service_index;
+
+	bool dead;
+	bool wake_capable;
 };
 
 #define AOC_DEVICE(_d) container_of((_d), struct aoc_service_dev, dev)
