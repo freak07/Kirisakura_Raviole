@@ -23,6 +23,7 @@
 
 #include "aoc_alsa.h"
 #include "aoc_alsa_drv.h"
+#include "aoc_alsa_path.h"
 #include "google-aoc-enum.h"
 
 #define BE_MAP_SZ(x) \
@@ -46,6 +47,36 @@ static const struct snd_soc_dai_ops be_dai_ops;
 static struct mutex path_mutex;
 
 static int aoc_compress_new(struct snd_soc_pcm_runtime *rtd, int num);
+
+static const uint32_t rx_ep_list[] = {
+	IDX_EP2_RX,           /* low-latency-playback */
+	IDX_EP3_RX,           /* haptic-audio */
+	IDX_EP5_RX,           /* voice-call */
+	IDX_EP6_RX,           /* deep-buffer-playback */
+	IDX_EP7_RX,           /* compress-offload-playback */
+	IDX_VOIP_RX,          /* voip-playback */
+	IDX_RAW_RX,           /* raw-playback */
+	IDX_EP1_RX,           /* mmap-playback */
+	IDX_HIFI_RX,          /* hifi-playback */
+	IDX_NOHOST1_RX,       /* hostless rx */
+	IDX_HAPTIC_NoHOST_RX, /* haptic hostless rx */
+	IDX_EP4_RX,           /* reserved */
+	IDX_EP8_RX,           /* reserved */
+};
+
+static const uint32_t tx_ep_list[] = {
+	IDX_EP1_TX,     /* audio-record */
+	IDX_EP4_TX,     /* voice-call */
+	IDX_VOIP_TX,    /* voip-record */
+	IDX_EP3_TX,     /* low-latency-record */
+	IDX_RAW_TX,     /* raw-record */
+	IDX_EP2_TX,     /* mmap-record */
+	IDX_HIFI_TX,    /* hifi tx */
+	IDX_NOHOST1_TX, /* hostless tx */
+	IDX_EP5_TX,     /* reserved */
+	IDX_EP6_TX,     /* reserved */
+	IDX_EP7_TX,     /* reserved */
+};
 
 static struct snd_soc_dai_driver aoc_dai_drv[] = {
 	/* FE dai */
@@ -1097,6 +1128,50 @@ static int aoc_path_put(uint32_t ep_id, uint32_t hw_id,
 	}
 	return 0;
 }
+
+bool aoc_alsa_usb_capture_enabled(void)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(tx_ep_list); i++) {
+		struct snd_ctl_elem_value ucontrol;
+		int ret;
+
+		ret = aoc_path_get(tx_ep_list[i], USB_TX, NULL, &ucontrol);
+		if (ret) {
+			pr_err("%s failed ret %d\n", __func__, ret);
+			return false;
+		}
+
+		if (ucontrol.value.integer.value[0])
+			return true;
+	}
+
+	return false;
+}
+EXPORT_SYMBOL_GPL(aoc_alsa_usb_capture_enabled);
+
+bool aoc_alsa_usb_playback_enabled(void)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(rx_ep_list); i++) {
+		struct snd_ctl_elem_value ucontrol;
+		int ret;
+
+		ret = aoc_path_get(rx_ep_list[i], USB_RX, NULL, &ucontrol);
+		if (ret) {
+			pr_err("%s failed ret %d\n", __func__, ret);
+			return false;
+		}
+
+		if (ucontrol.value.integer.value[0])
+			return true;
+	}
+
+	return false;
+}
+EXPORT_SYMBOL_GPL(aoc_alsa_usb_playback_enabled);
 
 static int i2s_0_rx_put(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)

@@ -1837,6 +1837,7 @@ static int snd_aoc_init(struct aoc_chip *chip)
 	chip->mute = 1;
 
 	mutex_init(&chip->audio_mutex);
+	mutex_init(&chip->audio_cmd_chan_mutex);
 	spin_lock_init(&chip->audio_lock);
 
 	return 0;

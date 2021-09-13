@@ -218,6 +218,7 @@ struct aoc_chip {
 	unsigned int opened;
 	unsigned int capture_param_set;
 	struct mutex audio_mutex;
+	struct mutex audio_cmd_chan_mutex;
 	spinlock_t audio_lock;
 	long pcm_wait_time_in_ms;
 	long voice_pcm_wait_time_in_ms;
@@ -262,12 +263,14 @@ struct aoc_alsa_stream {
 	int draining;
 
 	struct work_struct free_aoc_service_work;
+	struct work_struct pcm_period_work;
 };
 
 void aoc_timer_start(struct aoc_alsa_stream *alsa_stream);
 void aoc_timer_restart(struct aoc_alsa_stream *alsa_stream);
 void aoc_timer_stop(struct aoc_alsa_stream *alsa_stream);
 void aoc_timer_stop_sync(struct aoc_alsa_stream *alsa_stream);
+void aoc_pcm_period_work_handler(struct work_struct *work);
 
 int snd_aoc_new_ctl(struct aoc_chip *chip);
 int snd_aoc_new_pcm(struct aoc_chip *chip);
