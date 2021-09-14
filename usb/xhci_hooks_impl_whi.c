@@ -207,6 +207,40 @@ out:
 	return is_audio;
 }
 
+/*
+ * check the usb device including the video class:
+ *     True: Devices contain video class
+ *    False: Device doesn't contain video class
+ */
+static bool is_usb_video_device(struct usb_device *udev)
+{
+	struct usb_host_config *config;
+	struct usb_host_interface *alt;
+	struct usb_interface_cache *intfc;
+	int i, j;
+	bool is_video = false;
+
+	if (!udev || !udev->config)
+		return is_video;
+
+	config = udev->config;
+
+	for (i = 0; i < config->desc.bNumInterfaces; i++) {
+		intfc = config->intf_cache[i];
+		for (j = 0; j < intfc->num_altsetting; j++) {
+			alt = &intfc->altsetting[j];
+
+			if (alt->desc.bInterfaceClass == USB_CLASS_VIDEO) {
+				is_video = true;
+				goto out;
+			}
+		}
+	}
+
+out:
+	return is_video;
+}
+
 static struct xhci_hcd *get_xhci_hcd_by_udev(struct usb_device *udev)
 {
 	struct usb_hcd *uhcd = container_of(udev->bus, struct usb_hcd, self);
@@ -583,6 +617,7 @@ static bool is_dma_for_offload(dma_addr_t dma)
 static bool is_usb_offload_enabled(struct xhci_hcd *xhci,
 		struct xhci_virt_device *vdev, unsigned int ep_index)
 {
+	struct usb_device *udev;
 	struct xhci_vendor_data *vendor_data = xhci_to_priv(xhci)->vendor_data;
 	bool global_enabled = vendor_data->op_mode != USB_OFFLOAD_STOP;
 	struct xhci_ring *ep_ring;
@@ -590,13 +625,17 @@ static bool is_usb_offload_enabled(struct xhci_hcd *xhci,
 	if (vdev == NULL || vdev->eps[ep_index].ring == NULL)
 		return global_enabled;
 
+	udev = vdev->udev;
+
 	if (global_enabled) {
 		ep_ring = vdev->eps[ep_index].ring;
 		if (vendor_data->op_mode == USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY) {
 			if (is_dma_for_offload(ep_ring->first_seg->dma))
 				return true;
 		} else if (vendor_data->op_mode == USB_OFFLOAD_DRAM) {
-			if (ep_ring->type == TYPE_ISOC)
+			if (is_usb_video_device(udev))
+				return false;
+			else if (ep_ring->type == TYPE_ISOC)
 				return true;
 		}
 	}
