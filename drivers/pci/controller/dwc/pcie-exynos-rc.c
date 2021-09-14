@@ -1074,7 +1074,8 @@ int exynos_pcie_rc_set_bar(int ch_num, u32 bar_num)
 	ep_pci_dev->resource[bar_num].end =
 		exynos_pcie->btl_target_addr + exynos_pcie->btl_offset + exynos_pcie->btl_size;
 	ep_pci_dev->resource[bar_num].flags = 0x82000000;
-	WARN_ON(pci_assign_resource(ep_pci_dev, bar_num));
+	if (pci_assign_resource(ep_pci_dev, bar_num) != 0)
+		pr_warn("%s: failed to assign PCI resource for %i\n", __func__, bar_num);
 
 	pci_read_config_dword(ep_pci_dev, PCI_BASE_ADDRESS_0 + (bar_num * 0x4), &val);
 	pr_info("%s: Check EP BAR[%d] = 0x%x\n", __func__, bar_num, val);

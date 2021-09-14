@@ -384,14 +384,16 @@ static int s51xx_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *en
 		pdev->resource[i].start = 0x0;
 		pdev->resource[i].end = 0x0;
 		pdev->resource[i].flags = 0x82000000;
-		WARN_ON(pci_assign_resource(pdev, i));
+		if (pci_assign_resource(pdev, i))
+			pr_warn("%s: failed to assign pci resource (i=%d)\n", __func__, i);
 	}
 
 	/* EP BAR setup: BAR0 (4kB) */
 	pdev->resource[0].start = val;
 	pdev->resource[0].end = val + SZ_4K;
 	pdev->resource[0].flags = 0x82000000;
-	WARN_ON(pci_assign_resource(pdev, 0));
+	if (pci_assign_resource(pdev, 0))
+			pr_warn("%s: failed to assign EP BAR0 pci resource\n", __func__);
 
 	/* get Doorbell base address from root bus range */
 	tmp_rsc = bus_self->resource + resno;
