@@ -107,6 +107,8 @@ enum aoc_cmd_code {
 	AOCC_CMD_CLOSE_CHANNEL,
 	AOCC_CMD_BLOCK_CHANNEL,
 	AOCC_CMD_UNBLOCK_CHANNEL,
+	AOCC_CMD_SUSPEND_PREPARE,
+	AOCC_CMD_WAKEUP_COMPELTE
 };
 
 struct aocc_channel_control_msg {
@@ -845,6 +847,41 @@ static void cleanup_resources(void)
 	}
 }
 
+static int aocc_prepare(struct device *dev)
+{
+	struct device *parent = dev->parent;
+	struct aoc_service_dev *service = container_of(parent, struct aoc_service_dev, dev);
+	int rc;
+
+	if (strcmp(dev_name(dev), "usf_sh_mem_doorbell") == 0)
+		return 0;
+
+	rc = aocc_send_cmd_msg(service, AOCC_CMD_SUSPEND_PREPARE, 0);
+	if (rc)
+		dev_err(dev, "failed to send suspend message\n");
+
+	return 0;
+}
+
+static void aocc_complete(struct device *dev)
+{
+	struct device *parent = dev->parent;
+	struct aoc_service_dev *service = container_of(parent, struct aoc_service_dev, dev);
+	int rc;
+
+	if (strcmp(dev_name(dev), "usf_sh_mem_doorbell") == 0)
+		return;
+
+	rc = aocc_send_cmd_msg(service, AOCC_CMD_WAKEUP_COMPELTE, 0);
+	if (rc)
+		dev_err(dev, "failed to send suspend message\n");
+}
+
+static const struct dev_pm_ops aocc_pm_ops = {
+	.prepare = aocc_prepare,
+	.complete = aocc_complete,
+};
+
 static int __init aocc_init(void)
 {
 	pr_debug("driver init\n");
@@ -864,6 +901,7 @@ static int __init aocc_init(void)
 	}
 
 	aocc_class->devnode = aocc_devnode;
+	aocc_class->pm = &aocc_pm_ops;
 
 	aoc_driver_register(&aoc_chan_driver);
 
