@@ -324,6 +324,36 @@ static inline void samsung_sysmmu_detach_drvdata(struct sysmmu_drvdata *data)
 	spin_unlock_irqrestore(&data->lock, flags);
 }
 
+/* TODO: Since upstream has removed of_get_dma_window() we'll temporarily
+ * open code relevant portion here, until we can come up with a generic
+ * enough implementation that can be proposed upstream for these drivers.
+ */
+static int samsung_sysmmu_get_dma_window(struct device_node *dn,
+					 dma_addr_t *addr, size_t *size)
+{
+	const __be32 *dma_window, *prop;
+	u32 cells;
+
+	dma_window = of_get_property(dn, "dma-window", NULL);
+	if (!dma_window)
+		return -ENODEV;
+
+	prop = of_get_property(dn, "#dma-address-cells", NULL);
+	cells = prop ? be32_to_cpup(prop) : of_n_addr_cells(dn);
+	if (!cells)
+		return -EINVAL;
+	*addr = of_read_number(dma_window, cells);
+	dma_window += cells;
+
+	prop = of_get_property(dn, "#dma-size-cells", NULL);
+	cells = prop ? be32_to_cpup(prop) : of_n_size_cells(dn);
+	if (!cells)
+		return -EINVAL;
+	*size = of_read_number(dma_window, cells);
+
+	return 0;
+}
+
 static int samsung_sysmmu_set_domain_range(struct iommu_domain *dom,
 					   struct device *dev)
 {
@@ -331,7 +361,7 @@ static int samsung_sysmmu_set_domain_range(struct iommu_domain *dom,
 	dma_addr_t start, end;
 	size_t size;
 
-	if (of_get_dma_window(dev->of_node, NULL, 0, NULL, &start, &size))
+	if (samsung_sysmmu_get_dma_window(dev->of_node, &start, &size))
 		return 0;
 
 	end = start + size;
