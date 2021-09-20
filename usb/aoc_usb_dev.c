@@ -183,13 +183,16 @@ static int aoc_usb_notify_conn_stat(struct aoc_usb_drvdata *drvdata, void *data)
 	struct CMD_USB_CONTROL_NOTIFY_CONN_STAT_V2 *cmd;
 	struct conn_stat_args *args = data;
 
-	if (args->conn_stat)
-		drvdata->usb_conn_state++;
-	else
-		drvdata->usb_conn_state--;
+	// Don't update usb audio device counter if the notification is for xhci driver state.
+	if (args->bus_id != 0 && args->dev_num != 0 && args->slot_id != 0) {
+		if (args->conn_stat)
+			drvdata->usb_conn_state++;
+		else
+			drvdata->usb_conn_state--;
 
-	dev_dbg(&drvdata->adev->dev, "currently connected usb audio device count = %u\n",
-		drvdata->usb_conn_state);
+		dev_dbg(&drvdata->adev->dev, "currently connected usb audio device count = %u\n",
+			drvdata->usb_conn_state);
+	}
 
 	cmd = kzalloc(sizeof(struct CMD_USB_CONTROL_NOTIFY_CONN_STAT_V2), GFP_KERNEL);
 	if (!cmd)
