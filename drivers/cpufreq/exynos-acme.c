@@ -37,11 +37,6 @@
  */
 static LIST_HEAD(domains);
 
-/*
- * list head of units which have cpufreq policy dependency
- */
-static LIST_HEAD(ready_list);
-
 /*********************************************************************
  *                          HELPER FUNCTION                          *
  *********************************************************************/
@@ -442,18 +437,6 @@ static int exynos_cpufreq_resume(struct cpufreq_policy *policy)
 	return __exynos_cpufreq_resume(policy, find_domain(policy->cpu));
 }
 
-static void exynos_cpufreq_ready(struct cpufreq_policy *policy)
-{
-	struct exynos_cpufreq_ready_block *ready_block;
-
-	list_for_each_entry(ready_block, &ready_list, list) {
-		if (ready_block->update)
-			ready_block->update(policy);
-		if (ready_block->get_target)
-			ready_block->get_target(policy, exynos_cpufreq_target);
-	}
-}
-
 static int exynos_cpufreq_pm_notifier(struct notifier_block *notifier,
 				      unsigned long pm_event, void *v)
 {
@@ -501,7 +484,6 @@ static struct cpufreq_driver exynos_driver = {
 	.offline	= exynos_cpufreq_offline,
 	.suspend	= exynos_cpufreq_suspend,
 	.resume		= exynos_cpufreq_resume,
-	.ready		= exynos_cpufreq_ready,
 	.attr		= cpufreq_generic_attr,
 };
 
@@ -647,18 +629,6 @@ static int cpufreq_fops_release(struct inode *inode, struct file *filp)
 
 	return 0;
 }
-
-/*********************************************************************
- *                       EXTERNAL REFERENCE APIs                     *
- *********************************************************************/
-void exynos_cpufreq_ready_list_add(struct exynos_cpufreq_ready_block *rb)
-{
-	if (!rb)
-		return;
-
-	list_add(&rb->list, &ready_list);
-}
-EXPORT_SYMBOL_GPL(exynos_cpufreq_ready_list_add);
 
 /*********************************************************************
  *                      SUPPORT for DVFS MANAGER                     *

@@ -91,12 +91,3 @@ struct exynos_cpufreq_domain {
  * two frequencies in nanoseconds
  */
 #define TRANSITION_LATENCY	5000000
-
-/*
- * Exynos CPUFreq API
- */
-#if IS_ENABLED(CONFIG_ARM_EXYNOS_ACME)
-extern void exynos_cpufreq_ready_list_add(struct exynos_cpufreq_ready_block *rb);
-#else
-static inline void exynos_cpufreq_ready_list_add(struct exynos_cpufreq_ready_block *rb) { }
-#endif
