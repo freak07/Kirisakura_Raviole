@@ -95,9 +95,10 @@ static void pixel_ufs_log_slowio(struct ufs_hba *hba,
 		if (optype == PIXEL_SLOWIO_READ ||
 			optype == PIXEL_SLOWIO_WRITE ||
 			optype == PIXEL_SLOWIO_UNMAP) {
-			if (lrbp->cmd->request && lrbp->cmd->request->bio) {
-				sector = blk_rq_pos(lrbp->cmd->request);
-				affected_bytes = blk_rq_bytes(lrbp->cmd->request);
+			struct request *rq = scsi_cmd_to_rq(lrbp->cmd);
+			if (rq && rq->bio) {
+				sector = blk_rq_pos(rq);
+				affected_bytes = blk_rq_bytes(rq);
 			}
 		}
 	}
@@ -264,7 +265,7 @@ static void pixel_ufs_update_io_stats(struct ufs_hba *hba,
 	if (cmd_type != REQ_TYPE_READ && cmd_type != REQ_TYPE_WRITE)
 		return;
 
-	affected_bytes = blk_rq_bytes(lrbp->cmd->request);
+	affected_bytes = blk_rq_bytes(scsi_cmd_to_rq(lrbp->cmd));
 
 	/* Upload I/O amount on statistic */
 	ist = &(ufs->io_stats[IO_TYPE_READ_WRITE]);
@@ -523,9 +524,9 @@ static void pixel_ufs_trace_upiu_cmd(struct ufs_hba *hba,
 	if (lrbp->cmd) {
 		event = (is_start) ? EVENT_SCSI_SEND : EVENT_SCSI_COMPL;
 		opcode = lrbp->cmd->cmnd[0];
-		sector = blk_rq_pos(lrbp->cmd->request);
+		sector = blk_rq_pos(scsi_cmd_to_rq(lrbp->cmd));
 
-		affected_bytes = blk_rq_bytes(lrbp->cmd->request);
+		affected_bytes = blk_rq_bytes(scsi_cmd_to_rq(lrbp->cmd));
 		if (opcode == WRITE_10 || opcode == READ_10)
 			group_id = lrbp->cmd->cmnd[6] & 0x3f;
 		else if (opcode == WRITE_16 || opcode == READ_16)

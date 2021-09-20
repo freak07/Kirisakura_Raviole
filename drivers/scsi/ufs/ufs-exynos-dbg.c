@@ -913,7 +913,7 @@ void exynos_ufs_cmd_log_start(struct ufs_vs_handle *handle,
 
 	cmd_log->start_time = cpu_clock(cpu);
 	cmd_log->op = cmd->cmnd[0];
-	cmd_log->tag = cmd->request->tag;
+	cmd_log->tag = scsi_cmd_to_rq(cmd)->tag;
 	/* This function runtime is protected by spinlock from outside */
 	cmd_log->outstanding_reqs = hba->outstanding_reqs;
 
