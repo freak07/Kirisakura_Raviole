@@ -24,13 +24,13 @@ static ssize_t vmstat_show(struct kobject *kobj,
 	unsigned long miss_count = 0;
 	unsigned long hit_count = 0;
 
-	get_online_cpus();
+	cpus_read_lock();
 	for_each_online_cpu(cpu) {
 		pages += per_cpu(pgalloc_costly_order, cpu);
 		miss_count += per_cpu(pgcache_miss, cpu);
 		hit_count += per_cpu(pgcache_hit, cpu);
 	}
-	put_online_cpus();
+	cpus_read_unlock();
 
 	return sprintf(buf, "%s %d\n%s %d\n%s %d\n",
 			"pgalloc_costly_order", pages,
