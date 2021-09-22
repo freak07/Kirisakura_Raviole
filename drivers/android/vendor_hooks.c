@@ -34,6 +34,9 @@
 #include <trace/hooks/sys.h>
 #include <trace/hooks/iommu.h>
 #include <trace/hooks/net.h>
+#include <trace/hooks/timer.h>
+#include <trace/hooks/pm_domain.h>
+#include <trace/hooks/cpuidle_psci.h>
 
 /*
  * Export tracepoints that act as a bare tracehook (ie: have no trace event
@@ -130,4 +133,8 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_cgroup_attach);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_iommu_setup_dma_ops);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_ptype_head);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_kfree_skb);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_timer_calc_index);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_allow_domain_state);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_cpuidle_psci_enter);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_cpuidle_psci_exit);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_of_i2c_get_board_info);
