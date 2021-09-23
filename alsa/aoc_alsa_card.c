@@ -251,6 +251,7 @@ static const struct be_param_cache default_be_params[PORT_MAX] = {
 	MK_TDM_BE_PARAMS(TDM_1_TX, SNDRV_PCM_FORMAT_S16_LE,
 			2, 48000, 4, SNDRV_PCM_FORMAT_S32_LE)
 	MK_BE_PARAMS(INTERNAL_MIC_TX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
+	MK_BE_PARAMS(ERASER_TX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
 	MK_BE_PARAMS(BT_RX, SNDRV_PCM_FORMAT_S16_LE, 1, 16000)
 	MK_BE_PARAMS(BT_TX, SNDRV_PCM_FORMAT_S16_LE, 1, 16000)
 	MK_BE_PARAMS(USB_RX, SNDRV_PCM_FORMAT_S16_LE, 2, 48000)
@@ -941,6 +942,7 @@ MK_TDM_HW_PARAM_CTRLS(TDM_0_TX, "TDM_0_TX");
 MK_TDM_HW_PARAM_CTRLS(TDM_1_RX, "TDM_1_RX");
 MK_TDM_HW_PARAM_CTRLS(TDM_1_TX, "TDM_1_TX");
 MK_HW_PARAM_CTRLS(INTERNAL_MIC_TX, "INTERNAL_MIC_TX");
+MK_HW_PARAM_CTRLS(ERASER_TX, "ERASER_TX");
 MK_HW_PARAM_CTRLS(BT_RX, "BT_RX");
 MK_HW_PARAM_CTRLS(BT_TX, "BT_TX");
 MK_HW_PARAM_CTRLS(USB_RX, "USB_RX");
@@ -966,6 +968,7 @@ static const struct dai_link_res_map be_res_map[PORT_MAX] = {
 	MK_BE_RES_ITEM(TDM_1_RX, &aoc_tdm_ops, hw_params_fixup)
 	MK_BE_RES_ITEM(TDM_1_TX, &aoc_tdm_ops, hw_params_fixup)
 	MK_BE_RES_ITEM(INTERNAL_MIC_TX, &aoc_i2s_ops, hw_params_fixup)
+	MK_BE_RES_ITEM(ERASER_TX, &aoc_i2s_ops, hw_params_fixup)
 	MK_BE_RES_ITEM(BT_RX, &aoc_i2s_ops, hw_params_fixup)
 	MK_BE_RES_ITEM(BT_TX, &aoc_i2s_ops, hw_params_fixup)
 	MK_BE_RES_ITEM(USB_RX, &aoc_i2s_ops, hw_params_fixup)

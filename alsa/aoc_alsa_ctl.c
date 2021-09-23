@@ -539,6 +539,40 @@ static int decoder_ref_enable_ctl_get(struct snd_kcontrol *kcontrol,
 	return err;
 }
 
+static int audio_capture_eraser_enable_ctl_get(struct snd_kcontrol *kcontrol,
+					       struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	ucontrol->value.integer.value[0] = chip->capture_eraser_enable;
+
+	mutex_unlock(&chip->audio_mutex);
+
+	return 0;
+}
+
+static int audio_capture_eraser_enable_ctl_set(struct snd_kcontrol *kcontrol,
+					       struct snd_ctl_elem_value *ucontrol)
+{
+	struct aoc_chip *chip = snd_kcontrol_chip(kcontrol);
+	int err = 0;
+
+	if (mutex_lock_interruptible(&chip->audio_mutex))
+		return -EINTR;
+
+	chip->capture_eraser_enable = ucontrol->value.integer.value[0];
+	err = aoc_audio_capture_eraser_enable(chip, chip->capture_eraser_enable);
+	if (err < 0)
+		pr_err("ERR:%d capture eraser %s fail\n", err,
+		       (chip->capture_eraser_enable) ? "Enable" : "Disable");
+
+	mutex_unlock(&chip->audio_mutex);
+	return err;
+}
+
 static int sidetone_enable_ctl_set(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
@@ -1464,7 +1498,7 @@ static SOC_ENUM_SINGLE_DECL(incall_capture_stream2_enum, 1, 2, incall_capture_st
 
 /* audio capture mic source */
 static const char *audio_capture_mic_source_texts[] = { "Default", "Builtin_MIC", "USB_MIC",
-						       "BT_MIC", "No MIC" };
+						       "BT_MIC", "No MIC", "ERASER" };
 static SOC_ENUM_SINGLE_DECL(audio_capture_mic_source_enum, 1, 0, audio_capture_mic_source_texts);
 
 /* Voice call mic source */
@@ -1623,6 +1657,9 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 	SOC_SINGLE_EXT("AoC USB Sink Channel Bitmap", SND_SOC_NOPM, 4, 0x00ffff,
 		       0, aoc_sink_channel_bitmap_ctl_get, NULL),
 
+	SOC_SINGLE_EXT("Audio Capture Eraser Enable", SND_SOC_NOPM, 0, 1, 0,
+		       audio_capture_eraser_enable_ctl_get, audio_capture_eraser_enable_ctl_set),
+
 	SOC_ENUM_EXT("Audio Capture Mic Source", audio_capture_mic_source_enum,
 		     audio_capture_mic_source_get, audio_capture_mic_source_set),
 
@@ -1689,6 +1726,7 @@ static struct snd_kcontrol_new snd_aoc_ctl[] = {
 		       incall_playback_mic_channel_ctl_set),
 	SOC_SINGLE_EXT("Incall Playback1 Mic Channel", SND_SOC_NOPM, 1, 2, 0, incall_playback_mic_channel_ctl_get,
 		       incall_playback_mic_channel_ctl_set),
+
 
 
 	/* LVM enable 1/0 for comp offload */
