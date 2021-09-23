@@ -104,28 +104,30 @@ EXPORT_SYMBOL_GPL(is_acpm_ipc_busy);
 
 static int plugins_init(struct device_node *node)
 {
-	struct plugin *plugins;
+	struct plugin __iomem *plugins;
 	int i, len, ret = 0;
-	const char *name = NULL;
+	const char __iomem *name = NULL;
 	void __iomem *base_addr = NULL;
 	const __be32 *prop;
 	unsigned int offset;
+	char dvfs_name[5] = {0};
 
 	plugins = (struct plugin *)(acpm_srambase + acpm_initdata->plugins);
 
 	for (i = 0; i < acpm_initdata->num_plugins; i++) {
-		if (plugins[i].is_attached == 0)
+		if (readb_relaxed(&plugins[i].is_attached) == 0)
 			continue;
 
 		name = (const char *)(acpm_srambase + plugins[i].fw_name);
 		if (!plugins[i].fw_name || !name)
 			continue;
 
-		if (strstr(name, "DVFS") || strstr(name, "dvfs")) {
+		memcpy_fromio(dvfs_name, name, 4);
+		if (strcmp(dvfs_name, "DVFS") == 0 || strcmp(dvfs_name, "dvfs") == 0) {
 			prop = of_get_property(node, "fvmap_offset", &len);
 			if (prop) {
 				base_addr = acpm_srambase;
-				base_addr += (plugins[i].base_addr & ~0x1);
+				base_addr += (readl_relaxed(&plugins[i].base_addr) & ~0x1);
 				offset = be32_to_cpup(prop);
 				base_addr += offset;
 			}
