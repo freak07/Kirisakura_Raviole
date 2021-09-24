@@ -190,7 +190,7 @@ kernel_build(
         "zsmalloc.ko",
     ],
     # Keep in sync with build.config.common
-    toolchain_version = "r416183b",
+    toolchain_version = "r428724",
     deps = [
         "//prebuilts/misc/linux-x86/libufdt:mkdtimg",
     ],
