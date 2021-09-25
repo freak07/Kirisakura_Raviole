@@ -19,7 +19,12 @@ package(
 
 load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
 load("//build/kleaf:common_kernels.bzl", "aarch64_outs")
-load("//build/kleaf:kernel.bzl", "kernel_build", "kernel_modules_install")
+load(
+    "//build/kleaf:kernel.bzl",
+    "kernel_build",
+    "kernel_images",
+    "kernel_modules_install",
+)
 
 kernel_build(
     name = "slider",
@@ -42,8 +47,6 @@ kernel_build(
 
         # TODO(b/197995714): Add other things built by build.sh
         # "abi_symbollist",
-        # "boot.img",
-        # "vendor_boot.img",
     ],
     build_config = "build.config.slider",
     module_outs = [
@@ -236,10 +239,38 @@ kernel_modules_install(
     ],
 )
 
+kernel_images(
+    name = "slider_images",
+    build_boot_images = True,
+    build_vendor_dlkm = True,
+    kernel_build = ":slider",
+    kernel_modules_install = ":slider_modules_install",
+    deps = [
+        # Keep the following in sync with build.config.slider:
+        # MODULES_LIST
+        "vendor_boot_modules.slider",
+        # No MODULES_BLOCKLIST
+
+        # Keep the following in sync with build.config.gs101:
+        # VENDOR_DLKM_MODULES_LIST
+        "vendor_dlkm_modules.slider",
+        # VENDOR_DLKM_PROPS
+        "vendor_dlkm.props.slider",
+        # VENDOR_RAMDISK_BINARY
+        "//prebuilts/boot-artifacts/ramdisks:vendor_ramdisk-oriole.img",
+        # No VENDOR_DLKM_MODULES_BLOCKLIST
+
+        # Keep the following in sync with vendor_dlkm.props.slider:
+        # selinux_fc
+        "//prebuilts/boot-artifacts/selinux:file_contexts.bin",
+    ],
+)
+
 copy_to_dist_dir(
     name = "slider_dist",
     data = [
         ":slider_for_dist",
+        ":slider_images",
         ":slider_modules_install",
     ],
 )
