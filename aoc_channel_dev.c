@@ -857,8 +857,8 @@ static int aocc_prepare(struct device *dev)
 		return 0;
 
 	rc = aocc_send_cmd_msg(service, AOCC_CMD_SUSPEND_PREPARE, 0);
-	if (rc)
-		dev_err(dev, "failed to send suspend message\n");
+	if (rc < 0)
+		dev_err(dev, "failed to send suspend message: %d\n", rc);
 
 	return 0;
 }
@@ -873,8 +873,8 @@ static void aocc_complete(struct device *dev)
 		return;
 
 	rc = aocc_send_cmd_msg(service, AOCC_CMD_WAKEUP_COMPELTE, 0);
-	if (rc)
-		dev_err(dev, "failed to send suspend message\n");
+	if (rc < 0)
+		dev_err(dev, "failed to send resume message: %d\n", rc);
 }
 
 static const struct dev_pm_ops aocc_pm_ops = {
