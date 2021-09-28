@@ -242,6 +242,9 @@ static ssize_t read_stat_by_name(struct device *dev, char *buf,
 	struct stats_prvdata *prvdata = dev_get_drvdata(dev);
 	int i;
 
+	if (!prvdata)
+		return 0;
+
 	for (i = 0; i < prvdata->total_stats; i++) {
 		if (strcmp(name, prvdata->discovered_stats[i].name))
 			continue;
@@ -478,9 +481,9 @@ static int aoc_control_remove(struct aoc_service_dev *sd)
 
 	pr_debug("remove service with name %s\n", dev_name(dev));
 
-	device_remove_groups(dev, aoc_stats_groups);
-
 	cancel_work_sync(&prvdata->discovery_work);
+
+	device_remove_groups(dev, aoc_stats_groups);
 
 	aoc_remove_map_handler(prvdata->service);
 
