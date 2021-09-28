@@ -93,9 +93,14 @@ struct bcl_device {
 	unsigned int gpu_clkdivstep;
 	unsigned int gpu_clk_stats;
 	unsigned int tpu_clk_stats;
+	unsigned int tpu_vdroop_flt;
+	unsigned int gpu_vdroop_flt;
 
 	bool batt_psy_initialized;
 	bool enabled;
+
+	unsigned int offsrc;
+	unsigned int pwronsrc;
 };
 
 extern int google_set_mpmm(struct bcl_device *data, unsigned int value);

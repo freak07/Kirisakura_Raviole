@@ -376,6 +376,7 @@ static int dwc3_otg_start_host(struct otg_fsm *fsm, int on)
 	struct device	*dev = dotg->dwc->dev;
 	struct dwc3_exynos *exynos = dotg->exynos;
 	static struct usb_gadget_driver *temp_gadget_driver;
+	struct usb_composite_driver *composite;
 	int ret = 0;
 	int ret1 = -1;
 	int wait_counter = 0;
@@ -442,12 +443,17 @@ static int dwc3_otg_start_host(struct otg_fsm *fsm, int on)
 							msecs_to_jiffies(5000));
 		}
 
+		if (temp_gadget_driver) {
+			composite = to_cdriver(temp_gadget_driver);
+			if (composite && composite->gadget_driver.udc_name)
+				dwc->gadget_driver = temp_gadget_driver;
+		}
+
 		dwc3_exynos_host_exit(exynos);
 		dwc->xhci = NULL;
 
 err2:
 		ret = dwc3_otg_phy_enable(fsm, 0, on);
-		dwc->gadget_driver = temp_gadget_driver;
 	}
 err1:
 	__pm_relax(dotg->wakelock);
@@ -498,6 +504,7 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 	struct device	*dev = dotg->dwc->dev;
 	int ret = 0;
 	int wait_counter = 0;
+	u32 evt_count;
 
 	if (!otg->gadget) {
 		dev_err(dev, "%s does not have any gadget\n", __func__);
@@ -545,7 +552,9 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 			dwc3_exynos_gadget_disconnect_proc(dwc);
 
 		/* Wait until dwc connected is off */
-		while (dwc->connected) {
+		evt_count = dwc3_readl(dwc->regs, DWC3_GEVNTCOUNT(0));
+		evt_count &= DWC3_GEVNTCOUNT_MASK;
+		while (dwc->connected || evt_count) {
 			wait_counter++;
 			msleep(20);
 
@@ -553,6 +562,9 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 				dev_err(dev, "Can't wait dwc disconnect!\n");
 				break;
 			}
+			evt_count = dwc3_readl(dwc->regs, DWC3_GEVNTCOUNT(0));
+			evt_count &= DWC3_GEVNTCOUNT_MASK;
+			dev_dbg(dev, "%s: evt = %d\n", __func__, evt_count);
 		}
 
 		/*
@@ -851,6 +863,7 @@ static int dwc3_otg_reboot_notify(struct notifier_block *nb, unsigned long event
 	dotg = exynos->dotg;
 
 	switch (event) {
+	case SYS_HALT:
 	case SYS_RESTART:
 	case SYS_POWER_OFF:
 		exynos->dwc->current_dr_role = DWC3_EXYNOS_IGNORE_CORE_OPS;

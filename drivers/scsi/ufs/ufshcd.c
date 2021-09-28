@@ -3443,9 +3443,11 @@ int ufshcd_read_desc_param(struct ufs_hba *hba,
 
 	if (is_kmalloc) {
 		/* Make sure we don't copy more data than available */
-		if (param_offset + param_size > buff_len)
-			param_size = buff_len - param_offset;
-		memcpy(param_read_buf, &desc_buf[param_offset], param_size);
+		if (param_offset >= buff_len)
+			ret = -EINVAL;
+		else
+			memcpy(param_read_buf, &desc_buf[param_offset],
+			       min_t(u32, param_size, buff_len - param_offset));
 	}
 out:
 	if (is_kmalloc)
@@ -4079,6 +4081,9 @@ out:
 	if (reenable_intr)
 		ufshcd_enable_intr(hba, UIC_COMMAND_COMPL);
 	if (ret) {
+		dev_err(hba->dev,
+			"%s: Changing link power status failed (%d). Scheduling error handler\n",
+			__func__, ret);
 		ufshcd_set_link_broken(hba);
 		ufshcd_schedule_eh_work(hba);
 	}
@@ -5168,6 +5173,10 @@ ufshcd_transfer_rsp_status(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 		result |= DID_ABORT << 16;
 		break;
 	case OCS_INVALID_COMMAND_STATUS:
+		dev_err_ratelimited(hba->dev,
+			"Retrying request with tag %d / cdb %#02x because of invalid command status\n",
+			lrbp->task_tag, lrbp->cmd && lrbp->cmd->cmnd ?
+			lrbp->cmd->cmnd[0] : 0);
 		result |= DID_REQUEUE << 16;
 		break;
 	case OCS_INVALID_CMD_TABLE_ATTR:
@@ -6350,8 +6359,11 @@ static irqreturn_t ufshcd_check_errors(struct ufs_hba *hba, u32 intr_status)
 	if (hba->errors & UIC_ERROR) {
 		hba->uic_error = 0;
 		retval = ufshcd_update_uic_error(hba);
-		if (hba->uic_error)
+		if (hba->uic_error) {
+			dev_err(hba->dev,
+			  "Scheduling error handler because of an UIC error\n");
 			queue_eh_work = true;
+		}
 	}
 
 	if (hba->errors & UFSHCD_UIC_HIBERN8_MASK) {
@@ -9659,6 +9671,7 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 	async_schedule(ufshcd_async_scan, hba);
 	ufs_sysfs_add_nodes(hba);
 
+	device_enable_async_suspend(dev);
 	return 0;
 
 free_tmf_queue:

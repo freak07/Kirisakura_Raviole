@@ -57,18 +57,22 @@
 
 #include <linux/dma-map-ops.h>
 #include <soc/google/s2mpu.h>
-
+#include <trace/hooks/pci.h>
 struct exynos_pcie g_pcie_rc[MAX_RC_NUM];
 int pcie_is_linkup;	/* checkpatch: do not initialise globals to 0 */
 /* currnet_cnt & current_cnt2 for EOM test */
 static int current_cnt;
 static int current_cnt2;
+static bool is_vhook_registered;
 
 static struct pci_dev *exynos_pcie_get_pci_dev(struct pcie_port *pp);
 
 #if IS_ENABLED(CONFIG_PM_DEVFREQ)
 static struct exynos_pm_qos_request exynos_pcie_int_qos[MAX_RC_NUM];
 #endif
+
+static void exynos_d3_sleep_hook(void *unused, struct pci_dev *dev,
+				 unsigned int delay, int *err);
 
 #if IS_ENABLED(CONFIG_GS_S2MPU)
 
@@ -135,7 +139,8 @@ unsigned char s2mpu_get_and_modify(struct exynos_pcie *exynos_pcie,
 }
 
 void s2mpu_update_refcnt(struct device *dev,
-			 dma_addr_t dma_addr, size_t size, bool incr)
+			 dma_addr_t dma_addr, size_t size, bool incr,
+			 enum dma_data_direction dir)
 {
 	struct exynos_pcie *exynos_pcie = &g_pcie_rc[WIFI_CH_NUM];
 	phys_addr_t align_addr;
@@ -166,10 +171,13 @@ void s2mpu_update_refcnt(struct device *dev,
 		if (incr) {
 			refcnt = s2mpu_get_and_modify(exynos_pcie, refcnt_ptr,
 						      true);
+			/* Note that this will open the memory with read/write
+			 * permissions based on the first invocation. Subsequent
+			 * read/write permissions will be ignored.
+			 */
 			if (refcnt == 1) {
 				ret = s2mpu_open(exynos_pcie->s2mpu,
-						 align_addr,
-						 ALIGN_SIZE);
+						 align_addr, ALIGN_SIZE, dir);
 				if (ret) {
 					dev_err(dev,
 						"s2mpu_open failed addr=%pad, size=%zx\n",
@@ -185,8 +193,7 @@ void s2mpu_update_refcnt(struct device *dev,
 			}
 			if (refcnt == 0) {
 				ret = s2mpu_close(exynos_pcie->s2mpu,
-						  align_addr,
-						  ALIGN_SIZE);
+						  align_addr, ALIGN_SIZE, dir);
 				if (ret) {
 					dev_err(dev,
 						"s2mpu_close failed addr=%pad, size=%zx\n",
@@ -208,7 +215,7 @@ static void *gs101_pcie_dma_alloc_attrs(struct device *dev, size_t size,
 
 	cpu_addr = dma_alloc_attrs(&fake_dma_dev, size,
 				   dma_handle, flag, attrs);
-	s2mpu_update_refcnt(dev, *dma_handle, size, true);
+	s2mpu_update_refcnt(dev, *dma_handle, size, true, DMA_BIDIRECTIONAL);
 	return cpu_addr;
 }
 
@@ -217,7 +224,7 @@ static void gs101_pcie_dma_free_attrs(struct device *dev, size_t size,
 				      unsigned long attrs)
 {
 	dma_free_attrs(&fake_dma_dev, size, cpu_addr, dma_addr, attrs);
-	s2mpu_update_refcnt(dev, dma_addr, size, false);
+	s2mpu_update_refcnt(dev, dma_addr, size, false, DMA_BIDIRECTIONAL);
 }
 
 static dma_addr_t gs101_pcie_dma_map_page(struct device *dev, struct page *page,
@@ -229,7 +236,7 @@ static dma_addr_t gs101_pcie_dma_map_page(struct device *dev, struct page *page,
 
 	dma_addr = dma_map_page_attrs(&fake_dma_dev, page, offset,
 				      size, dir, attrs);
-	s2mpu_update_refcnt(dev, dma_addr, size, true);
+	s2mpu_update_refcnt(dev, dma_addr, size, true, dir);
 	return dma_addr;
 }
 
@@ -238,7 +245,7 @@ static void gs101_pcie_dma_unmap_page(struct device *dev, dma_addr_t dma_addr,
 				      unsigned long attrs)
 {
 	dma_unmap_page_attrs(&fake_dma_dev, dma_addr, size, dir, attrs);
-	s2mpu_update_refcnt(dev, dma_addr, size, false);
+	s2mpu_update_refcnt(dev, dma_addr, size, false, dir);
 }
 
 static const struct dma_map_ops gs101_pcie_dma_ops = {
@@ -2576,6 +2583,11 @@ retry:
 	dev_dbg(dev, "%s: NACK option enable: 0x%x\n", __func__,
 		exynos_elbi_read(exynos_pcie, PCIE_MSTR_PEND_SEL_NAK));
 
+	/* DBI L1 exit disable(use aux_clk in L1.2) */
+	exynos_elbi_write(exynos_pcie, DBI_L1_EXIT_DISABLE, PCIE_DBI_L1_EXIT_DISABLE);
+	dev_dbg(dev, "%s: DBI L1 exit disable option enable: 0x%x\n", __func__,
+		exynos_elbi_read(exynos_pcie, PCIE_DBI_L1_EXIT_DISABLE));
+
 	/* setup root complex */
 	dw_pcie_setup_rc(pp);
 	exynos_pcie_setup_rc(pp);
@@ -3990,7 +4002,8 @@ static int setup_s2mpu_mem(struct device *dev, struct exynos_pcie *exynos_pcie)
 		/* Optimize s2mpu operation by setting up 1G page tables */
 		addr = pm->start;
 		while (addr <  pm->start + pm->size) {
-			ret = s2mpu_close(exynos_pcie->s2mpu, addr, ALIGN_SIZE);
+			ret = s2mpu_close(exynos_pcie->s2mpu, addr, ALIGN_SIZE,
+					  DMA_BIDIRECTIONAL);
 			if (ret) {
 				dev_err(dev,
 					"probe s2mpu_close failed addr = 0x%pa\n",
@@ -4003,6 +4016,13 @@ static int setup_s2mpu_mem(struct device *dev, struct exynos_pcie *exynos_pcie)
 	return ret;
 }
 #endif
+
+static void exynos_d3_sleep_hook(void *unused, struct pci_dev *dev,
+				 unsigned int delay, int *err)
+{
+	usleep_range(delay * 1000, delay * 1000);
+	*err = 0;
+}
 
 static int exynos_pcie_rc_probe(struct platform_device *pdev)
 {
@@ -4024,6 +4044,17 @@ static int exynos_pcie_rc_probe(struct platform_device *pdev)
 	if (of_property_read_u32(np, "ch-num", &ch_num)) {
 		dev_err(&pdev->dev, "Failed to parse the channel number\n");
 		return -EINVAL;
+	}
+
+	if (!is_vhook_registered) {
+		dev_info(&pdev->dev, "register PCI sleep hook\n");
+		ret = register_trace_android_rvh_pci_d3_sleep(exynos_d3_sleep_hook,
+							      NULL);
+		if (ret) {
+			dev_err(&pdev->dev, "PCI sleep hook failed\n");
+			return ret;
+		}
+		is_vhook_registered = true;
 	}
 
 	dev_info(&pdev->dev, "## PCIe ch %d ##\n", ch_num);

@@ -470,13 +470,18 @@ static void enable_data_path_locked(struct max77759_plat *chip)
 		 chip->bc12_data_capable ? 1 : 0, chip->attached ? 1 : 0,
 		 chip->debug_acc_connected, chip->bc12_running ? 1 : 0);
 
-	enable_data = (chip->pd_data_capable || chip->no_bc_12 || chip->bc12_data_capable ||
-		       chip->data_role == TYPEC_HOST || chip->debug_acc_connected) &&
-		!chip->bc12_running;
+	enable_data = ((chip->pd_data_capable || chip->no_bc_12 || chip->bc12_data_capable ||
+		       chip->debug_acc_connected) && !chip->bc12_running) ||
+		       chip->data_role == TYPEC_HOST;
 
 	if (chip->attached && enable_data && !chip->data_active) {
 		/* Disable BC1.2 to prevent BC1.2 detection during PR_SWAP */
 		bc12_enable(chip->bc12, false);
+		/*
+		 * Clear running flag here as PD might have configured data
+		 * before BC12 started to run.
+		 */
+		chip->bc12_running = false;
 
 		/*
 		 * b/188614064: While swapping from host to device switches will not be configured
@@ -528,6 +533,7 @@ static void enable_vbus_work(struct kthread_work *work)
 	}
 
 	ret = gvotable_cast_vote(chip->charger_mode_votable, TCPCI_MODE_VOTER,
+				 chip->no_external_boost ? (void *)GBMS_USB_OTG_FRS_ON :
 				 (void *)GBMS_USB_OTG_ON, true);
 
 	logbuffer_log(chip->log, "%s: GBMS_MODE_VOTABLE voting source vote:%u ret:%d",
@@ -676,6 +682,12 @@ static void process_power_status(struct max77759_plat *chip)
 		mutex_lock(&chip->data_path_lock);
 		chip->debug_acc_connected = pwr_status & TCPC_POWER_STATUS_DBG_ACC_CON ? 1 : 0;
 		chip->data_role = TYPEC_DEVICE;
+		/*
+		 * Renable BC1.2 upon disconnect if disabled. Needed for
+		 * sink-only mode such as fastbootd/Recovery.
+		 */
+		if (chip->attached && !chip->debug_acc_connected && !bc12_get_status(chip->bc12))
+			bc12_enable(chip->bc12, true);
 		chip->attached = chip->debug_acc_connected;
 		enable_data_path_locked(chip);
 		mutex_unlock(&chip->data_path_lock);
@@ -686,6 +698,7 @@ static void process_power_status(struct max77759_plat *chip)
 					      SBUSW_SERIAL_UART);
 			logbuffer_log(log, "SBU switch enable %s", ret < 0 ? "fail" : "success");
 		}
+		usb_psy_set_attached_state(chip->usb_psy_data, chip->attached);
 	}
 }
 
@@ -1065,7 +1078,8 @@ static int max77759_start_toggling(struct tcpci *tcpci,
 				   enum typec_cc_status cc)
 {
 	struct max77759_plat *chip = tdata_to_max77759(tdata);
-	u8 reg = TCPC_ROLE_CTRL_DRP;
+	u8 reg = TCPC_ROLE_CTRL_DRP, pwr_ctrl;
+	int ret;
 
 	switch (cc) {
 	case TYPEC_CC_RP_DEF:
@@ -1108,10 +1122,23 @@ static int max77759_start_toggling(struct tcpci *tcpci,
 	}
 
 	/* Renable BC1.2*/
-	bc12_enable(chip->bc12, true);
+	if (!bc12_get_status(chip->bc12))
+		bc12_enable(chip->bc12, true);
 
 	/* Re-enable retry */
 	bc12_reset_retry(chip->bc12);
+
+	/* Disable Auto disacharge before enabling toggling */
+	ret = max77759_read8(tcpci->regmap, TCPC_POWER_CTRL, &pwr_ctrl);
+	logbuffer_log(chip->log, "TCPC_POWER_CTRL:0x%x ret:%d", pwr_ctrl, ret);
+	if (pwr_ctrl & TCPC_POWER_CTRL_AUTO_DISCHARGE) {
+		logbuffer_log(chip->log, "TCPC_POWER_CTRL_AUTO_DISCHARGE not cleared");
+		ret = regmap_update_bits(tcpci->regmap, TCPC_POWER_CTRL,
+					 TCPC_POWER_CTRL_AUTO_DISCHARGE, 0);
+		if (ret < 0)
+			logbuffer_log(chip->log, "[%s]: Disabling auto discharge failed", __func__);
+	}
+
 	if (chip->contaminant_detection)
 		update_contaminant_detection_locked(chip, chip->contaminant_detection);
 	else
@@ -1284,6 +1311,9 @@ static int max77759_usb_set_role(struct usb_role_switch *sw, enum usb_role role)
 		}
 	}
 
+	/* Renable BC1.2 */
+	if (chip->attached && !attached && !bc12_get_status(chip->bc12))
+		bc12_enable(chip->bc12, true);
 	/*
 	 * To prevent data stack enumeration failure, previously there
 	 * was a 300msec delay here
@@ -1293,6 +1323,14 @@ static int max77759_usb_set_role(struct usb_role_switch *sw, enum usb_role role)
 	chip->data_role = typec_data_role;
 	enable_data_path_locked(chip);
 	mutex_unlock(&chip->data_path_lock);
+	usb_psy_set_attached_state(chip->usb_psy_data, chip->attached);
+
+	/*
+	 * Renable BC1.2 upon disconnect if disabled. Needed for sink-only mode such as
+	 * fastbootd/Recovery.
+	 */
+	if (chip->attached && !attached && !bc12_get_status(chip->bc12))
+		bc12_enable(chip->bc12, true);
 
 	return 0;
 }
@@ -1362,7 +1400,13 @@ static void max77759_set_port_data_capable(struct i2c_client *tcpc_client,
 		enable_data_path_locked(chip);
 		mutex_unlock(&chip->data_path_lock);
 		break;
+	case POWER_SUPPLY_USB_TYPE_DCP:
 	case POWER_SUPPLY_USB_TYPE_UNKNOWN:
+		mutex_lock(&chip->data_path_lock);
+		chip->bc12_data_capable = false;
+		enable_data_path_locked(chip);
+		mutex_unlock(&chip->data_path_lock);
+		break;
 	default:
 		chip->bc12_data_capable = false;
 		break;
@@ -1671,6 +1715,7 @@ static int max77759_probe(struct i2c_client *client,
 	}
 
 	chip->no_bc_12 = of_property_read_bool(dn, "no-bc-12");
+	chip->no_external_boost = of_property_read_bool(dn, "no-external-boost");
 	of_property_read_u32(dn, "sink-discovery-delay-ms", &sink_discovery_delay_ms);
 
 	chip->usb_psy = power_supply_get_by_name(usb_psy_name);
