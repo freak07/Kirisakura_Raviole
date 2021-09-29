@@ -32,6 +32,7 @@ debug-reboot.ko
 debug-snapshot-debug-kinfo.ko
 debug-snapshot-qd.ko
 debug-snapshot-sfrdump.ko
+deferred-free-helper.ko
 dss.ko
 dw3000.ko
 dwc3-exynos-usb.ko
@@ -115,6 +116,7 @@ nitrous.ko
 odpm.ko
 overheat_mitigation.ko
 p9221.ko
+page_pool.ko
 panel-samsung-drv.ko
 panel-samsung-emul.ko
 panel-samsung-s6e3fc3.ko
