@@ -2121,26 +2121,26 @@ static void aoc_take_offline(struct aoc_prvdata *prvdata)
 	int rc;
 
 	/* check if devices/services are ready */
-	if (aoc_state == AOC_STATE_OFFLINE || !prvdata->services)
-		return;
+	if (aoc_state == AOC_STATE_ONLINE) {
+		pr_notice("taking aoc offline\n");
+		aoc_state = AOC_STATE_OFFLINE;
 
-	pr_notice("taking aoc offline\n");
-	aoc_state = AOC_STATE_OFFLINE;
+		bus_for_each_dev(&aoc_bus_type, NULL, NULL, aoc_remove_device);
 
-	bus_for_each_dev(&aoc_bus_type, NULL, NULL, aoc_remove_device);
+		if (aoc_control)
+			aoc_control->magic = 0;
 
-	if (aoc_control)
-		aoc_control->magic = 0;
+		if (prvdata->services) {
+			devm_kfree(prvdata->dev, prvdata->services);
+			prvdata->services = NULL;
+			prvdata->total_services = 0;
+		}
 
-	devm_kfree(prvdata->dev, prvdata->services);
-	prvdata->services = NULL;
-	prvdata->total_services = 0;
-
-	/* wakeup AOC before calling GSA */
-	aoc_req_assert(prvdata, true);
-	rc = aoc_req_wait(prvdata, true);
-	if (rc) {
-		dev_err(prvdata->dev, "timed out waiting for aoc_ack\n");
+		/* wakeup AOC before calling GSA */
+		aoc_req_assert(prvdata, true);
+		rc = aoc_req_wait(prvdata, true);
+		if (rc)
+			dev_err(prvdata->dev, "timed out waiting for aoc_ack\n");
 	}
 
 	/* TODO: GSA_AOC_SHUTDOWN needs to be 4, but the current header defines
