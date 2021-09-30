@@ -9,6 +9,3 @@
 
 #define CREATE_TRACE_POINTS
 #include "trace.h"
-
-EXPORT_TRACEPOINT_SYMBOL_GPL(dwc3_readl);
-EXPORT_TRACEPOINT_SYMBOL_GPL(dwc3_writel);
