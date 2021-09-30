@@ -38,6 +38,7 @@ kernel_build(
         "arch/arm64/boot/dts/google/dtbo.img",
         "arch/arm64/boot/dts/google/gs101-dpm-eng.dtbo",
         "arch/arm64/boot/dts/google/gs101-dpm-user.dtbo",
+        "arch/arm64/boot/dts/google/gs101-dpm-userdebug.dtbo",
 
         # TODO(b/197995714): Add other things built by build.sh
         # "abi_symbollist",
