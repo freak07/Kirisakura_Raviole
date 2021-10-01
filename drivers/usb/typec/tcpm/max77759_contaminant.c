@@ -480,8 +480,7 @@ static void update_contaminant_state(struct max77759_contaminant *contaminant,
  * Don't want to be in workqueue as this is time critical for the state machine
  * to forward progress.
  */
-bool process_contaminant_alert(struct max77759_contaminant *contaminant, bool debounce_path,
-			       bool tcpm_toggling)
+bool process_contaminant_alert(struct max77759_contaminant *contaminant, bool debounce_path)
 {
 	u8 cc_status, pwr_cntl;
 	struct regmap *regmap = contaminant->chip->data.regmap;
@@ -534,7 +533,8 @@ bool process_contaminant_alert(struct max77759_contaminant *contaminant, bool de
 		} else {
 			/* Need to check again after tCCDebounce */
 			if (((cc_status & TCPC_CC_STATUS_TOGGLING) == 0)  &&
-			    (debounce_path || (tcpm_toggling && is_cc_open(cc_status)))) {
+			    ((pwr_cntl & TCPC_POWER_CTRL_AUTO_DISCHARGE) == 0) &&
+			    (debounce_path || is_cc_open(cc_status))) {
 				/*
 				 * Stage 3
 				 */
