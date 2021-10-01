@@ -20,6 +20,8 @@
 #ifndef __LINUX_USB_DWC3_EXYNOS_H
 #define __LINUX_USB_DWC3_EXYNOS_H
 
+#include "core.h"
+
 /* Exynos Specific Register Definition */
 
 /* LINK Registers */
@@ -114,6 +116,16 @@ struct dwc3_exynos {
 	/* Flag for setting current_dr_role peripheral */
 	int			need_dr_role;
 };
+
+static inline u32 dwc3_exynos_readl(void __iomem *base, u32 offset)
+{
+	return readl(base + offset - DWC3_GLOBALS_REGS_START);
+}
+
+static inline void dwc3_exynos_writel(void __iomem *base, u32 offset, u32 value)
+{
+	writel(value, base + offset - DWC3_GLOBALS_REGS_START);
+}
 
 bool dwc3_exynos_rsw_available(struct device *dev);
 int dwc3_exynos_rsw_setup(struct device *dev, struct otg_fsm *fsm);

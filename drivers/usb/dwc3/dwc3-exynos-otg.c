@@ -158,10 +158,10 @@ static void dwc3_otg_set_mode(struct dwc3 *dwc, u32 mode)
 {
 	u32 reg;
 
-	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
+	reg = dwc3_exynos_readl(dwc->regs, DWC3_GCTL);
 	reg &= ~(DWC3_GCTL_PRTCAPDIR(DWC3_GCTL_PRTCAP_OTG));
 	reg |= DWC3_GCTL_PRTCAPDIR(mode);
-	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+	dwc3_exynos_writel(dwc->regs, DWC3_GCTL, reg);
 }
 
 static void dwc3_otg_set_host_mode(struct dwc3_otg *dotg)
@@ -170,9 +170,9 @@ static void dwc3_otg_set_host_mode(struct dwc3_otg *dotg)
 	u32 reg;
 
 	if (dotg->regs) {
-		reg = dwc3_readl(dotg->regs, DWC3_OCTL);
+		reg = dwc3_exynos_readl(dotg->regs, DWC3_OCTL);
 		reg &= ~DWC3_OTG_OCTL_PERIMODE;
-		dwc3_writel(dotg->regs, DWC3_OCTL, reg);
+		dwc3_exynos_writel(dotg->regs, DWC3_OCTL, reg);
 	} else {
 		dwc3_otg_set_mode(dwc, DWC3_GCTL_PRTCAP_HOST);
 	}
@@ -184,9 +184,9 @@ static void dwc3_otg_set_peripheral_mode(struct dwc3_otg *dotg)
 	u32 reg;
 
 	if (dotg->regs) {
-		reg = dwc3_readl(dotg->regs, DWC3_OCTL);
+		reg = dwc3_exynos_readl(dotg->regs, DWC3_OCTL);
 		reg |= DWC3_OTG_OCTL_PERIMODE;
-		dwc3_writel(dotg->regs, DWC3_OCTL, reg);
+		dwc3_exynos_writel(dotg->regs, DWC3_OCTL, reg);
 	} else {
 		dwc3_otg_set_mode(dwc, DWC3_GCTL_PRTCAP_DEVICE);
 	}
@@ -218,17 +218,17 @@ void dwc3_otg_pm_ctrl(struct dwc3 *dwc, int onoff)
 
 	if (onoff == 0) {
 		/* Disable U1U2 */
-		reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+		reg = dwc3_exynos_readl(dwc->regs, DWC3_DCTL);
 		reg &= ~(DWC3_DCTL_INITU1ENA | DWC3_DCTL_ACCEPTU1ENA |
 				DWC3_DCTL_INITU2ENA | DWC3_DCTL_ACCEPTU2ENA);
-		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+		dwc3_exynos_writel(dwc->regs, DWC3_DCTL, reg);
 
 	} else {
 		/* Enable U1U2 */
-		reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+		reg = dwc3_exynos_readl(dwc->regs, DWC3_DCTL);
 		reg |= (DWC3_DCTL_INITU1ENA | DWC3_DCTL_ACCEPTU1ENA |
 				DWC3_DCTL_INITU2ENA | DWC3_DCTL_ACCEPTU2ENA);
-		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+		dwc3_exynos_writel(dwc->regs, DWC3_DCTL, reg);
 	}
 }
 
@@ -552,7 +552,7 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 			dwc3_exynos_gadget_disconnect_proc(dwc);
 
 		/* Wait until dwc connected is off */
-		evt_count = dwc3_readl(dwc->regs, DWC3_GEVNTCOUNT(0));
+		evt_count = dwc3_exynos_readl(dwc->regs, DWC3_GEVNTCOUNT(0));
 		evt_count &= DWC3_GEVNTCOUNT_MASK;
 		while (dwc->connected || evt_count) {
 			wait_counter++;
@@ -562,7 +562,7 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 				dev_err(dev, "Can't wait dwc disconnect!\n");
 				break;
 			}
-			evt_count = dwc3_readl(dwc->regs, DWC3_GEVNTCOUNT(0));
+			evt_count = dwc3_exynos_readl(dwc->regs, DWC3_GEVNTCOUNT(0));
 			evt_count &= DWC3_GEVNTCOUNT_MASK;
 			dev_dbg(dev, "%s: evt = %d\n", __func__, evt_count);
 		}
@@ -643,14 +643,14 @@ static int dwc3_otg_set_peripheral(struct usb_otg *otg,
 
 static int dwc3_otg_get_id_state(struct dwc3_otg *dotg)
 {
-	u32 reg = dwc3_readl(dotg->regs, DWC3_OSTS);
+	u32 reg = dwc3_exynos_readl(dotg->regs, DWC3_OSTS);
 
 	return !!(reg & DWC3_OTG_OSTS_CONIDSTS);
 }
 
 static int dwc3_otg_get_b_sess_state(struct dwc3_otg *dotg)
 {
-	u32 reg = dwc3_readl(dotg->regs, DWC3_OSTS);
+	u32 reg = dwc3_exynos_readl(dotg->regs, DWC3_OSTS);
 
 	return !!(reg & DWC3_OTG_OSTS_BSESVALID);
 }
@@ -662,7 +662,7 @@ static irqreturn_t dwc3_otg_interrupt(int irq, void *_dotg)
 	u32 oevt, handled_events = 0;
 	irqreturn_t ret = IRQ_NONE;
 
-	oevt = dwc3_readl(dotg->regs, DWC3_OEVT);
+	oevt = dwc3_exynos_readl(dotg->regs, DWC3_OEVT);
 
 	/* ID */
 	if (oevt & DWC3_OEVTEN_OTGCONIDSTSCHNGEVNT) {
@@ -677,7 +677,7 @@ static irqreturn_t dwc3_otg_interrupt(int irq, void *_dotg)
 	}
 
 	if (handled_events) {
-		dwc3_writel(dotg->regs, DWC3_OEVT, handled_events);
+		dwc3_exynos_writel(dotg->regs, DWC3_OEVT, handled_events);
 		ret = IRQ_WAKE_THREAD;
 	}
 
@@ -696,14 +696,14 @@ static irqreturn_t dwc3_otg_thread_interrupt(int irq, void *_dotg)
 static void dwc3_otg_enable_irq(struct dwc3_otg *dotg)
 {
 	/* Enable only connector ID status & VBUS change events */
-	dwc3_writel(dotg->regs, DWC3_OEVTEN,
+	dwc3_exynos_writel(dotg->regs, DWC3_OEVTEN,
 			DWC3_OEVTEN_OTGCONIDSTSCHNGEVNT |
 			DWC3_OEVTEN_OTGBDEVVBUSCHNGEVNT);
 }
 
 static void dwc3_otg_disable_irq(struct dwc3_otg *dotg)
 {
-	dwc3_writel(dotg->regs, DWC3_OEVTEN, 0x0);
+	dwc3_exynos_writel(dotg->regs, DWC3_OEVTEN, 0x0);
 }
 
 static void dwc3_otg_reset(struct dwc3_otg *dotg)
@@ -713,7 +713,7 @@ static void dwc3_otg_reset(struct dwc3_otg *dotg)
 	 * OCFG[1] - HNPCap = 0
 	 * OCFG[0] - SRPCap = 0
 	 */
-	dwc3_writel(dotg->regs, DWC3_OCFG, 0x0);
+	dwc3_exynos_writel(dotg->regs, DWC3_OCFG, 0x0);
 
 	/*
 	 * OCTL[6] - PeriMode = 1
@@ -724,10 +724,10 @@ static void dwc3_otg_reset(struct dwc3_otg *dotg)
 	 * OCTL[1] - DevSetHNPEn = 0
 	 * OCTL[0] - HstSetHNPEn = 0
 	 */
-	dwc3_writel(dotg->regs, DWC3_OCTL, DWC3_OTG_OCTL_PERIMODE);
+	dwc3_exynos_writel(dotg->regs, DWC3_OCTL, DWC3_OTG_OCTL_PERIMODE);
 
 	/* Clear all otg events (interrupts) indications  */
-	dwc3_writel(dotg->regs, DWC3_OEVT, (u32)DWC3_OEVT_CLEAR_ALL);
+	dwc3_exynos_writel(dotg->regs, DWC3_OEVT, (u32)DWC3_OEVT_CLEAR_ALL);
 }
 
 /**
