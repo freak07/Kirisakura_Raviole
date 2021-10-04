@@ -2298,7 +2298,6 @@ static int exynos_pcie_rc_init(struct pcie_port *pp)
 	if (exynos_pcie->use_phy_isol_con)
 		pp->bridge->ops = &exynos_pcie_rc_root_ops;
 	pp->bridge->child_ops = &exynos_pcie_rc_child_ops;
-	dw_pcie_setup_rc(pp);
 
 	return 0;
 }
