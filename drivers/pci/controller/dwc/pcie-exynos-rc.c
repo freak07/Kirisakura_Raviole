@@ -1359,6 +1359,8 @@ static int exynos_pcie_rc_parse_dt(struct device *dev, struct exynos_pcie *exyno
 	const char *use_nclkoff_en;
 	const char *use_pcieon_sleep;
 	const char *use_phy_isol_con;
+	struct dw_pcie *pci = exynos_pcie->pci;
+	struct pcie_port *pp = &pci->pp;
 
 	if (of_property_read_u32(np, "ip-ver", &exynos_pcie->ip_ver)) {
 		dev_err(dev, "Failed to parse the number of ip-ver\n");
@@ -1435,6 +1437,8 @@ static int exynos_pcie_rc_parse_dt(struct device *dev, struct exynos_pcie *exyno
 	} else {
 		exynos_pcie->use_msi = false;
 	}
+	if (!exynos_pcie->use_msi)
+		pp->msi_irq = -ENODEV;
 
 	if (!of_property_read_string(np, "use-sicd", &use_sicd)) {
 		if (!strcmp(use_sicd, "true")) {
@@ -2302,8 +2306,14 @@ static int exynos_pcie_rc_init(struct pcie_port *pp)
 	return 0;
 }
 
+static int exynos_pcie_msi_dummy(struct pcie_port *pp)
+{
+	return 0;
+}
+
 static struct dw_pcie_host_ops exynos_pcie_rc_ops = {
 	.host_init = exynos_pcie_rc_init,
+	.msi_host_init = exynos_pcie_msi_dummy,
 };
 
 static irqreturn_t exynos_pcie_rc_irq_handler(int irq, void *arg)
