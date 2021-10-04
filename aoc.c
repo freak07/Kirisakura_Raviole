@@ -2764,13 +2764,15 @@ static int aoc_core_suspend(struct device *dev)
 	size_t total_services = aoc_num_services();
 	int i = 0;
 
+	mutex_lock(&aoc_service_lock);
 	for (i = 0; i < total_services; i++) {
 		struct aoc_service_dev *s = service_dev_at_index(prvdata, i);
 
-		if (s->wake_capable)
+		if (s && s->wake_capable)
 			s->suspend_rx_count = aoc_service_slots_available_to_read(s->service,
 										  AOC_UP);
 	}
+	mutex_unlock(&aoc_service_lock);
 
 	return 0;
 }
@@ -2781,10 +2783,11 @@ static int aoc_core_resume(struct device *dev)
 	size_t total_services = aoc_num_services();
 	int i = 0;
 
+	mutex_lock(&aoc_service_lock);
 	for (i = 0; i < total_services; i++) {
 		struct aoc_service_dev *s = service_dev_at_index(prvdata, i);
 
-		if (s->wake_capable) {
+		if (s && s->wake_capable) {
 			size_t available = aoc_service_slots_available_to_read(s->service, AOC_UP);
 
 			if (available != s->suspend_rx_count)
@@ -2792,6 +2795,7 @@ static int aoc_core_resume(struct device *dev)
 					   dev_name(&s->dev), available);
 		}
 	}
+	mutex_unlock(&aoc_service_lock);
 
 	return 0;
 }

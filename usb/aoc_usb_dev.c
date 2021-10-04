@@ -437,6 +437,7 @@ static struct aoc_driver aoc_usb_driver = {
 static int __init aoc_usb_init(void)
 {
 	xhci_vendor_helper_init();
+	usb_vendor_helper_init();
 	INIT_WORK(&usb_recovery_ws, usb_recovery_work);
 
 	return aoc_driver_register(&aoc_usb_driver);
