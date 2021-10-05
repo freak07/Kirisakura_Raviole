@@ -59,8 +59,10 @@ import_dma_fail:
 void mfc_mem_cleanup_user_shared_handle(struct mfc_ctx *ctx,
 		struct mfc_user_shared_handle *handle)
 {
+	struct dma_buf_map map = DMA_BUF_MAP_INIT_VADDR(handle->vaddr);
+
 	if (handle->vaddr)
-		dma_buf_vunmap(handle->dma_buf, handle->vaddr);
+		dma_buf_vunmap(handle->dma_buf, &map);
 	if (handle->dma_buf)
 		dma_buf_put(handle->dma_buf);
 
@@ -244,8 +246,10 @@ err_dma_heap_find:
 
 void mfc_mem_dma_heap_free(struct mfc_special_buf *special_buf)
 {
+	struct dma_buf_map map = DMA_BUF_MAP_INIT_VADDR(special_buf->vaddr);
+
 	if (special_buf->vaddr)
-		dma_buf_vunmap(special_buf->dma_buf, special_buf->vaddr);
+		dma_buf_vunmap(special_buf->dma_buf, &map);
 	if (special_buf->sgt)
 		dma_buf_unmap_attachment(special_buf->attachment,
 					 special_buf->sgt, DMA_BIDIRECTIONAL);
