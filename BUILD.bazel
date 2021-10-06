@@ -185,7 +185,8 @@ kernel_build(
         "usbc_cooling_dev.ko",
         "usb_f_dm1.ko",
         "usb_f_dm.ko",
-        "usb_f_etr_miu.ko",
+        # TODO(b/201813208): Turned off due to unmet dependencies.
+        # "usb_f_etr_miu.ko",
         "usb_psy.ko",
         "vh_i2c.ko",
         "videobuf2-dma-sg.ko",
