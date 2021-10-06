@@ -607,16 +607,23 @@ static int snd_aoc_pcm_mmap(struct snd_soc_component *component,
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	size_t ring_size;
 	int err;
 	phys_addr_t aoc_ring_base;
+	aoc_direction dir;
 
-	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+	dir = ((alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ?
+		AOC_DOWN : AOC_UP);
+
+	/* return the heap base address for MMAP playback and capture */
+	if (is_aaudio_mmaped_service(rtd->dai_link->name)) {
 		aoc_ring_base =
-			aoc_service_ring_base_phys_addr(alsa_stream->dev, AOC_DOWN, &ring_size);
-	else
+			aoc_get_heap_base_phys_addr(alsa_stream->dev, dir, &ring_size);
+	} else {
 		aoc_ring_base =
-			aoc_service_ring_base_phys_addr(alsa_stream->dev, AOC_UP, &ring_size);
+			aoc_service_ring_base_phys_addr(alsa_stream->dev, dir, &ring_size);
+	}
 
 	alsa_stream->vma = vma;
 

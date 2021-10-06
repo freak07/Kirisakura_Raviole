@@ -41,6 +41,8 @@ struct aoc_service_dev {
 
 phys_addr_t aoc_service_ring_base_phys_addr(struct aoc_service_dev *dev, aoc_direction dir,
 					    size_t *out_size);
+phys_addr_t aoc_get_heap_base_phys_addr(struct aoc_service_dev *dev, aoc_direction dir,
+					    size_t *out_size);
 ssize_t aoc_service_read(struct aoc_service_dev *dev, uint8_t *buffer,
 			 size_t count, bool block);
 ssize_t aoc_service_read_timeout(struct aoc_service_dev *dev, uint8_t *buffer,
