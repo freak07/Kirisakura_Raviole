@@ -903,6 +903,36 @@ phys_addr_t aoc_service_ring_base_phys_addr(struct aoc_service_dev *dev, aoc_dir
 }
 EXPORT_SYMBOL_GPL(aoc_service_ring_base_phys_addr);
 
+phys_addr_t aoc_get_heap_base_phys_addr(struct aoc_service_dev *dev, aoc_direction dir,
+					    size_t *out_size)
+{
+	const struct device *parent;
+	struct aoc_prvdata *prvdata;
+	aoc_service *service;
+	phys_addr_t audio_heap_base;
+
+	if (!dev)
+		return -EINVAL;
+
+	parent = dev->dev.parent;
+	prvdata = dev_get_drvdata(parent);
+
+	service = service_at_index(prvdata, dev->service_index);
+
+	if (out_size)
+		*out_size = aoc_service_ring_size(service, dir);
+
+	if (dir == AOC_DOWN)
+		audio_heap_base = prvdata->audio_playback_heap_base;
+	else
+		audio_heap_base = prvdata->audio_capture_heap_base;
+
+	pr_debug("Get heap address(phy):%llx\n", audio_heap_base);
+
+	return audio_heap_base;
+}
+EXPORT_SYMBOL_GPL(aoc_get_heap_base_phys_addr);
+
 bool aoc_service_flush_read_data(struct aoc_service_dev *dev)
 {
 	const struct device *parent;
