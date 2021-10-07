@@ -1359,6 +1359,8 @@ static int exynos_pcie_rc_parse_dt(struct device *dev, struct exynos_pcie *exyno
 	const char *use_nclkoff_en;
 	const char *use_pcieon_sleep;
 	const char *use_phy_isol_con;
+	struct dw_pcie *pci = exynos_pcie->pci;
+	struct pcie_port *pp = &pci->pp;
 
 	if (of_property_read_u32(np, "ip-ver", &exynos_pcie->ip_ver)) {
 		dev_err(dev, "Failed to parse the number of ip-ver\n");
@@ -1435,6 +1437,25 @@ static int exynos_pcie_rc_parse_dt(struct device *dev, struct exynos_pcie *exyno
 	} else {
 		exynos_pcie->use_msi = false;
 	}
+
+	/* Even if MSI is enabled, we need to set msi_irq to -ENODEV.
+	 * This ensures that the core pci driver doesn't register the msi_irq in
+	 * dw_pcie_host_init().
+	 * The PCIe interrupt is registered during the probe of this driver.
+	 * The EP drivers register MSI interrupt handlers with the core driver's
+	 * MSI framework.
+	 * When the EP has an MSI to send, it will write to the MSI address
+	 * specified in the PCIe config header which is populated with an entry
+	 * from the end point device tree.
+	 * The PCIe RC on detecting this write will generate an interrupt that is
+	 * routed to exynos_pcie_rc_irq_handler().
+	 * If it's an MSI interrupt, it will be sent to the core pcie driver
+	 * dw_handle_msi_irq().
+	 * This in turn will route it to the appropriate handler registered by the
+	 * EP driver.
+	 */
+
+	pp->msi_irq = -ENODEV;
 
 	if (!of_property_read_string(np, "use-sicd", &use_sicd)) {
 		if (!strcmp(use_sicd, "true")) {
