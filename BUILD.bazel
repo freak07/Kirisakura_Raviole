@@ -17,14 +17,74 @@ package(
     ],
 )
 
+load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
 load("//build/kleaf:common_kernels.bzl", "aarch64_outs")
 load(
     "//build/kleaf:kernel.bzl",
     "kernel_build",
+    "kernel_build_config",
     "kernel_images",
     "kernel_modules_install",
 )
+
+genrule(
+    name = "build.config.mix",
+    outs = ["build.config.mix.generated"],
+    # Now that the build config is generated, the inferred KERNEL_DIR is
+    # incorrect. Set it manually.
+    cmd = """
+        echo MIXED_BUILD=1 > $@
+        echo KERNEL_DIR=private/gs-google >> $@
+        """,
+)
+
+kernel_build_config(
+    name = "build.config.slider.mix",
+    srcs = [
+        # do not sort
+        ":build.config.mix",
+        "build.config.slider",
+    ],
+)
+
+string_flag(
+    name = "mix",
+    build_setting_default = "experimental",
+    values = [
+        # as if `EXPERIMENTAL_BUILD=1 BUILD_KERNEL=1 build_slider.sh`
+        "experimental",
+        # as-if `build.sh`
+        "none",
+        # as if `BUILD_KERNEL=1 build_slider.sh`
+        # "aosp",
+        # as-if `build_slider.sh`
+        # "prebuilts",
+    ],
+)
+
+config_setting(
+    name = "gki_from_experimental",
+    flag_values = {":mix": "experimental"},
+)
+
+config_setting(
+    name = "gki_from_none",
+    flag_values = {":mix": "none"},
+)
+
+_slider_outs = [
+    # Sync with build.config.slider
+    "arch/arm64/boot/dts/google/gs101-a0.dtb",
+    "arch/arm64/boot/dts/google/gs101-b0.dtb",
+    "arch/arm64/boot/dts/google/dtbo.img",
+    "arch/arm64/boot/dts/google/gs101-dpm-eng.dtbo",
+    "arch/arm64/boot/dts/google/gs101-dpm-user.dtbo",
+    "arch/arm64/boot/dts/google/gs101-dpm-userdebug.dtbo",
+
+    # TODO(b/197995714): Add other things built by build.sh
+    # "abi_symbollist",
+]
 
 kernel_build(
     name = "slider",
@@ -36,19 +96,18 @@ kernel_build(
             "**/*.bzl",
         ],
     ),
-    outs = aarch64_outs + [
-        # Sync with build.config.slider
-        "arch/arm64/boot/dts/google/gs101-a0.dtb",
-        "arch/arm64/boot/dts/google/gs101-b0.dtb",
-        "arch/arm64/boot/dts/google/dtbo.img",
-        "arch/arm64/boot/dts/google/gs101-dpm-eng.dtbo",
-        "arch/arm64/boot/dts/google/gs101-dpm-user.dtbo",
-        "arch/arm64/boot/dts/google/gs101-dpm-userdebug.dtbo",
-
-        # TODO(b/197995714): Add other things built by build.sh
-        # "abi_symbollist",
-    ],
-    build_config = "build.config.slider",
+    outs = {
+        ":gki_from_experimental": _slider_outs,
+        ":gki_from_none": aarch64_outs + _slider_outs,
+    },
+    build_config = select({
+        ":gki_from_experimental": ":build.config.slider.mix",
+        ":gki_from_none": "build.config.slider",
+    }),
+    gki = select({
+        ":gki_from_experimental": "//common:kernel_aarch64",
+        ":gki_from_none": None,
+    }),
     module_outs = [
         # keep sorted
         "acpm_flexpmu_dbg.ko",
