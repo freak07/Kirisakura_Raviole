@@ -49,6 +49,16 @@ enum usb_recover_state {
 	RECOVERED
 };
 
+enum usb_dev_hub {
+	UNDEFINED,
+	USB1,
+	USB1_1,
+	USB2,
+	USB2_1,
+	USB3,
+	USB3_1
+};
+
 struct xhci_vendor_data {
 	struct xhci_hcd *xhci;
 
@@ -102,6 +112,7 @@ struct get_isoc_tr_info_args {
 };
 
 int xhci_vendor_helper_init(void);
+int usb_vendor_helper_init(void);
 
 extern int xhci_handle_event(struct xhci_hcd *xhci);
 extern void xhci_update_erst_dequeue(struct xhci_hcd *xhci,
@@ -112,5 +123,8 @@ int register_aoc_usb_notifier(struct notifier_block *nb);
 int unregister_aoc_usb_notifier(struct notifier_block *nb);
 
 extern int dwc3_otg_host_enable(bool enabled);
+
+extern bool aoc_alsa_usb_capture_enabled(void);
+extern bool aoc_alsa_usb_playback_enabled(void);
 
 #endif /* __LINUX_AOC_USB_H */
