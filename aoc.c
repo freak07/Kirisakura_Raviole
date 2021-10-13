@@ -903,6 +903,36 @@ phys_addr_t aoc_service_ring_base_phys_addr(struct aoc_service_dev *dev, aoc_dir
 }
 EXPORT_SYMBOL_GPL(aoc_service_ring_base_phys_addr);
 
+phys_addr_t aoc_get_heap_base_phys_addr(struct aoc_service_dev *dev, aoc_direction dir,
+					    size_t *out_size)
+{
+	const struct device *parent;
+	struct aoc_prvdata *prvdata;
+	aoc_service *service;
+	phys_addr_t audio_heap_base;
+
+	if (!dev)
+		return -EINVAL;
+
+	parent = dev->dev.parent;
+	prvdata = dev_get_drvdata(parent);
+
+	service = service_at_index(prvdata, dev->service_index);
+
+	if (out_size)
+		*out_size = aoc_service_ring_size(service, dir);
+
+	if (dir == AOC_DOWN)
+		audio_heap_base = prvdata->audio_playback_heap_base;
+	else
+		audio_heap_base = prvdata->audio_capture_heap_base;
+
+	pr_debug("Get heap address(phy):%llx\n", audio_heap_base);
+
+	return audio_heap_base;
+}
+EXPORT_SYMBOL_GPL(aoc_get_heap_base_phys_addr);
+
 bool aoc_service_flush_read_data(struct aoc_service_dev *dev)
 {
 	const struct device *parent;
@@ -2121,26 +2151,26 @@ static void aoc_take_offline(struct aoc_prvdata *prvdata)
 	int rc;
 
 	/* check if devices/services are ready */
-	if (aoc_state == AOC_STATE_OFFLINE || !prvdata->services)
-		return;
+	if (aoc_state == AOC_STATE_ONLINE) {
+		pr_notice("taking aoc offline\n");
+		aoc_state = AOC_STATE_OFFLINE;
 
-	pr_notice("taking aoc offline\n");
-	aoc_state = AOC_STATE_OFFLINE;
+		bus_for_each_dev(&aoc_bus_type, NULL, NULL, aoc_remove_device);
 
-	bus_for_each_dev(&aoc_bus_type, NULL, NULL, aoc_remove_device);
+		if (aoc_control)
+			aoc_control->magic = 0;
 
-	if (aoc_control)
-		aoc_control->magic = 0;
+		if (prvdata->services) {
+			devm_kfree(prvdata->dev, prvdata->services);
+			prvdata->services = NULL;
+			prvdata->total_services = 0;
+		}
 
-	devm_kfree(prvdata->dev, prvdata->services);
-	prvdata->services = NULL;
-	prvdata->total_services = 0;
-
-	/* wakeup AOC before calling GSA */
-	aoc_req_assert(prvdata, true);
-	rc = aoc_req_wait(prvdata, true);
-	if (rc) {
-		dev_err(prvdata->dev, "timed out waiting for aoc_ack\n");
+		/* wakeup AOC before calling GSA */
+		aoc_req_assert(prvdata, true);
+		rc = aoc_req_wait(prvdata, true);
+		if (rc)
+			dev_err(prvdata->dev, "timed out waiting for aoc_ack\n");
 	}
 
 	/* TODO: GSA_AOC_SHUTDOWN needs to be 4, but the current header defines
