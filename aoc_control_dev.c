@@ -174,6 +174,59 @@ static ssize_t memory_exception_show(struct device *dev,
 
 static DEVICE_ATTR_RO(memory_exception);
 
+static ssize_t memory_votes_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct stats_prvdata *prvdata = dev_get_drvdata(dev);
+	struct CMD_GET_MEMORY_VOTES_DATA_COUNT get_count_cmd;
+	struct CMD_GET_MEMORY_VOTES_DATA get_data_cmd;
+	u32 total_count;
+	u32 i;
+	u32 bytes_written;
+	int ret;
+
+	AocCmdHdrSet(&get_count_cmd.parent, CMD_GET_MEMORY_VOTES_DATA_COUNT_ID,
+		sizeof(get_count_cmd));
+
+	ret = read_attribute(prvdata, &get_count_cmd, sizeof(get_count_cmd),
+		&get_count_cmd, sizeof(get_count_cmd));
+
+	if (ret < 0)
+		return ret;
+
+	total_count = get_count_cmd.num_of_clients;
+
+	bytes_written = 0;
+
+	for (i = 0; i < total_count; i++) {
+
+		AocCmdHdrSet(&get_data_cmd.parent, CMD_GET_MEMORY_VOTES_DATA_ID, sizeof(get_data_cmd));
+		get_data_cmd.app_id = i;
+		get_data_cmd.valid = false;
+
+		ret = read_attribute(prvdata, &get_data_cmd, sizeof(get_data_cmd),
+			&get_data_cmd, sizeof(get_data_cmd));
+
+		if (ret < 0)
+			return ret;
+
+		if (get_data_cmd.valid) {
+			bytes_written += scnprintf(buf + bytes_written, PAGE_SIZE - bytes_written,
+				"App %hhu, votes Curr/Tot/ON %5u / %5u / %5u Last %10llu us, Dur %10llu us\n",
+				get_data_cmd.app_id,
+				get_data_cmd.votes,
+				get_data_cmd.total_votes,
+				get_data_cmd.on_votes,
+				get_data_cmd.last_on_time_ns / 1000ULL,
+				get_data_cmd.total_time_us);
+		}
+	}
+
+	return bytes_written;
+}
+
+static DEVICE_ATTR_RO(memory_votes);
+
 static ssize_t read_timed_stat(struct device *dev, char *buf, int index)
 {
 	struct stats_prvdata *prvdata = dev_get_drvdata(dev);
@@ -358,6 +411,7 @@ static struct attribute *aoc_stats_attrs[] = {
 	&dev_attr_logging_wakeup.attr,
 	&dev_attr_hotword_wakeup.attr,
 	&dev_attr_memory_exception.attr,
+	&dev_attr_memory_votes.attr,
 	NULL
 };
 
