@@ -2,7 +2,6 @@
 /*
  * Copyright (C) 2018 HUAWEI, Inc.
  *             https://www.huawei.com/
- * Created by Gao Xiang <gaoxiang25@huawei.com>
  */
 #ifndef __EROFS_FS_ZPVEC_H
 #define __EROFS_FS_ZPVEC_H
@@ -107,18 +106,11 @@ static inline void z_erofs_pagevec_ctor_init(struct z_erofs_pagevec_ctor *ctor,
 
 static inline bool z_erofs_pagevec_enqueue(struct z_erofs_pagevec_ctor *ctor,
 					   struct page *page,
-					   enum z_erofs_page_type type,
-					   bool pvec_safereuse)
+					   enum z_erofs_page_type type)
 {
-	if (!ctor->next) {
-		/* some pages cannot be reused as pvec safely without I/O */
-		if (type == Z_EROFS_PAGE_TYPE_EXCLUSIVE && !pvec_safereuse)
-			type = Z_EROFS_VLE_PAGE_TYPE_TAIL_SHARED;
-
-		if (type != Z_EROFS_PAGE_TYPE_EXCLUSIVE &&
-		    ctor->index + 1 == ctor->nr)
+	if (!ctor->next && type)
+		if (ctor->index + 1 == ctor->nr)
 			return false;
-	}
 
 	if (ctor->index >= ctor->nr)
 		z_erofs_pagevec_ctor_pagedown(ctor, false);
@@ -158,4 +150,3 @@ z_erofs_pagevec_dequeue(struct z_erofs_pagevec_ctor *ctor,
 	return tagptr_unfold_ptr(t);
 }
 #endif
-
