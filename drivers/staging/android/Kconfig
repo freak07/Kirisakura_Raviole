@@ -25,6 +25,11 @@ config DEBUG_KINFO
 	   - UTS_RELEASE
 	   - BUILD_INFO(ro.build.fingerprint)
 
+config DELAY_INIT
+	tristate "Delay Init Module"
+	help
+	  This driver can be used to delay second stage init
+
 endif # if ANDROID
 
 endmenu

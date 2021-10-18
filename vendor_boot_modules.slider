@@ -207,3 +207,4 @@ zcomp_cpu.ko
 zcomp_eh.ko
 zram.ko
 zsmalloc.ko
+delay_init.ko
