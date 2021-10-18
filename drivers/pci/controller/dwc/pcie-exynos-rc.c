@@ -2741,7 +2741,8 @@ int exynos_pcie_rc_poweron(int ch_num)
 	struct device *dev;
 	u32 val, vendor_id, device_id;
 	int ret;
-	struct irq_desc *exynos_pcie_desc;
+	struct irq_data *irq_data;
+	struct irq_desc *exynos_pcie_desc = NULL;
 	unsigned long flags;
 
 	if (!exynos_pcie) {
@@ -2753,7 +2754,9 @@ int exynos_pcie_rc_poweron(int ch_num)
 	pci = exynos_pcie->pci;
 	pp = &pci->pp;
 	dev = pci->dev;
-	exynos_pcie_desc = irq_to_desc(pp->irq);
+	irq_data = irq_get_irq_data(pp->irq);
+	if (irq_data)
+		exynos_pcie_desc = irq_data_to_desc(irq_data);
 
 	dev_dbg(dev, "start poweron, state: %d\n", exynos_pcie->state);
 	if (exynos_pcie->state == STATE_LINK_DOWN) {
