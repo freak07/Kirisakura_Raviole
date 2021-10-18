@@ -169,7 +169,7 @@ enum { NORMAL = 0, MMAPED, RAW, INCALL, HIFI, ANDROID_AEC, COMPRESS };
 
 enum { BUILTIN_MIC0 = 0, BUILTIN_MIC1, BUILTIN_MIC2, BUILTIN_MIC3 };
 enum { MIC_LOW_POWER_GAIN = 0, MIC_HIGH_POWER_GAIN, MIC_CURRENT_GAIN };
-enum { DEFAULT_MIC = 0, BUILTIN_MIC, USB_MIC, BT_MIC, IN_CALL_MUSIC, NO_MIC=IN_CALL_MUSIC };
+enum { DEFAULT_MIC = 0, BUILTIN_MIC, USB_MIC, BT_MIC, IN_CALL_MUSIC, NO_MIC=IN_CALL_MUSIC, ERASER };
 enum { INCALL_CAPTURE_OFF = 0, INCALL_CAPTURE_UL, INCALL_CAPTURE_DL, INCALL_CAPTURE_UL_DL };
 enum { NONBLOCKING = 0, BLOCKING = 1 };
 enum { STOP = 0, START };
@@ -213,6 +213,7 @@ struct aoc_chip {
 
 	int compr_offload_volume;
 	int mic_spatial_module_enable;
+	int capture_eraser_enable;
 	int sidetone_enable;
 	int mic_loopback_enabled;
 	unsigned int opened;
@@ -321,6 +322,7 @@ int ap_record_stop(struct aoc_chip *chip);
 int aoc_capture_filter_runtime_control(struct aoc_chip *chip, uint32_t port_id, bool on);
 int aoc_audio_capture_runtime_trigger(struct aoc_chip *chip, int ep_id,
 	 int dst, bool on);
+int aoc_audio_capture_eraser_enable(struct aoc_chip *chip, long enable);
 
 int aoc_voice_call_mic_mute(struct aoc_chip *chip, int mute);
 int aoc_incall_capture_enable_get(struct aoc_chip *chip, int stream, long *val);

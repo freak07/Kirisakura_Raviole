@@ -672,6 +672,21 @@ static struct snd_soc_dai_driver aoc_dai_drv[] = {
 	},
 
 	{
+		.capture = {
+			.stream_name = "ERASER_TX Capture",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE |
+					SNDRV_PCM_FMTBIT_S24_LE |
+					SNDRV_PCM_FMTBIT_S32_LE,
+			.channels_min = 1,
+			.channels_max = 4,
+		},
+		.ops = &be_dai_ops,
+		.name = "ERASER_TX",
+		.id = ERASER_TX,
+	},
+
+	{
 		.playback = {
 			.stream_name = "BT_RX Playback",
 			.rates = SNDRV_PCM_RATE_8000_48000,
@@ -836,6 +851,7 @@ static int be_prepare(struct snd_pcm_substream *stream, struct snd_soc_dai *dai)
 	mutex_lock(&path_mutex);
 	switch (dai->id) {
 	case INTERNAL_MIC_TX:
+	case ERASER_TX:
 	case BT_TX:
 	case USB_TX:
 		mutex_lock(&chip->audio_mutex);
@@ -871,6 +887,7 @@ static void be_shutdown(struct snd_pcm_substream *stream,
 	mutex_lock(&path_mutex);
 	switch (dai->id) {
 	case INTERNAL_MIC_TX:
+	case ERASER_TX:
 	case BT_TX:
 	case USB_TX:
 		mutex_lock(&chip->audio_mutex);
@@ -1501,6 +1518,8 @@ const struct snd_kcontrol_new ep1_tx_ctrl[] = {
 	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep1_tx_get, ep1_tx_put),
 	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
 		ep1_tx_get, ep1_tx_put),
+	SOC_SINGLE_EXT("ERASER_TX", SND_SOC_NOPM, ERASER_TX, 1, 0,
+		ep1_tx_get, ep1_tx_put),
 	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, ep1_tx_get, ep1_tx_put),
 	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, ep1_tx_get, ep1_tx_put),
 	SOC_SINGLE_EXT("INCALL_TX", SND_SOC_NOPM, INCALL_TX, 1, 0, ep1_tx_get, ep1_tx_put),
@@ -1534,6 +1553,8 @@ const struct snd_kcontrol_new ep2_tx_ctrl[] = {
 	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, ep2_tx_get, ep2_tx_put),
 	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep2_tx_get, ep2_tx_put),
 	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
+		ep2_tx_get, ep2_tx_put),
+	SOC_SINGLE_EXT("ERASER_TX", SND_SOC_NOPM, ERASER_TX, 1, 0,
 		ep2_tx_get, ep2_tx_put),
 	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, ep2_tx_get, ep2_tx_put),
 	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, ep2_tx_get, ep2_tx_put),
@@ -1569,6 +1590,8 @@ const struct snd_kcontrol_new ep3_tx_ctrl[] = {
 	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep3_tx_get, ep3_tx_put),
 	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
 		ep3_tx_get, ep3_tx_put),
+	SOC_SINGLE_EXT("ERASER_TX", SND_SOC_NOPM, ERASER_TX, 1, 0,
+		ep3_tx_get, ep3_tx_put),
 	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, ep3_tx_get, ep3_tx_put),
 	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, ep3_tx_get, ep3_tx_put),
 	SOC_SINGLE_EXT("INCALL_TX", SND_SOC_NOPM, INCALL_TX, 1, 0, ep3_tx_get, ep3_tx_put),
@@ -1602,6 +1625,8 @@ const struct snd_kcontrol_new ep4_tx_ctrl[] = {
 	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, ep4_tx_get, ep4_tx_put),
 	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep4_tx_get, ep4_tx_put),
 	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
+		ep4_tx_get, ep4_tx_put),
+	SOC_SINGLE_EXT("ERASER_TX", SND_SOC_NOPM, ERASER_TX, 1, 0,
 		ep4_tx_get, ep4_tx_put),
 	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, ep4_tx_get, ep4_tx_put),
 	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, ep4_tx_get, ep4_tx_put),
@@ -1637,6 +1662,8 @@ const struct snd_kcontrol_new ep5_tx_ctrl[] = {
 	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep5_tx_get, ep5_tx_put),
 	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
 		ep5_tx_get, ep5_tx_put),
+	SOC_SINGLE_EXT("ERASER_TX", SND_SOC_NOPM, ERASER_TX, 1, 0,
+		ep5_tx_get, ep5_tx_put),
 	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, ep5_tx_get, ep5_tx_put),
 	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, ep5_tx_get, ep5_tx_put),
 	SOC_SINGLE_EXT("INCALL_TX", SND_SOC_NOPM, INCALL_TX, 1, 0, ep5_tx_get, ep5_tx_put),
@@ -1671,6 +1698,8 @@ const struct snd_kcontrol_new ep6_tx_ctrl[] = {
 	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, ep6_tx_get, ep6_tx_put),
 	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
 		ep6_tx_get, ep6_tx_put),
+	SOC_SINGLE_EXT("ERASER_TX", SND_SOC_NOPM, ERASER_TX, 1, 0,
+		ep6_tx_get, ep6_tx_put),
 	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, ep6_tx_get, ep6_tx_put),
 	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, ep6_tx_get, ep6_tx_put),
 	SOC_SINGLE_EXT("INCALL_TX", SND_SOC_NOPM, INCALL_TX, 1, 0, ep6_tx_get, ep6_tx_put),
@@ -1704,6 +1733,8 @@ const struct snd_kcontrol_new voip_tx_ctrl[] = {
 	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, voip_tx_get, voip_tx_put),
 	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
 		voip_tx_get, voip_tx_put),
+	SOC_SINGLE_EXT("ERASER_TX", SND_SOC_NOPM, ERASER_TX, 1, 0,
+		voip_tx_get, voip_tx_put),
 	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, voip_tx_get, voip_tx_put),
 	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, voip_tx_get, voip_tx_put),
 };
@@ -1735,6 +1766,8 @@ const struct snd_kcontrol_new nohost1_tx_ctrl[] = {
 	SOC_SINGLE_EXT("TDM_0_TX", SND_SOC_NOPM, TDM_0_TX, 1, 0, nohost1_tx_get, nohost1_tx_put),
 	SOC_SINGLE_EXT("TDM_1_TX", SND_SOC_NOPM, TDM_1_TX, 1, 0, nohost1_tx_get, nohost1_tx_put),
 	SOC_SINGLE_EXT("INTERNAL_MIC_TX", SND_SOC_NOPM, INTERNAL_MIC_TX, 1, 0,
+		nohost1_tx_get, nohost1_tx_put),
+	SOC_SINGLE_EXT("ERASER_TX", SND_SOC_NOPM, ERASER_TX, 1, 0,
 		nohost1_tx_get, nohost1_tx_put),
 	SOC_SINGLE_EXT("BT_TX", SND_SOC_NOPM, BT_TX, 1, 0, nohost1_tx_get, nohost1_tx_put),
 	SOC_SINGLE_EXT("USB_TX", SND_SOC_NOPM, USB_TX, 1, 0, nohost1_tx_get, nohost1_tx_put),
@@ -1793,6 +1826,8 @@ const struct snd_soc_dapm_widget aoc_widget[] = {
 	SND_SOC_DAPM_AIF_IN("TDM_0_TX", "TDM_0_TX", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("TDM_1_TX", "TDM_1_TX", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("INTERNAL_MIC_TX", "INTERNAL_MIC_TX",
+		0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_IN("ERASER_TX", "ERASER_TX",
 		0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("BT_TX", "BT_TX", 0, SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("USB_TX", "USB_TX", 0, SND_SOC_NOPM, 0, 0),
@@ -1976,6 +2011,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "EP1 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
 	{ "EP1 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
 	{ "EP1 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "EP1 TX Mixer", "ERASER_TX", "ERASER_TX" },
 	{ "EP1 TX Mixer", "BT_TX", "BT_TX" },
 	{ "EP1 TX Mixer", "USB_TX", "USB_TX" },
 	{ "EP1 TX Mixer", "INCALL_TX", "INCALL_TX" },
@@ -1987,6 +2023,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "EP2 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
 	{ "EP2 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
 	{ "EP2 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "EP2 TX Mixer", "ERASER_TX", "ERASER_TX" },
 	{ "EP2 TX Mixer", "BT_TX", "BT_TX" },
 	{ "EP2 TX Mixer", "USB_TX", "USB_TX" },
 	{ "EP2 TX Mixer", "INCALL_TX", "INCALL_TX" },
@@ -1998,6 +2035,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "EP3 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
 	{ "EP3 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
 	{ "EP3 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "EP3 TX Mixer", "ERASER_TX", "ERASER_TX" },
 	{ "EP3 TX Mixer", "BT_TX", "BT_TX" },
 	{ "EP3 TX Mixer", "USB_TX", "USB_TX" },
 	{ "EP3 TX Mixer", "INCALL_TX", "INCALL_TX" },
@@ -2009,6 +2047,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "EP4 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
 	{ "EP4 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
 	{ "EP4 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "EP4 TX Mixer", "ERASER_TX", "ERASER_TX" },
 	{ "EP4 TX Mixer", "BT_TX", "BT_TX" },
 	{ "EP4 TX Mixer", "USB_TX", "USB_TX" },
 	{ "EP4 TX Mixer", "INCALL_TX", "INCALL_TX" },
@@ -2020,6 +2059,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "EP5 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
 	{ "EP5 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
 	{ "EP5 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "EP5 TX Mixer", "ERASER_TX", "ERASER_TX" },
 	{ "EP5 TX Mixer", "BT_TX", "BT_TX" },
 	{ "EP5 TX Mixer", "USB_TX", "USB_TX" },
 	{ "EP5 TX Mixer", "INCALL_TX", "INCALL_TX" },
@@ -2031,6 +2071,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "EP6 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
 	{ "EP6 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
 	{ "EP6 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "EP6 TX Mixer", "ERASER_TX", "ERASER_TX" },
 	{ "EP6 TX Mixer", "BT_TX", "BT_TX" },
 	{ "EP6 TX Mixer", "USB_TX", "USB_TX" },
 	{ "EP6 TX Mixer", "INCALL_TX", "INCALL_TX" },
@@ -2042,6 +2083,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "VOIP TX Mixer", "TDM_0_TX", "TDM_0_TX" },
 	{ "VOIP TX Mixer", "TDM_1_TX", "TDM_1_TX" },
 	{ "VOIP TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "VOIP TX Mixer", "ERASER_TX", "ERASER_TX" },
 	{ "VOIP TX Mixer", "BT_TX", "BT_TX" },
 	{ "VOIP TX Mixer", "USB_TX", "USB_TX" },
 
@@ -2052,6 +2094,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "NoHost1 TX Mixer", "TDM_0_TX", "TDM_0_TX" },
 	{ "NoHost1 TX Mixer", "TDM_1_TX", "TDM_1_TX" },
 	{ "NoHost1 TX Mixer", "INTERNAL_MIC_TX", "INTERNAL_MIC_TX" },
+	{ "NoHost1 TX Mixer", "ERASER_TX", "ERASER_TX" },
 	{ "NoHost1 TX Mixer", "BT_TX", "BT_TX" },
 	{ "NoHost1 TX Mixer", "USB_TX", "USB_TX" },
 	{ "NoHost1 TX Mixer", "INCALL_TX", "INCALL_TX" },
@@ -2062,6 +2105,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "I2S_1_TX", NULL, "HW_SOURCE" },
 	{ "I2S_2_TX", NULL, "HW_SOURCE" },
 	{ "INTERNAL_MIC_TX", NULL, "HW_SOURCE" },
+	{ "ERASER_TX", NULL, "HW_SOURCE" },
 	{ "BT_TX", NULL, "HW_SOURCE" },
 	{ "USB_TX", NULL, "HW_SOURCE" },
 	{ "INCALL_TX", NULL, "HW_SOURCE" },
@@ -2085,6 +2129,7 @@ static const struct snd_soc_dapm_route aoc_routes[] = {
 	{ "TDM_0_TX", NULL, "TDM_0_TX Capture" },
 	{ "TDM_1_TX", NULL, "TDM_1_TX Capture" },
 	{ "INTERNAL_MIC_TX", NULL, "INTERNAL_MIC_TX Capture" },
+	{ "ERASER_TX", NULL, "ERASER_TX Capture" },
 	{ "BT_TX", NULL, "BT_TX Capture" },
 	{ "USB_TX", NULL, "USB_TX Capture" },
 	{ "INCALL_TX", NULL, "INCALL_TX Capture" },
