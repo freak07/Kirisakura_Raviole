@@ -16,6 +16,40 @@
 
 #define to_dma_buf_entry_from_kobj(x) container_of(x, struct dma_buf_sysfs_entry, kobj)
 
+/**
+ * DOC: overview
+ *
+ * ``/sys/kernel/debug/dma_buf/bufinfo`` provides an overview of every DMA-BUF
+ * in the system. However, since debugfs is not safe to be mounted in
+ * production, procfs and sysfs can be used to gather DMA-BUF statistics on
+ * production systems.
+ *
+ * The ``/proc/<pid>/fdinfo/<fd>`` files in procfs can be used to gather
+ * information about DMA-BUF fds. Detailed documentation about the interface
+ * is present in Documentation/filesystems/proc.rst.
+ *
+ * Unfortunately, the existing procfs interfaces can only provide information
+ * about the DMA-BUFs for which processes hold fds or have the buffers mmapped
+ * into their address space. This necessitated the creation of the DMA-BUF sysfs
+ * statistics interface to provide per-buffer information on production systems.
+ *
+ * The interface at ``/sys/kernel/dma-buf/buffers`` exposes information about
+ * every DMA-BUF when ``CONFIG_DMABUF_SYSFS_STATS`` is enabled.
+ *
+ * The following stats are exposed by the interface:
+ *
+ * * ``/sys/kernel/dmabuf/buffers/<inode_number>/exporter_name``
+ * * ``/sys/kernel/dmabuf/buffers/<inode_number>/size``
+ *
+ * The information in the interface can also be used to derive per-exporter
+ * statistics. The data from the interface can be gathered on error conditions
+ * or other important events to provide a snapshot of DMA-BUF usage.
+ * It can also be collected periodically by telemetry to monitor various metrics.
+ *
+ * Detailed documentation about the interface is present in
+ * Documentation/ABI/testing/sysfs-kernel-dmabuf-buffers.
+ */
+
 struct dma_buf_stats_attribute {
 	struct attribute attr;
 	ssize_t (*show)(struct dma_buf *dmabuf,
@@ -96,9 +130,8 @@ void dma_buf_stats_teardown(struct dma_buf *dmabuf)
 	kobject_put(&sysfs_entry->kobj);
 }
 
-/*
- * Statistics files do not need to send uevents.
- */
+
+/* Statistics files do not need to send uevents. */
 static int dmabuf_sysfs_uevent_filter(struct kset *kset, struct kobject *kobj)
 {
 	return 0;

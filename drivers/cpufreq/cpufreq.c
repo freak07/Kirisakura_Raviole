@@ -390,6 +390,7 @@ static void cpufreq_notify_transition(struct cpufreq_policy *policy,
 		cpufreq_stats_record_transition(policy, freqs->new);
 		cpufreq_times_record_transition(policy, freqs->new);
 		policy->cur = freqs->new;
+		trace_android_rvh_cpufreq_transition(policy);
 	}
 }
 
@@ -695,7 +696,7 @@ static ssize_t show_cpuinfo_max_freq(struct cpufreq_policy *policy, char *buf)
 {
 	unsigned int max_freq = policy->cpuinfo.max_freq;
 
-	trace_android_vh_show_max_freq(policy, &max_freq);
+	trace_android_rvh_show_max_freq(policy, &max_freq);
 	return sprintf(buf, "%u\n", max_freq);
 }
 
@@ -1502,6 +1503,19 @@ static int cpufreq_online(unsigned int cpu)
 		write_lock_irqsave(&cpufreq_driver_lock, flags);
 		list_add(&policy->policy_list, &cpufreq_policy_list);
 		write_unlock_irqrestore(&cpufreq_driver_lock, flags);
+
+		/*
+		 * Register with the energy model before
+		 * sched_cpufreq_governor_change() is called, which will result
+		 * in rebuilding of the sched domains, which should only be done
+		 * once the energy model is properly initialized for the policy
+		 * first.
+		 *
+		 * Also, this should be called before the policy is registered
+		 * with cooling framework.
+		 */
+		if (cpufreq_driver->register_em)
+			cpufreq_driver->register_em(policy);
 	}
 
 	ret = cpufreq_init_policy(policy);
@@ -1514,10 +1528,6 @@ static int cpufreq_online(unsigned int cpu)
 	up_write(&policy->rwsem);
 
 	kobject_uevent(&policy->kobj, KOBJ_ADD);
-
-	/* Callback for handling stuff after policy is ready */
-	if (cpufreq_driver->ready)
-		cpufreq_driver->ready(policy);
 
 	if (cpufreq_thermal_control_enabled(cpufreq_driver))
 		policy->cdev = of_cpufreq_cooling_register(policy);
@@ -2102,6 +2112,7 @@ unsigned int cpufreq_driver_fast_switch(struct cpufreq_policy *policy,
 	arch_set_freq_scale(policy->related_cpus, freq,
 			    policy->cpuinfo.max_freq);
 	cpufreq_stats_record_transition(policy, freq);
+	trace_android_rvh_cpufreq_transition(policy);
 
 	if (trace_cpu_frequency_enabled()) {
 		for_each_cpu(cpu, policy->cpus)
@@ -2580,6 +2591,7 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 
 	return ret;
 }
+EXPORT_TRACEPOINT_SYMBOL_GPL(cpu_frequency_limits);
 
 /**
  * cpufreq_update_policy - Re-evaluate an existing cpufreq policy.
@@ -2664,18 +2676,18 @@ int cpufreq_boost_trigger_state(int state)
 	cpufreq_driver->boost_enabled = state;
 	write_unlock_irqrestore(&cpufreq_driver_lock, flags);
 
-	get_online_cpus();
+	cpus_read_lock();
 	for_each_active_policy(policy) {
 		ret = cpufreq_driver->set_boost(policy, state);
 		if (ret)
 			goto err_reset_state;
 	}
-	put_online_cpus();
+	cpus_read_unlock();
 
 	return 0;
 
 err_reset_state:
-	put_online_cpus();
+	cpus_read_unlock();
 
 	write_lock_irqsave(&cpufreq_driver_lock, flags);
 	cpufreq_driver->boost_enabled = !state;

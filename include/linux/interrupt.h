@@ -13,6 +13,7 @@
 #include <linux/hrtimer.h>
 #include <linux/kref.h>
 #include <linux/workqueue.h>
+#include <linux/jump_label.h>
 
 #include <linux/atomic.h>
 #include <asm/ptrace.h>
@@ -474,12 +475,13 @@ extern int irq_set_irqchip_state(unsigned int irq, enum irqchip_irq_state which,
 
 #ifdef CONFIG_IRQ_FORCED_THREADING
 # ifdef CONFIG_PREEMPT_RT
-#  define force_irqthreads	(true)
+#  define force_irqthreads()	(true)
 # else
-extern bool force_irqthreads;
+DECLARE_STATIC_KEY_FALSE(force_irqthreads_key);
+#  define force_irqthreads()	(static_branch_unlikely(&force_irqthreads_key))
 # endif
 #else
-#define force_irqthreads	(0)
+#define force_irqthreads()	(false)
 #endif
 
 #ifndef local_softirq_pending
@@ -527,6 +529,12 @@ enum
 };
 
 #define SOFTIRQ_STOP_IDLE_MASK (~(1 << RCU_SOFTIRQ))
+/* Softirq's where the handling might be long: */
+#define LONG_SOFTIRQ_MASK ((1 << NET_TX_SOFTIRQ)       | \
+			   (1 << NET_RX_SOFTIRQ)       | \
+			   (1 << BLOCK_SOFTIRQ)        | \
+			   (1 << IRQ_POLL_SOFTIRQ) | \
+			   (1 << TASKLET_SOFTIRQ))
 
 /* map softirq index to softirq name. update 'softirq_to_name' in
  * kernel/softirq.c when adding a new softirq.
@@ -553,6 +561,7 @@ extern void raise_softirq_irqoff(unsigned int nr);
 extern void raise_softirq(unsigned int nr);
 
 DECLARE_PER_CPU(struct task_struct *, ksoftirqd);
+DECLARE_PER_CPU(__u32, active_softirqs);
 
 static inline struct task_struct *this_cpu_ksoftirqd(void)
 {

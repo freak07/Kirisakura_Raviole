@@ -541,8 +541,7 @@ static void enetc_mac_config(struct enetc_hw *hw, phy_interface_t phy_mode)
 
 	if (phy_interface_mode_is_rgmii(phy_mode)) {
 		val = enetc_port_rd(hw, ENETC_PM0_IF_MODE);
-		val &= ~ENETC_PM0_IFM_EN_AUTO;
-		val &= ENETC_PM0_IFM_IFMODE_MASK;
+		val &= ~(ENETC_PM0_IFM_EN_AUTO | ENETC_PM0_IFM_IFMODE_MASK);
 		val |= ENETC_PM0_IFM_IFMODE_GMII | ENETC_PM0_IFM_RG;
 		enetc_port_wr(hw, ENETC_PM0_IF_MODE, val);
 	}
@@ -735,7 +734,7 @@ static const struct net_device_ops enetc_ndev_ops = {
 	.ndo_set_vf_vlan	= enetc_pf_set_vf_vlan,
 	.ndo_set_vf_spoofchk	= enetc_pf_set_vf_spoofchk,
 	.ndo_set_features	= enetc_pf_set_features,
-	.ndo_do_ioctl		= enetc_ioctl,
+	.ndo_eth_ioctl		= enetc_ioctl,
 	.ndo_setup_tc		= enetc_setup_tc,
 	.ndo_bpf		= enetc_setup_bpf,
 	.ndo_xdp_xmit		= enetc_xdp_xmit,
