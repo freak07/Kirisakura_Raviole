@@ -47,6 +47,7 @@ static int xhci_sync_dev_ctx(struct xhci_hcd *xhci, unsigned int slot_id)
 	struct xhci_ep_ctx *ep_ctx;
 	struct get_dev_ctx_args args;
 	u8 *dev_ctx;
+	char str[XHCI_MSG_MAX];
 
 	if (IS_ERR_OR_NULL(xhci))
 		return -ENODEV;
@@ -82,12 +83,13 @@ static int xhci_sync_dev_ctx(struct xhci_hcd *xhci, unsigned int slot_id)
 	ep_ctx = xhci_get_ep_ctx(xhci, out_ctx_ref, 0); /* ep0 */
 
 	xhci_dbg(xhci, "%s\n",
-		 xhci_decode_slot_context(
+		 xhci_decode_slot_context(str,
 			 slot_ctx->dev_info, slot_ctx->dev_info2,
 			 slot_ctx->tt_info, slot_ctx->dev_state));
 	xhci_dbg(xhci, "%s\n",
-		 xhci_decode_ep_context(ep_ctx->ep_info, ep_ctx->ep_info2,
-					ep_ctx->deq, ep_ctx->tx_info));
+		 xhci_decode_ep_context(str,
+ 			 ep_ctx->ep_info, ep_ctx->ep_info2,
+ 			 ep_ctx->deq, ep_ctx->tx_info));
 
 	kfree(dev_ctx);
 	return 0;
