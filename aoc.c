@@ -345,7 +345,7 @@ static inline aoc_service *service_at_index(struct aoc_prvdata *prvdata,
 
 static inline struct aoc_service_dev *service_dev_at_index(struct aoc_prvdata *prvdata, unsigned index)
 {
-	if (!aoc_fw_ready() || index > aoc_num_services())
+	if (!aoc_fw_ready() || index > aoc_num_services() || aoc_state != AOC_STATE_ONLINE)
 		return NULL;
 
 	return prvdata->services[index];
