@@ -12,21 +12,21 @@
  * mechanism for vendor modules to hook and extend functionality
  */
 struct avc_node;
-DECLARE_HOOK(android_vh_selinux_avc_insert,
+DECLARE_RESTRICTED_HOOK(android_rvh_selinux_avc_insert,
 	TP_PROTO(const struct avc_node *node),
-	TP_ARGS(node));
+	TP_ARGS(node), 1);
 
-DECLARE_HOOK(android_vh_selinux_avc_node_delete,
+DECLARE_RESTRICTED_HOOK(android_rvh_selinux_avc_node_delete,
 	TP_PROTO(const struct avc_node *node),
-	TP_ARGS(node));
+	TP_ARGS(node), 1);
 
-DECLARE_HOOK(android_vh_selinux_avc_node_replace,
+DECLARE_RESTRICTED_HOOK(android_rvh_selinux_avc_node_replace,
 	TP_PROTO(const struct avc_node *old, const struct avc_node *new),
-	TP_ARGS(old, new));
+	TP_ARGS(old, new), 1);
 
-DECLARE_HOOK(android_vh_selinux_avc_lookup,
+DECLARE_RESTRICTED_HOOK(android_rvh_selinux_avc_lookup,
 	TP_PROTO(const struct avc_node *node, u32 ssid, u32 tsid, u16 tclass),
-	TP_ARGS(node, ssid, tsid, tclass));
+	TP_ARGS(node, ssid, tsid, tclass), 1);
 
 #endif /* _TRACE_HOOK_AVC_H */
 /* This part must be outside protection */

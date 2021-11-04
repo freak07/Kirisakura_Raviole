@@ -13,21 +13,21 @@
  */
 struct cred;
 struct task_struct;
-DECLARE_HOOK(android_vh_commit_creds,
+DECLARE_RESTRICTED_HOOK(android_rvh_commit_creds,
 	TP_PROTO(const struct task_struct *task, const struct cred *new),
-	TP_ARGS(task, new));
+	TP_ARGS(task, new), 1);
 
-DECLARE_HOOK(android_vh_exit_creds,
+DECLARE_RESTRICTED_HOOK(android_rvh_exit_creds,
 	TP_PROTO(const struct task_struct *task, const struct cred *cred),
-	TP_ARGS(task, cred));
+	TP_ARGS(task, cred), 1);
 
-DECLARE_HOOK(android_vh_override_creds,
+DECLARE_RESTRICTED_HOOK(android_rvh_override_creds,
 	TP_PROTO(const struct task_struct *task, const struct cred *new),
-	TP_ARGS(task, new));
+	TP_ARGS(task, new), 1);
 
-DECLARE_HOOK(android_vh_revert_creds,
+DECLARE_RESTRICTED_HOOK(android_rvh_revert_creds,
 	TP_PROTO(const struct task_struct *task, const struct cred *old),
-	TP_ARGS(task, old));
+	TP_ARGS(task, old), 1);
 
 #endif /* _TRACE_HOOK_CREDS_H */
 /* This part must be outside protection */

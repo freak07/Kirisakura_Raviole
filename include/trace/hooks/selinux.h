@@ -12,9 +12,9 @@
  * mechanism for vendor modules to hook and extend functionality
  */
 struct selinux_state;
-DECLARE_HOOK(android_vh_selinux_is_initialized,
+DECLARE_RESTRICTED_HOOK(android_rvh_selinux_is_initialized,
 	TP_PROTO(const struct selinux_state *state),
-	TP_ARGS(state));
+	TP_ARGS(state), 1);
 
 #endif /* _TRACE_HOOK_SELINUX_H */
 /* This part must be outside protection */
