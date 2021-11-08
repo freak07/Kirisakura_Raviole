@@ -70,7 +70,6 @@ struct xhci_vendor_data {
 	struct workqueue_struct *irq_wq;
 	struct work_struct xhci_vendor_irq_work;
 	struct work_struct xhci_vendor_reset_ws;
-	struct mutex lock;
 };
 
 struct aoc_usb_drvdata {

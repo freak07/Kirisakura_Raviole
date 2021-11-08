@@ -8,7 +8,6 @@
 
 #include <linux/dmapool.h>
 #include <linux/dma-mapping.h>
-#include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/pm_wakeup.h>
@@ -16,7 +15,6 @@
 #include <linux/usb.h>
 #include <linux/workqueue.h>
 #include <linux/usb/hcd.h>
-#include <linux/usb/phy.h>
 
 #include "xhci.h"
 #include "xhci-plat.h"
@@ -269,41 +267,54 @@ static void xhci_reset_work(struct work_struct *ws)
 		container_of(ws, struct xhci_vendor_data, xhci_vendor_reset_ws);
 	struct xhci_hcd *xhci = vendor_data->xhci;
 
-	if (mutex_lock_interruptible(&vendor_data->lock)) {
-		pr_err("xhci reset interrupted while waiting for lock\n");
-		return;
-	}
-
-	/*
-	 * After get the mutex, check the xhci->xhc_state before start to remove
-	 * and re-add hcd. If the xhci has gone, just give up this work.
-	 * NOTE: The headset might be removed during this work, so xhci->xhc_state
-	 * might become REMOVING before we finish this work in fact. However, we
-	 * just keep going this work, because later the cleanup will also remove
-	 * hcd again.
-	 */
 	if (IS_ERR_OR_NULL(xhci)) {
 		pr_err("xHCI null, drop offload reset work\n");
 		goto fail;
 	}
-
 	if (xhci->xhc_state & XHCI_STATE_DYING ||
 	    xhci->xhc_state & XHCI_STATE_REMOVING) {
 		xhci_err(xhci, "xHCI dying, drop offload reset work\n");
 		goto fail;
 	}
-
 	usb_remove_hcd(xhci->shared_hcd);
+
+	if (IS_ERR_OR_NULL(xhci)) {
+		pr_err("xHCI null, drop offload reset work\n");
+		goto fail;
+	}
+	if (xhci->xhc_state & XHCI_STATE_DYING ||
+	    xhci->xhc_state & XHCI_STATE_REMOVING) {
+		xhci_err(xhci, "xHCI dying, ignore removing main_hcd\n");
+		goto fail;
+	}
 	usb_remove_hcd(xhci->main_hcd);
 
 	vendor_data->op_mode = USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY;
 
+	if (IS_ERR_OR_NULL(xhci)) {
+		pr_err("xHCI null, drop offload reset work\n");
+		goto fail;
+	}
+	if (xhci->xhc_state & XHCI_STATE_DYING ||
+	    xhci->xhc_state & XHCI_STATE_REMOVING) {
+		xhci_err(xhci, "xHCI dying, ignore adding main_hcd\n");
+		goto fail;
+	}
 	rc = usb_add_hcd(xhci->main_hcd, xhci->main_hcd->irq, IRQF_SHARED);
 	if (rc) {
 		xhci_err(xhci, "add main hcd error: %d\n", rc);
 		goto fail;
 	}
 
+	if (IS_ERR_OR_NULL(xhci)) {
+		pr_err("xHCI null, drop offload reset work\n");
+		goto fail;
+	}
+	if (xhci->xhc_state & XHCI_STATE_DYING ||
+	    xhci->xhc_state & XHCI_STATE_REMOVING) {
+		xhci_err(xhci, "xHCI dying, ignore adding shared_hcd\n");
+		goto fail;
+	}
 	rc = usb_add_hcd(xhci->shared_hcd, xhci->shared_hcd->irq, IRQF_SHARED);
 	if (rc) {
 		xhci_err(xhci, "add shared hcd error: %d\n", rc);
@@ -317,7 +328,6 @@ static void xhci_reset_work(struct work_struct *ws)
 	xhci_dbg(xhci, "xhci reset for usb audio offload was done\n");
 
 fail:
-	mutex_unlock(&vendor_data->lock);
 	return;
 }
 
@@ -551,7 +561,6 @@ static int usb_audio_offload_init(struct xhci_hcd *xhci)
 		return ret;
 	}
 
-	mutex_init(&vendor_data->lock);
 	INIT_WORK(&vendor_data->xhci_vendor_reset_ws, xhci_reset_work);
 	usb_register_notify(&xhci_udev_nb);
 	vendor_data->op_mode = USB_OFFLOAD_DRAM;
@@ -562,28 +571,9 @@ static int usb_audio_offload_init(struct xhci_hcd *xhci)
 	return 0;
 }
 
-static void usb_audio_offload_remove_hcd(struct xhci_hcd *xhci)
-{
-	struct xhci_vendor_data *vendor_data = xhci_to_priv(xhci)->vendor_data;
-
-	if (mutex_lock_interruptible(&vendor_data->lock)) {
-		xhci_err(xhci, "remove hcd interrupted while waiting for lock\n");
-		return;
-	}
-
-	usb_remove_hcd(xhci->shared_hcd);
-	xhci->shared_hcd = NULL;
-	usb_phy_shutdown(xhci->main_hcd->usb_phy);
-	usb_remove_hcd(xhci->main_hcd);
-
-	mutex_unlock(&vendor_data->lock);
-}
-
 static void usb_audio_offload_cleanup(struct xhci_hcd *xhci)
 {
 	struct xhci_vendor_data *vendor_data = xhci_to_priv(xhci)->vendor_data;
-
-	usb_audio_offload_remove_hcd(xhci);
 
 	vendor_data->usb_audio_offload = false;
 	vendor_data->op_mode = USB_OFFLOAD_STOP;
@@ -596,8 +586,6 @@ static void usb_audio_offload_cleanup(struct xhci_hcd *xhci)
 
 	/* Notification for xhci driver removing */
 	xhci_sync_conn_stat(0, 0, 0, 0);
-
-	mutex_destroy(&vendor_data->lock);
 
 	kfree(vendor_data);
 	xhci_to_priv(xhci)->vendor_data = NULL;
