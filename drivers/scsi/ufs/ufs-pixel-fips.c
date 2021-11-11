@@ -5,6 +5,7 @@
  * Copyright 2021 Google LLC
  *
  * Authors: Konstantin Vyshetsky <vkon@google.com>
+ * Version: 1.0.0
  */
 
 #include <linux/kernel.h>
@@ -524,7 +525,7 @@ static int __init unapply_text_relocations(void *section, int section_size,
 		u32 *place = (u32 *)(section + rela->r_offset);
 
 		if (rela->r_offset >= section_size) {
-			pr_err("rela->r_offset(%lu) >= section_size(%u)",
+			pr_err("rela->r_offset(%llu) >= section_size(%u)",
 			       rela->r_offset, section_size);
 			return -EINVAL;
 		}
@@ -700,4 +701,3 @@ MODULE_DESCRIPTION(
 	"FIPS140-2 Compliant SW Driven UFS Inline Encryption Self Test Module");
 MODULE_AUTHOR("Konstantin Vyshetsky");
 MODULE_LICENSE("GPL v2");
-MODULE_VERSION("0.1");
