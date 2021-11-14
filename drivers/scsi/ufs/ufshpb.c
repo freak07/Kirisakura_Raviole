@@ -13,6 +13,7 @@
 #include <linux/async.h>
 
 #include "ufshcd.h"
+#include "ufshcd-add-info.h"
 #include "ufshpb.h"
 #include "../sd.h"
 
@@ -35,15 +36,20 @@ static struct workqueue_struct *ufshpb_wq;
 static void ufshpb_update_active_info(struct ufshpb_lu *hpb, int rgn_idx,
 				      int srgn_idx);
 
+static inline struct ufshpb_dev_info *ufs_hba_to_hpb(struct ufs_hba *hba)
+{
+	return &ufs_hba_add_info(hba)->hpb_dev;
+}
+
 bool ufshpb_is_allowed(struct ufs_hba *hba)
 {
-	return !(hba->ufshpb_dev.hpb_disabled);
+	return !(ufs_hba_to_hpb(hba)->hpb_disabled);
 }
 
 /* HPB version 1.0 is called as legacy version. */
 bool ufshpb_is_legacy(struct ufs_hba *hba)
 {
-	return hba->ufshpb_dev.is_legacy;
+	return ufs_hba_to_hpb(hba)->is_legacy;
 }
 
 static struct ufshpb_lu *ufshpb_get_hpb_data(struct scsi_device *sdev)
@@ -323,15 +329,19 @@ ufshpb_get_pos_from_lpn(struct ufshpb_lu *hpb, unsigned long lpn, int *rgn_idx,
 }
 
 static void
-ufshpb_set_hpb_read_to_upiu(struct ufshpb_lu *hpb, struct ufshcd_lrb *lrbp,
-			    u32 lpn, __be64 ppn, u8 transfer_len, int read_id)
+ufshpb_set_hpb_read_to_upiu(struct ufs_hba *hba, struct ufshpb_lu *hpb,
+			    struct ufshcd_lrb *lrbp, u32 lpn, __be64 ppn,
+			    u8 transfer_len, int read_id)
 {
 	unsigned char *cdb = lrbp->cmd->cmnd;
-
+	__be64 ppn_tmp = ppn;
 	cdb[0] = UFSHPB_READ;
 
+	if (hba->dev_quirks & UFS_DEVICE_QUIRK_SWAP_L2P_ENTRY_FOR_HPB_READ)
+		ppn_tmp = swab64(ppn);
+
 	/* ppn value is stored as big-endian in the host memory */
-	memcpy(&cdb[6], &ppn, sizeof(__be64));
+	memcpy(&cdb[6], &ppn_tmp, sizeof(__be64));
 	cdb[14] = transfer_len;
 	cdb[15] = read_id;
 
@@ -690,7 +700,8 @@ int ufshpb_prep(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 		}
 	}
 
-	ufshpb_set_hpb_read_to_upiu(hpb, lrbp, lpn, ppn, transfer_len, read_id);
+	ufshpb_set_hpb_read_to_upiu(hba, hpb, lrbp, lpn, ppn, transfer_len,
+				    read_id);
 
 	hpb->stats.hit_cnt++;
 	return 0;
@@ -2743,8 +2754,7 @@ void ufshpb_init_hpb_lu(struct ufs_hba *hba, struct scsi_device *sdev)
 	if (ret)
 		goto out;
 
-	hpb = ufshpb_alloc_hpb_lu(hba, sdev, &hba->ufshpb_dev,
-				  &hpb_lu_info);
+	hpb = ufshpb_alloc_hpb_lu(hba, sdev, ufs_hba_to_hpb(hba), &hpb_lu_info);
 	if (!hpb)
 		goto out;
 
@@ -2753,7 +2763,7 @@ void ufshpb_init_hpb_lu(struct ufs_hba *hba, struct scsi_device *sdev)
 
 out:
 	/* All LUs are initialized */
-	if (atomic_dec_and_test(&hba->ufshpb_dev.slave_conf_cnt))
+	if (atomic_dec_and_test(&ufs_hba_to_hpb(hba)->slave_conf_cnt))
 		ufshpb_hpb_lu_prepared(hba);
 }
 
@@ -2810,7 +2820,7 @@ release_mctx_cache:
 
 void ufshpb_get_geo_info(struct ufs_hba *hba, u8 *geo_buf)
 {
-	struct ufshpb_dev_info *hpb_info = &hba->ufshpb_dev;
+	struct ufshpb_dev_info *hpb_info = ufs_hba_to_hpb(hba);
 	int max_active_rgns = 0;
 	int hpb_num_lu;
 
@@ -2836,7 +2846,7 @@ void ufshpb_get_geo_info(struct ufs_hba *hba, u8 *geo_buf)
 
 void ufshpb_get_dev_info(struct ufs_hba *hba, u8 *desc_buf)
 {
-	struct ufshpb_dev_info *hpb_dev_info = &hba->ufshpb_dev;
+	struct ufshpb_dev_info *hpb_dev_info = ufs_hba_to_hpb(hba);
 	int version, ret;
 	u32 max_hpb_single_cmd = HPB_MULTI_CHUNK_LOW;
 
@@ -2873,7 +2883,7 @@ void ufshpb_get_dev_info(struct ufs_hba *hba, u8 *desc_buf)
 
 void ufshpb_init(struct ufs_hba *hba)
 {
-	struct ufshpb_dev_info *hpb_dev_info = &hba->ufshpb_dev;
+	struct ufshpb_dev_info *hpb_dev_info = ufs_hba_to_hpb(hba);
 	int try;
 	int ret;
 

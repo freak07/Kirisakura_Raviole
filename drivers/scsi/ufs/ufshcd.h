@@ -843,6 +843,12 @@ struct ufs_hba {
 
 	struct blk_mq_tag_set tmf_tag_set;
 	struct request_queue *tmf_queue;
+#if 0
+	/*
+	 * This has been moved into struct ufs_hba_add_info because of the GKI.
+	 */
+	struct request **tmf_rqs;
+#endif
 
 	struct uic_command *active_uic_cmd;
 	struct mutex uic_cmd_mutex;
@@ -912,7 +918,8 @@ struct ufs_hba {
 	bool wb_enabled;
 	struct delayed_work rpm_dev_flush_recheck_work;
 
-#ifdef CONFIG_SCSI_UFS_HPB
+#if 0
+	/* This has been moved into struct ufs_hba_add_info. */
 	struct ufshpb_dev_info ufshpb_dev;
 #endif
 

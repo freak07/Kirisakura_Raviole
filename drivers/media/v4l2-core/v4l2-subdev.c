@@ -431,30 +431,6 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 
 		return v4l2_event_dequeue(vfh, arg, file->f_flags & O_NONBLOCK);
 
-	case VIDIOC_DQEVENT_TIME32: {
-		struct v4l2_event_time32 *ev32 = arg;
-		struct v4l2_event ev = { };
-
-		if (!(sd->flags & V4L2_SUBDEV_FL_HAS_EVENTS))
-			return -ENOIOCTLCMD;
-
-		rval = v4l2_event_dequeue(vfh, &ev, file->f_flags & O_NONBLOCK);
-
-		*ev32 = (struct v4l2_event_time32) {
-			.type		= ev.type,
-			.pending	= ev.pending,
-			.sequence	= ev.sequence,
-			.timestamp.tv_sec  = ev.timestamp.tv_sec,
-			.timestamp.tv_nsec = ev.timestamp.tv_nsec,
-			.id		= ev.id,
-		};
-
-		memcpy(&ev32->u, &ev.u, sizeof(ev.u));
-		memcpy(&ev32->reserved, &ev.reserved, sizeof(ev.reserved));
-
-		return rval;
-	}
-
 	case VIDIOC_SUBSCRIBE_EVENT:
 		return v4l2_subdev_call(sd, core, subscribe_event, vfh, arg);
 
@@ -520,6 +496,8 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 			return -EPERM;
 
 		trace_android_vh_v4l2subdev_set_fmt(sd, subdev_fh->pad,
+					format, &ret);
+		trace_android_rvh_v4l2subdev_set_fmt(sd, subdev_fh->pad,
 					format, &ret);
 		if (ret)
 			return ret;
@@ -600,6 +578,7 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 			return -EPERM;
 
 		trace_android_vh_v4l2subdev_set_frame_interval(sd, fi, &ret);
+		trace_android_rvh_v4l2subdev_set_frame_interval(sd, fi, &ret);
 		if (ret)
 			return ret;
 
@@ -631,6 +610,8 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 			return -EPERM;
 
 		trace_android_vh_v4l2subdev_set_selection(sd, subdev_fh->pad,
+					sel, &ret);
+		trace_android_rvh_v4l2subdev_set_selection(sd, subdev_fh->pad,
 					sel, &ret);
 		if (ret)
 			return ret;
