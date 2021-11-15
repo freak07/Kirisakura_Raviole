@@ -13,7 +13,6 @@
 #include <linux/async.h>
 
 #include "ufshcd.h"
-#include "ufshcd-add-info.h"
 #include "ufshpb.h"
 #include "../sd.h"
 
@@ -38,7 +37,7 @@ static void ufshpb_update_active_info(struct ufshpb_lu *hpb, int rgn_idx,
 
 static inline struct ufshpb_dev_info *ufs_hba_to_hpb(struct ufs_hba *hba)
 {
-	return &ufs_hba_add_info(hba)->hpb_dev;
+	return &container_of(hba, struct ufs_hba_with_hpb, hba)->hpb_dev;
 }
 
 bool ufshpb_is_allowed(struct ufs_hba *hba)
