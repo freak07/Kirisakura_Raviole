@@ -260,96 +260,6 @@ static int sync_dev_ctx(struct xhci_hcd *xhci, unsigned int slot_id)
 	return ret;
 }
 
-static void xhci_reset_work(struct work_struct *ws)
-{
-	int rc;
-	struct xhci_vendor_data *vendor_data =
-		container_of(ws, struct xhci_vendor_data, xhci_vendor_reset_ws);
-	struct xhci_hcd *xhci = vendor_data->xhci;
-
-	if (IS_ERR_OR_NULL(xhci)) {
-		pr_err("xHCI null, drop offload reset work\n");
-		goto fail;
-	}
-	if (xhci->xhc_state & XHCI_STATE_DYING ||
-	    xhci->xhc_state & XHCI_STATE_REMOVING) {
-		xhci_err(xhci, "xHCI dying, drop offload reset work\n");
-		goto fail;
-	}
-	usb_remove_hcd(xhci->shared_hcd);
-
-	if (IS_ERR_OR_NULL(xhci)) {
-		pr_err("xHCI null, drop offload reset work\n");
-		goto fail;
-	}
-	if (xhci->xhc_state & XHCI_STATE_DYING ||
-	    xhci->xhc_state & XHCI_STATE_REMOVING) {
-		xhci_err(xhci, "xHCI dying, ignore removing main_hcd\n");
-		goto fail;
-	}
-	usb_remove_hcd(xhci->main_hcd);
-
-	vendor_data->op_mode = USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY;
-
-	if (IS_ERR_OR_NULL(xhci)) {
-		pr_err("xHCI null, drop offload reset work\n");
-		goto fail;
-	}
-	if (xhci->xhc_state & XHCI_STATE_DYING ||
-	    xhci->xhc_state & XHCI_STATE_REMOVING) {
-		xhci_err(xhci, "xHCI dying, ignore adding main_hcd\n");
-		goto fail;
-	}
-	rc = usb_add_hcd(xhci->main_hcd, xhci->main_hcd->irq, IRQF_SHARED);
-	if (rc) {
-		xhci_err(xhci, "add main hcd error: %d\n", rc);
-		goto fail;
-	}
-
-	if (IS_ERR_OR_NULL(xhci)) {
-		pr_err("xHCI null, drop offload reset work\n");
-		goto fail;
-	}
-	if (xhci->xhc_state & XHCI_STATE_DYING ||
-	    xhci->xhc_state & XHCI_STATE_REMOVING) {
-		xhci_err(xhci, "xHCI dying, ignore adding shared_hcd\n");
-		goto fail;
-	}
-	rc = usb_add_hcd(xhci->shared_hcd, xhci->shared_hcd->irq, IRQF_SHARED);
-	if (rc) {
-		xhci_err(xhci, "add shared hcd error: %d\n", rc);
-		goto fail;
-	}
-
-	/* Setup USB root hub as a wakeup source */
-	device_set_wakeup_enable(&xhci->main_hcd->self.root_hub->dev, 1);
-	device_set_wakeup_enable(&xhci->shared_hcd->self.root_hub->dev, 1);
-
-	xhci_dbg(xhci, "xhci reset for usb audio offload was done\n");
-
-fail:
-	return;
-}
-
-static void xhci_reset_for_usb_audio_offload(struct usb_device *udev)
-{
-	struct usb_device *rhdev = udev->parent;
-	struct xhci_vendor_data *vendor_data;
-	struct xhci_hcd *xhci;
-
-	if (!rhdev || rhdev->parent)
-		return;
-
-	xhci = get_xhci_hcd_by_udev(udev);
-	vendor_data = xhci_to_priv(xhci)->vendor_data;
-
-	if (!vendor_data->usb_audio_offload
-	    || vendor_data->op_mode != USB_OFFLOAD_STOP)
-		return;
-
-	schedule_work(&vendor_data->xhci_vendor_reset_ws);
-}
-
 static int xhci_udev_notify(struct notifier_block *self, unsigned long action,
 			    void *dev)
 {
@@ -365,7 +275,6 @@ static int xhci_udev_notify(struct notifier_block *self, unsigned long action,
 		if (is_compatible_with_usb_audio_offload(udev)) {
 			dev_dbg(&udev->dev,
 				 "Compatible with usb audio offload\n");
-			xhci_reset_for_usb_audio_offload(udev);
 			if (vendor_data->op_mode ==
 			    USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY ||
 				vendor_data->op_mode ==
@@ -561,7 +470,6 @@ static int usb_audio_offload_init(struct xhci_hcd *xhci)
 		return ret;
 	}
 
-	INIT_WORK(&vendor_data->xhci_vendor_reset_ws, xhci_reset_work);
 	usb_register_notify(&xhci_udev_nb);
 	vendor_data->op_mode = USB_OFFLOAD_DRAM;
 	vendor_data->xhci = xhci;
