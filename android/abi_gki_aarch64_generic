@@ -1762,7 +1762,6 @@
   srcu_notifier_chain_unregister
   sscanf
   __stack_chk_fail
-  __stack_chk_guard
   static_key_disable
   static_key_slow_dec
   static_key_slow_inc
@@ -2294,6 +2293,7 @@
   snd_soc_info_volsw_sx
   snd_soc_lookup_component
   snd_soc_put_volsw_sx
+  __stack_chk_guard
   strnchr
   system_long_wq
   __trace_bputs
