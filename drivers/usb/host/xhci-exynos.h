@@ -62,5 +62,10 @@ extern int exynos_usbdrd_phy_vendor_set(struct phy *phy, int is_enable,
 extern int dwc3_otg_get_idle_ip_index(void);
 void xhci_exynos_register_notify(void);
 void xhci_exynos_unregister_notify(void);
+static int xhci_exynos_address_device(struct usb_hcd *hcd, struct usb_device *udev);
+static int xhci_exynos_bus_suspend(struct usb_hcd *hcd);
+static int xhci_exynos_bus_resume(struct usb_hcd *hcd);
+static int xhci_exynos_wake_lock(struct xhci_hcd_exynos *xhci_exynos,
+				 int is_main_hcd, int is_lock);
 
 #endif	/* _XHCI_EXYNOS_H */
