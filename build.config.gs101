@@ -5,7 +5,7 @@ DEFCONFIG=slider_gki_defconfig
 PRE_DEFCONFIG_CMDS="KCONFIG_CONFIG=${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/${DEFCONFIG} ${ROOT_DIR}/${KERNEL_DIR}/scripts/kconfig/merge_config.sh -m -r ${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/gki_defconfig ${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/slider_gki.fragment"
 POST_DEFCONFIG_CMDS="rm ${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/${DEFCONFIG}"
 
-LIBUFDT_PREBUILTS_BIN=prebuilts/misc/linux-x86/libufdt
+LIBUFDT_PREBUILTS_BIN=prebuilts-master/misc/linux-x86/libufdt
 DTC_OVERLAY_TEST_EXT=${ROOT_DIR}/prebuilts/kernel-build-tools/linux-x86/bin/ufdt_apply_overlay
 
 MAKE_GOALS=
@@ -39,7 +39,7 @@ BOOT_IMAGE_HEADER_VERSION=4
 VENDOR_DLKM_MODULES_LIST=${KERNEL_DIR}/vendor_dlkm_modules.slider
 VENDOR_DLKM_PROPS=${KERNEL_DIR}/vendor_dlkm.props.slider
 GKI_RAMDISK_PREBUILT_BINARY=${ROOT_DIR}/prebuilts/boot-artifacts/ramdisks/ramdisk-aosp_arm64.img
-VENDOR_RAMDISK_BINARY=${ROOT_DIR}/prebuilts/boot-artifacts/ramdisks/vendor_ramdisk-oriole.img
+VENDOR_RAMDISK_BINARY=${ROOT_DIR}/prebuilts/boot-artifacts/ramdisks/vendor_ramdisk-raven.img
 KERNEL_VENDOR_CMDLINE="earlycon=exynos4210,0x10A00000 console=ttySAC0,115200 androidboot.console=ttySAC0"
 KERNEL_VENDOR_CMDLINE+=" printk.devkmsg=on"
 KERNEL_VENDOR_CMDLINE+=" at24.write_timeout=100 buildvariant=userdebug"
