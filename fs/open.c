@@ -36,6 +36,16 @@
 #include "internal.h"
 #include <trace/hooks/syscall_check.h>
 
+//#undef CONFIG_UCI
+
+#ifdef CONFIG_UCI
+#include <linux/uci/uci.h>
+#endif
+
+#ifdef CONFIG_UCI
+#define KADAWAY
+//#define SN_HACK // do not use this on Android 12, doesn't work anymore.
+#endif
 int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
 	struct file *filp)
 {
@@ -767,6 +777,10 @@ static int do_dentry_open(struct file *f,
 {
 	static const struct file_operations empty_fops = {};
 	int error;
+#ifdef CONFIG_UCI
+	bool uci = false;
+	const char *name;
+#endif
 
 	path_get(&f->f_path);
 	f->f_inode = inode;
@@ -804,12 +818,39 @@ static int do_dentry_open(struct file *f,
 	trace_android_vh_check_file_open(f);
 
 	error = security_file_open(f);
+#ifdef CONFIG_UCI
+	name = f->f_path.dentry->d_name.name;
+	uci = is_uci_file(name);
+	if (uci) {
+		char *tmp, *p = kmalloc(PATH_MAX, GFP_KERNEL);
+		if (p) {
+			tmp = d_path(&f->f_path, p, PATH_MAX);
+			if (!IS_ERR(tmp))
+			{
+				if (is_uci_path(tmp)) {
+					pr_debug("%s security override uci error to 0 %s \n",__func__,tmp);
+					error = 0;
+				}
+			}
+			kfree(p);
+		}
+	}
+#endif
 	if (error)
 		goto cleanup_all;
 
 	error = break_lease(locks_inode(f), f->f_flags);
 	if (error)
+#ifdef CONFIG_UCI
+	{
+		pr_debug("%s uci error at break_lease\n",__func__);
+		if (!uci) {
+#endif
 		goto cleanup_all;
+#ifdef CONFIG_UCI
+		}
+	}
+#endif
 
 	/* normally all 3 are set; ->open() can clear them if needed */
 	f->f_mode |= FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE;
@@ -818,7 +859,14 @@ static int do_dentry_open(struct file *f,
 	if (open) {
 		error = open(inode, f);
 		if (error)
+#ifdef CONFIG_UCI
+		{
+			pr_debug("%s uci error at open #1\n",__func__);
+#endif
 			goto cleanup_all;
+#ifdef CONFIG_UCI
+		}
+#endif
 	}
 	f->f_mode |= FMODE_OPENED;
 	if ((f->f_mode & (FMODE_READ | FMODE_WRITE)) == FMODE_READ)
@@ -834,6 +882,16 @@ static int do_dentry_open(struct file *f,
 	f->f_flags &= ~(O_CREAT | O_EXCL | O_NOCTTY | O_TRUNC);
 
 	file_ra_state_init(&f->f_ra, f->f_mapping->host->i_mapping);
+#ifdef CONFIG_UCI
+	if (uci) {
+		if (f->f_mode & FMODE_WRITE) {
+			pr_debug("%s filp may write, may open... %s\n",__func__,name);
+			notify_uci_file_write_opened(name);
+		} else {
+			pr_debug("%s filp not may write, may open... %s  %d\n",__func__,name,f->f_mode);
+		}
+	}
+#endif
 
 	/* NB: we're sure to have correct a_ops only after f_op->open */
 	if (f->f_flags & O_DIRECT) {
@@ -1136,6 +1194,24 @@ struct file *file_open_name(struct filename *name, int flags, umode_t mode)
 	return do_filp_open(AT_FDCWD, name, &op);
 }
 
+#ifdef KADAWAY
+extern bool is_kadaway(void);
+static const char * hosts_name = UCI_HOSTS_FILE;
+static const char * hosts_orig_name = "/system/etc/hosts";
+#define HOSTS_ORIG_LEN 19
+#endif
+#ifdef SN_HACK
+extern bool is_sn_hack_ready(void);
+static const char * sn_bin_0 = SN_BIN_FILE_0;
+static const char * sn_bin_1 = SN_BIN_FILE_1;
+static const char * sn_o_bin_0_e = SN_ORIG_BIN_FILE_0_E;
+static const char * sn_o_bin_1_e = SN_ORIG_BIN_FILE_1_E;
+static const char * sn_o_bin_0 = SN_ORIG_BIN_FILE_0;
+static const char * sn_o_bin_1 = SN_ORIG_BIN_FILE_1;
+#define SN_BIN_0_ORIG_LEN 22 // /system/bin/keystore
+#define SN_BIN_1_ORIG_LEN 57 // /system/lib64/libkeystore-attestation-application-id.so
+#endif
+
 /**
  * filp_open - open file and return file pointer
  *
@@ -1149,6 +1225,29 @@ struct file *file_open_name(struct filename *name, int flags, umode_t mode)
  */
 struct file *filp_open(const char *filename, int flags, umode_t mode)
 {
+#ifdef KADAWAY
+	if (is_kadaway())
+	{
+		if (!strcmp(filename,hosts_orig_name)) {
+			pr_debug("%s [kadaway] %s\n",__func__,filename);
+			filename = hosts_name;
+		}
+	}
+#ifdef SN_HACK
+	if (is_sn_hack_ready())
+	{
+		if (!strcmp(filename,sn_o_bin_0)) {
+			pr_debug("%s [sn_hack] %s\n",__func__,filename);
+			filename = sn_bin_0;
+		} else 
+		if (!strcmp(filename,sn_o_bin_1)) {
+			pr_debug("%s [sn_hack] %s\n",__func__,filename);
+			filename = sn_bin_1;
+		}
+	}
+#endif
+	{
+#endif
 	struct filename *name = getname_kernel(filename);
 	struct file *file = ERR_CAST(name);
 	
@@ -1157,6 +1256,9 @@ struct file *filp_open(const char *filename, int flags, umode_t mode)
 		putname(name);
 	}
 	return file;
+#ifdef KADAWAY
+	}
+#endif
 }
 EXPORT_SYMBOL_NS(filp_open, ANDROID_GKI_VFS_EXPORT_ONLY);
 
@@ -1183,18 +1285,124 @@ EXPORT_SYMBOL_GPL(filp_open_block);
 struct file *file_open_root(struct dentry *dentry, struct vfsmount *mnt,
 			    const char *filename, int flags, umode_t mode)
 {
+#ifdef KADAWAY
+	if (is_kadaway())
+	{
+		if (strstr(filename,"etc/hosts")) {
+			char *tmp, *p = kmalloc(PATH_MAX, GFP_KERNEL);
+			bool hijack = false;
+			pr_debug("%s [kadaway] %s\n",__func__,filename);
+			if (p) {
+				tmp = dentry_path_raw(mnt->mnt_root, p, PATH_MAX);
+				if (!IS_ERR(tmp))
+				{
+					pr_debug("%s [kadaway] vfsmount root %s \n",__func__,tmp);
+					if (strstr(tmp,"system")) {
+						hijack = true;
+					}
+				}
+				kfree(p);
+			}
+			if (hijack) {
+				return filp_open(hosts_name, flags, mode);
+			}
+		}
+#ifdef SN_HACK
+		else
+	if (is_sn_hack_ready()) {
+		if (strstr(filename, sn_o_bin_0_e)) {
+			char *tmp, *p = kmalloc(PATH_MAX, GFP_KERNEL);
+			bool hijack = false;
+			pr_debug("%s [sn_hack] %s\n",__func__,filename);
+			if (p) {
+				tmp = dentry_path_raw(mnt->mnt_root, p, PATH_MAX);
+				if (!IS_ERR(tmp))
+				{
+					pr_debug("%s [sn_hack] vfsmount root %s \n",__func__,tmp);
+					if (strstr(tmp,"system")) {
+						hijack = true;
+					}
+				}
+				kfree(p);
+			}
+			if (hijack) {
+				return filp_open(sn_bin_0, flags, mode);
+			}
+		}
+		else
+		if (strstr(filename, sn_o_bin_1_e)) {
+			char *tmp, *p = kmalloc(PATH_MAX, GFP_KERNEL);
+			bool hijack = false;
+			pr_debug("%s [sn_hack] %s\n",__func__,filename);
+			if (p) {
+				tmp = dentry_path_raw(mnt->mnt_root, p, PATH_MAX);
+				if (!IS_ERR(tmp))
+				{
+					pr_debug("%s [sn_hack] vfsmount root %s \n",__func__,tmp);
+					if (strstr(tmp,"system")) {
+						hijack = true;
+					}
+				}
+				kfree(p);
+			}
+			if (hijack) {
+				return filp_open(sn_bin_1, flags, mode);
+			}
+		}
+	}
+#endif
+	}
+	{
+#endif
 	struct open_flags op;
 	struct open_how how = build_open_how(flags, mode);
 	int err = build_open_flags(&how, &op);
 	if (err)
 		return ERR_PTR(err);
 	return do_file_open_root(dentry, mnt, filename, &op);
+#ifdef KADAWAY
+	}
+#endif
 }
 EXPORT_SYMBOL(file_open_root);
 
 static long do_sys_openat2(int dfd, const char __user *filename,
 			   struct open_how *how)
 {
+#ifdef KADAWAY
+	bool kernel_space = false;
+	const char * filename_replace = NULL;
+	if (is_kadaway())
+	{
+		char * kname = kmalloc(HOSTS_ORIG_LEN, GFP_KERNEL);
+		int len = strncpy_from_user(kname, filename, HOSTS_ORIG_LEN);
+		if (len && !strcmp(kname,hosts_orig_name)) {
+			pr_debug("%s [kadaway] kernel mode %s\n",__func__,kname);
+			kernel_space = true;
+		}
+		kfree(kname);
+	}
+#ifdef SN_HACK
+	if (is_sn_hack_ready())
+	if (!kernel_space)
+	{
+		char * kname = kmalloc(SN_BIN_1_ORIG_LEN, GFP_KERNEL);
+		int len = strncpy_from_user(kname, filename, SN_BIN_1_ORIG_LEN);
+		if (len && strstr(kname,sn_o_bin_0)) {
+			pr_debug("%s [sn_hack] %s\n",__func__,kname);
+			filename_replace = sn_bin_0;
+			kernel_space = true;
+		} else 
+		if (len && strstr(kname,sn_o_bin_1)) {
+			pr_debug("%s [sn_hack] %s\n",__func__,kname);
+			filename_replace = sn_bin_1;
+			kernel_space = true;
+		}
+		kfree(kname);
+	}
+#endif
+	{
+#endif
 	struct open_flags op;
 	int fd = build_open_flags(how, &op);
 	struct filename *tmp;
@@ -1202,7 +1410,19 @@ static long do_sys_openat2(int dfd, const char __user *filename,
 	if (fd)
 		return fd;
 
+#ifdef KADAWAY
+	if (!kernel_space) {
+#endif
 	tmp = getname(filename);
+#ifdef KADAWAY
+	} else {
+		if (filename_replace == NULL) {
+			tmp = getname_kernel(hosts_name);
+		} else {
+			tmp = getname_kernel(filename_replace);
+		}
+	}
+#endif
 	if (IS_ERR(tmp))
 		return PTR_ERR(tmp);
 
@@ -1219,6 +1439,9 @@ static long do_sys_openat2(int dfd, const char __user *filename,
 	}
 	putname(tmp);
 	return fd;
+#ifdef KADAWAY
+	}
+#endif
 }
 
 long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
@@ -1309,6 +1532,13 @@ SYSCALL_DEFINE2(creat, const char __user *, pathname, umode_t, mode)
 int filp_close(struct file *filp, fl_owner_t id)
 {
 	int retval = 0;
+#ifdef CONFIG_UCI
+	const char *name = filp->f_path.dentry->d_name.name;
+	if (is_uci_file(name)) {
+		pr_debug("%s uci filp close uci file %s\n", __func__, name);
+		notify_uci_file_closed(name);
+	}
+#endif
 
 	if (!file_count(filp)) {
 		printk(KERN_ERR "VFS: Close: file count is 0\n");
