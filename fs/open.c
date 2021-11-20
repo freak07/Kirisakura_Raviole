@@ -42,10 +42,10 @@
 #include <linux/uci/uci.h>
 #endif
 
-#ifdef CONFIG_UCI
-#define KADAWAY
+//#ifdef CONFIG_UCI
+//#define KADAWAY
 //#define SN_HACK // do not use this on Android 12, doesn't work anymore.
-#endif
+//#endif
 int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
 	struct file *filp)
 {
