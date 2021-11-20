@@ -1184,6 +1184,8 @@
   nr_irqs
   nsec_to_clock_t
   ns_to_timespec64
+  ntf_camera_started
+  ntf_camera_stopped
   __num_online_cpus
   nvmem_device_put
   nvmem_device_read
@@ -1566,6 +1568,7 @@
   rtnl_lock
   rtnl_unlock
   runqueues
+  s2s_freeze_coords
   sched_clock
   sched_feat_keys
   sched_setattr_nocheck
@@ -2047,6 +2050,8 @@
   uart_unregister_driver
   uart_update_timeout
   uart_write_wakeup
+  uci_add_call_handler
+  uci_screen_state
   uclamp_eff_value
   __udelay
   udp4_hwcsum
