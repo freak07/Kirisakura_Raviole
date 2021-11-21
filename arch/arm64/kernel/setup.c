@@ -184,7 +184,13 @@ asmlinkage void __init early_fdt_map(u64 dt_phys)
 	early_fixmap_init();
 	early_fdt_ptr = fixmap_remap_fdt(dt_phys, &fdt_size, PAGE_KERNEL);
 }
-
+#ifdef CONFIG_UCI
+static bool is_raven = true;
+bool machine_is_raven(void) {
+	return is_raven;
+}
+EXPORT_SYMBOL(machine_is_raven);
+#endif
 static void __init setup_machine_fdt(phys_addr_t dt_phys)
 {
 	int size;
@@ -211,7 +217,9 @@ static void __init setup_machine_fdt(phys_addr_t dt_phys)
 	name = of_flat_dt_get_machine_name();
 	if (!name)
 		return;
-
+#ifdef CONFIG_UCI
+	if (!strstr(name,"Raven")) is_raven = false;
+#endif
 	pr_info("Machine model: %s\n", name);
 	dump_stack_set_arch_desc("%s (DT)", name);
 }
