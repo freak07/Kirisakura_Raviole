@@ -152,39 +152,20 @@ static int get_s2s_y_above(void) {
 }
 #endif
 
-#define OP8PRO			1
-#define OP8			2
-
-//get hardware type
-static int hw_version = OP8PRO;
-static int __init get_model(char *cmdline_model)
-{
-    if (strstr(cmdline_model, "19821")) {
-	hw_version = OP8;
-    }
-    return 0;
-}
-__setup("androidboot.project_name=", get_model);
-
+extern bool machine_is_raven(void);
 
 // device specifics
 static void s2s_setup_values() {
-#if 0
-//ndef CONFIG_MACH_ASUS_ZS661KS
-// not ROG3
-	if ( hw_version == OP8PRO ) {
-		// op8pro 3040x1440
-		pr_info("%s hw op8pro\n",__func__);
+	if (machine_is_raven()) {
+		pr_info("%s hw raven\n",__func__);
 		// leave original values
-	} else {
-		pr_info("%s hw op8\n",__func__);
-		// op8 2280x1080
-		S2S_Y_MAX = 2280;
+	} else {	
+                pr_info("%s hw oriole\n",__func__);
+		S2S_Y_MAX = 2400;
 		S2S_X_MAX = 1080;
 		S2S_X_LEFT_CORNER_END = 100;
 		S2S_X_RIGHT_CORNER_START = 1080-100;
 	}
-#endif
 }
 
 #define HZ_300
@@ -609,9 +590,9 @@ bool s2s_freeze_coords(int *x, int *y, int r_x2, int r_y2) {
 			(r_x > get_s2s_width_cutoff()) && (r_x < S2S_X_MAX - get_s2s_width_cutoff()) &&
 			// or if in filtering mode (left right handed separately checked) and X is not in the 40% of the possible width, and this is still the first touch (!filter_coords_status)...
 			(
-			(get_s2s_filter_mode() == 1 && (r_x > (S2S_X_MAX * 0.60))) || // right handed, on the left side tapped shouldn't filter...
-			(get_s2s_filter_mode() == 2 && (r_x < (S2S_X_MAX * 0.40))) || // left handed, on the right side tapped...
-			(get_s2s_filter_mode() == 3 && (r_x > (S2S_X_MAX * 0.60) || r_x < (S2S_X_MAX * 0.40))) // both handed, in the middle region
+			(get_s2s_filter_mode() == 1 && (r_x > ((S2S_X_MAX * 6) / 10))) || // right handed, on the left side tapped shouldn't filter...
+			(get_s2s_filter_mode() == 2 && (r_x < ((S2S_X_MAX * 4) / 10))) || // left handed, on the right side tapped...
+			(get_s2s_filter_mode() == 3 && (r_x > ((S2S_X_MAX * 6) / 10) || r_x < ((S2S_X_MAX * 4) / 10))) // both handed, in the middle region
 			)
 			)
 			{
@@ -816,9 +797,9 @@ static bool __s2s_input_filter(struct input_handle *handle, unsigned int type,
 			(!get_s2s_filter_mode() && (touch_y > s2s_y_above || touch_y < s2s_y_limit)) || 
 			(touch_x < get_s2s_width_cutoff()) || (touch_x > S2S_X_MAX - get_s2s_width_cutoff()) ||
 			// or if in filtering mode (left right handed separately checked) and X is not in the 40% of the possible width, and this is still the first touch (!filter_coords_status)...
-			(get_s2s_filter_mode() == 1 && !filter_coords_status && (touch_x < (S2S_X_MAX * 0.60))) || // right handed, on the left side tapped shouldn't filter...
-			(get_s2s_filter_mode() == 2 && !filter_coords_status && (touch_x > (S2S_X_MAX * 0.40))) || // left handed, on the right side tapped...
-			(get_s2s_filter_mode() == 3 && !filter_coords_status && (touch_x < (S2S_X_MAX * 0.60) && touch_x > (S2S_X_MAX * 0.40))) // both handed, in the middle region
+			(get_s2s_filter_mode() == 1 && !filter_coords_status && (touch_x < ((S2S_X_MAX * 6) / 10))) || // right handed, on the left side tapped shouldn't filter...
+			(get_s2s_filter_mode() == 2 && !filter_coords_status && (touch_x > ((S2S_X_MAX * 4) / 10))) || // left handed, on the right side tapped...
+			(get_s2s_filter_mode() == 3 && !filter_coords_status && (touch_x < ((S2S_X_MAX * 6) / 10) && touch_x > ((S2S_X_MAX * 4) / 10))) // both handed, in the middle region
 			)
 		{	// cancel now...
 			touch_down_called = false;
@@ -981,6 +962,9 @@ static int input_dev_filter(struct input_dev *dev) {
 		return 0;
 	} else
 	if (strstr(dev->name, "fts")) {
+		return 0;
+	} else
+	if (strstr(dev->name, "ftm")) {
 		return 0;
 	} else
 	if (strstr(dev->name, "touchpanel")) { // oneplus driver
