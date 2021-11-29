@@ -117,6 +117,16 @@ extern int get_ev_data(int cpu, int inst_ev, int cyc_ev, int stall_ev, int cache
 			unsigned long *inst, unsigned long *cyc,
 			unsigned long *stall, unsigned long *cachemiss);
 
+unsigned int map_scaling_freq(int cpu, unsigned int freq)
+{
+	struct sugov_cpu *sg_cpu = &per_cpu(sugov_cpu, cpu);
+
+	if (sg_cpu->sg_policy && sg_cpu->sg_policy->policy)
+		return clamp(freq, sg_cpu->sg_policy->policy->min, sg_cpu->sg_policy->policy->max);
+
+	return freq;
+}
+
 /************************ Governor internals ***********************/
 static bool check_pmu_limit_conditions(u64 lcpi, u64 spc, struct sugov_policy *sg_policy)
 {
