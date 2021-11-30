@@ -636,46 +636,6 @@ static int snd_aoc_pcm_mmap(struct snd_soc_component *component,
 	return err;
 }
 
-static int snd_aoc_pcm_ack(struct snd_pcm_substream *substream)
-{
-	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct aoc_alsa_stream *alsa_stream = runtime->private_data;
-	struct aoc_service_dev *dev = alsa_stream->dev;
-	unsigned long old_appl_ptr, appl_ptr;
-
-	/* mmap only for ULL. TODO: extend to more entry points */
-	if (alsa_stream->entry_point_idx != ULL)
-		return 0;
-
-	appl_ptr = frames_to_bytes(runtime, runtime->control->appl_ptr);
-
-	/* Update write/read pointer depending on the stream type */
-	if (alsa_stream->substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		old_appl_ptr =
-			aoc_ring_bytes_written(dev->service, AOC_DOWN) - alsa_stream->hw_ptr_base;
-
-		pr_debug_ratelimited("ack(): old_ptr=%lu(hw_ptr=%lu), new_ptr=%lu, written:%lu\n",
-				     old_appl_ptr, alsa_stream->hw_ptr_base, appl_ptr,
-				     appl_ptr - old_appl_ptr);
-
-		if (!aoc_service_advance_write_index(dev->service, AOC_DOWN,
-						     appl_ptr - old_appl_ptr))
-			return -EINVAL;
-
-	} else {
-		old_appl_ptr = aoc_ring_bytes_read(dev->service, AOC_UP) - alsa_stream->hw_ptr_base;
-
-		pr_debug_ratelimited("ack(): old_ptr=%lu(hw_ptr=%lu), new_ptr=%lu, written:%lu\n",
-				     old_appl_ptr, alsa_stream->hw_ptr_base, appl_ptr,
-				     appl_ptr - old_appl_ptr);
-
-		if (!aoc_service_advance_read_index(dev->service, AOC_UP, appl_ptr - old_appl_ptr))
-			return -EINVAL;
-	}
-
-	return 0;
-}
-
 static int snd_aoc_pcm_lib_ioctl(struct snd_soc_component *component,
 				 struct snd_pcm_substream *substream, unsigned int cmd, void *arg)
 {
@@ -706,10 +666,6 @@ static int aoc_pcm_new(struct snd_soc_component *component, struct snd_soc_pcm_r
 					      snd_aoc_playback_hw.buffer_bytes_max);
 	}
 
-	/* For pcm mmap, 5.9 removed ack() in snd_soc_component */
-	if (!rtd->ops.ack) {
-		rtd->ops.ack = snd_aoc_pcm_ack;
-	}
 
 	rtd->pcm->nonatomic = true;
 
