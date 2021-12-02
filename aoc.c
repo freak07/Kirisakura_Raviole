@@ -116,6 +116,7 @@ struct aoc_prvdata {
 	void *map_handler_ctx;
 
 	struct delayed_work monitor_work;
+	bool aoc_process_active;
 
 	struct device *dev;
 	struct iommu_domain *domain;
@@ -2190,6 +2191,9 @@ static void aoc_take_offline(struct aoc_prvdata *prvdata)
 		pr_notice("taking aoc offline\n");
 		aoc_state = AOC_STATE_OFFLINE;
 
+		/* wait until aoc_process_services finish */
+		while (prvdata->aoc_process_active);
+
 		bus_for_each_dev(&aoc_bus_type, NULL, NULL, aoc_remove_device);
 
 		if (aoc_control)
@@ -2224,8 +2228,10 @@ static void aoc_process_services(struct aoc_prvdata *prvdata, int offset)
 	int services;
 	int i;
 
-	if (aoc_state != AOC_STATE_ONLINE)
-		return;
+	if (aoc_state != AOC_STATE_ONLINE || work_busy(&prvdata->watchdog_work))
+		goto exit;
+
+	prvdata->aoc_process_active = true;
 
 	services = aoc_num_services();
 	for (i = 0; i < services; i++) {
@@ -2246,6 +2252,8 @@ static void aoc_process_services(struct aoc_prvdata *prvdata, int offset)
 				wake_up(&service_dev->write_queue);
 		}
 	}
+exit:
+	prvdata->aoc_process_active = false;
 }
 
 void aoc_set_map_handler(struct aoc_service_dev *dev, aoc_map_handler handler,
