@@ -703,6 +703,10 @@ static void free_transfer_ring(struct xhci_hcd *xhci,
 	ep_type = CTX_TO_EP_TYPE(le32_to_cpu(ep_ctx->ep_info2));
 
 	ctrl_ctx = xhci_get_input_control_ctx(virt_dev->in_ctx);
+	if (!ctrl_ctx) {
+		xhci_warn(xhci, "%s: Could not get input context, bad type.\n", __func__);
+		return;
+	}
 	ep_is_added = EP_IS_ADDED(ctrl_ctx, ep_index);
 	ep_is_dropped = EP_IS_DROPPED(ctrl_ctx, ep_index);
 
