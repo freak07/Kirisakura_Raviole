@@ -116,6 +116,7 @@ static int sixty = 60;
 static int __maybe_unused neg_one = -1;
 static int __maybe_unused two = 2;
 static int __maybe_unused four = 4;
+static int __maybe_unused sixteen = 16;
 static unsigned long zero_ul;
 static unsigned long one_ul = 1;
 static unsigned long long_max = LONG_MAX;
@@ -1864,6 +1865,24 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= sysctl_sched_uclamp_handler,
+	},
+	{
+		.procname	= "sched_util_clamp_min_filter_multiplier",
+		.data		= &sysctl_sched_uclamp_min_filter_multiplier,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= &sixteen,
+	},
+	{
+		.procname	= "sched_util_clamp_max_filter_divider",
+		.data		= &sysctl_sched_uclamp_max_filter_divider,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ONE,
+		.extra2		= &sixteen,
 	},
 #endif
 #ifdef CONFIG_SCHED_AUTOGROUP
