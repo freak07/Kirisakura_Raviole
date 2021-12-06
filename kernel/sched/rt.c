@@ -1411,6 +1411,12 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_rt_entity *rt_se = &p->rt;
 	bool sync = !!(flags & ENQUEUE_WAKEUP_SYNC);
 
+	if (uclamp_is_used()) {
+		enum uclamp_id clamp_id;
+		for_each_clamp_id(clamp_id)
+			uclamp_rq_inc_id(rq, p, clamp_id);
+	}
+
 	if (flags & ENQUEUE_WAKEUP)
 		rt_se->timeout = 0;
 
@@ -1424,6 +1430,12 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_rt_entity *rt_se = &p->rt;
+
+	if (uclamp_is_used()) {
+		enum uclamp_id clamp_id;
+		for_each_clamp_id(clamp_id)
+			uclamp_rq_dec_id(rq, p, clamp_id);
+	}
 
 	update_curr_rt(rq);
 	dequeue_rt_entity(rt_se, flags);
@@ -2583,10 +2595,6 @@ const struct sched_class rt_sched_class
 	.switched_to		= switched_to_rt,
 
 	.update_curr		= update_curr_rt,
-
-#ifdef CONFIG_UCLAMP_TASK
-	.uclamp_enabled		= 1,
-#endif
 };
 
 #ifdef CONFIG_RT_GROUP_SCHED
