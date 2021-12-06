@@ -603,6 +603,8 @@ struct sched_dl_entity {
  * @bucket_id:		bucket index corresponding to the "assigned" value
  * @active:		the se is currently refcounted in a rq's bucket
  * @user_defined:	the requested clamp value comes from user-space
+ * @ignore_uclamp_max:	uclamp_max shouldn't be taken into account for this
+ * 			task
  *
  * The bucket_id is the index of the clamp bucket matching the clamp value
  * which is pre-computed and stored to avoid expensive integer divisions from
@@ -625,6 +627,7 @@ struct uclamp_se {
 	unsigned int bucket_id		: bits_per(UCLAMP_BUCKETS);
 	unsigned int active		: 1;
 	unsigned int user_defined	: 1;
+	unsigned int ignore_uclamp_max	: 1;
 };
 #endif /* CONFIG_UCLAMP_TASK */
 
