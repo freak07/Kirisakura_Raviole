@@ -3977,11 +3977,121 @@ static inline unsigned long uclamp_task_util(struct task_struct *p)
 		     uclamp_eff_value(p, UCLAMP_MIN),
 		     uclamp_eff_value(p, UCLAMP_MAX));
 }
+
+/*
+ * Check if we can ignore uclamp_max requirement of a task. The goal is to
+ * prevent small transient tasks that share the rq with other tasks that are
+ * capped to lift the capping easily/unnecessarily, hence increase power
+ * consumption.
+ *
+ * Returns true if a task can finish its work within a sched_slice() / divider.
+ * Where divider = 1 << sysctl_sched_uclamp_max_filter_divider.
+ *
+ * We look at the immediate history of how long the task ran previously.
+ * Converting task util_avg into runtime or sched_slice() into capacity is not
+ * trivial and is an expensive operations. In practice this simple approach
+ * proved effective to address the common source of noise. If a task suddenly
+ * becomes a busy task, we should detect that and lift the capping at tick, see
+ * task_tick_uclamp().
+ */
+static inline bool uclamp_can_ignore_uclamp_max(struct rq *rq,
+						struct task_struct *p)
+{
+	unsigned long uclamp_min, uclamp_max, util;
+	unsigned long runtime, slice;
+	struct sched_entity *se;
+	struct cfs_rq *cfs_rq;
+
+	if (!uclamp_is_used())
+		return false;
+
+	/*
+	 * If the task is boosted, we generally assume it is important and
+	 * ignoring its uclamp_max to retain the rq at a low performance level
+	 * is unlikely to be the desired behavior.
+	 */
+	uclamp_min = uclamp_eff_value(p, UCLAMP_MIN);
+	if (uclamp_min)
+		return false;
+
+	/*
+	 * If util has crossed uclamp_max threshold, then we have to ensure
+	 * this is always enforced.
+	 */
+	util = task_util_est(p);
+	uclamp_max = uclamp_eff_value(p, UCLAMP_MAX);
+	if (util >= uclamp_max)
+		return false;
+
+	/*
+	 * Based on previous runtime, we check the allowed sched_slice() of the
+	 * task is large enough for this task to run without preemption.
+	 *
+	 *
+	 *	runtime < sched_slice() / divider
+	 *
+	 * ==>
+	 *
+	 *	runtime * divider < sched_slice()
+	 *
+	 * where
+	 *
+	 *	divider = 1 << sysctl_sched_uclamp_max_filter_divider
+	 *
+	 * There are 2 caveats:
+	 *
+	 * 1- When a task migrates on big.LITTLE system, the runtime will not
+	 *    be representative then (not capacity invariant). But this would
+	 *    be one time off error.
+	 *
+	 * 2. runtime is not frequency invariant either. If the
+	 *    divider >= fmax/fmin we should be okay in general because that's
+	 *    the worst case scenario of how much the runtime will be stretched
+	 *    due to it being capped to minimum frequency but the rq should run
+	 *    at max. The rule here is that the task should finish its work
+	 *    within its sched_slice(). Without this runtime scaling there's a
+	 *    small opportunity for the task to ping-pong between capped and
+	 *    uncapped state.
+	 *
+	 */
+	se = &p->se;
+
+	runtime = se->sum_exec_runtime - se->prev_sum_exec_runtime;
+	if (!runtime)
+		return false;
+
+	cfs_rq = cfs_rq_of(se);
+	slice = sched_slice(cfs_rq, se);
+	runtime <<= sysctl_sched_uclamp_max_filter_divider;
+
+	if (runtime >= slice)
+		return false;
+
+	return true;
+}
+
+static inline void uclamp_set_ignore_uclamp_max(struct task_struct *p)
+{
+	p->uclamp_req[UCLAMP_MAX].ignore_uclamp_max = 1;
+}
+
+static inline void uclamp_reset_ignore_uclamp_max(struct task_struct *p)
+{
+	p->uclamp_req[UCLAMP_MAX].ignore_uclamp_max = 0;
+}
 #else
 static inline unsigned long uclamp_task_util(struct task_struct *p)
 {
 	return task_util_est(p);
 }
+
+static inline bool uclamp_can_ignore_uclamp_max(struct rq *rq,
+						struct task_struct *p)
+{
+	return false;
+}
+static inline void uclamp_set_ignore_uclamp_max(struct task_struct *p) {}
+static inline void uclamp_reset_ignore_uclamp_max(struct task_struct *p) {}
 #endif
 
 static inline void util_est_enqueue(struct cfs_rq *cfs_rq,
@@ -5638,6 +5748,19 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	if (should_iowait_boost)
 		cpufreq_update_util(rq, SCHED_CPUFREQ_IOWAIT);
 
+	if (uclamp_can_ignore_uclamp_max(rq, p)) {
+		uclamp_set_ignore_uclamp_max(p);
+		uclamp_rq_dec_id(rq, p, UCLAMP_MAX);
+	}
+
+	/*
+	 * If in_iowait is set, the code below may not trigger any cpufreq
+	 * utilization updates, so do it here explicitly with the IOWAIT flag
+	 * passed.
+	 */
+	if (p->in_iowait)
+		cpufreq_update_util(rq, SCHED_CPUFREQ_IOWAIT);
+
 	for_each_sched_entity(se) {
 		if (se->on_rq)
 			break;
@@ -5740,6 +5863,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	bool was_sched_idle = sched_idle_rq(rq);
 
 	util_est_dequeue(&rq->cfs, p);
+
+	if (uclamp_is_ignore_uclamp_max(p))
+		uclamp_reset_ignore_uclamp_max(p);
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -6890,6 +7016,12 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, int sy
 			 * overutilized. Take uclamp into account to see how
 			 * much capacity we can get out of the CPU; this is
 			 * aligned with sched_cpu_util().
+			 *
+			 * When the task is enqueued, the uclamp_max of the
+			 * task could be ignored, but it's hard for us to know
+			 * this now since we can only know the sched_slice()
+			 * after the task was enqueued. So we do the energy
+			 * calculation based on worst case scenario.
 			 */
 			util = uclamp_rq_util_with(cpu_rq(cpu), util, p);
 			if (!fits_capacity(util, cpu_cap))
@@ -10902,6 +11034,26 @@ static inline bool nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle
 static inline void nohz_newidle_balance(struct rq *this_rq) { }
 #endif /* CONFIG_NO_HZ_COMMON */
 
+#ifdef CONFIG_UCLAMP_TASK
+static inline void task_tick_uclamp(struct rq *rq, struct task_struct *curr)
+{
+	bool can_ignore = uclamp_can_ignore_uclamp_max(rq, curr);
+	bool is_ignored = uclamp_is_ignore_uclamp_max(curr);
+
+	/*
+	 * Condition might have changed since we enqueued the task.
+	 *
+	 * If uclamp_max was ignored, we might need to reverse this condition.
+	 */
+	if (is_ignored && !can_ignore) {
+		uclamp_reset_ignore_uclamp_max(curr);
+		uclamp_rq_inc_id(rq, curr, UCLAMP_MAX);
+	}
+}
+#else
+static inline void task_tick_uclamp(struct rq *rq, struct task_struct *curr) {}
+#endif
+
 /*
  * newidle_balance is called by schedule() if this_cpu is about to become
  * idle. Attempts to pull tasks from other CPUs.
@@ -11235,6 +11387,7 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	update_overutilized_status(task_rq(curr));
 
 	task_tick_core(rq, curr);
+	task_tick_uclamp(rq, curr);
 }
 
 /*
