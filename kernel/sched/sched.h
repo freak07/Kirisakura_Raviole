@@ -888,6 +888,7 @@ struct uclamp_bucket {
  * struct uclamp_rq - rq's utilization clamp
  * @value: currently active clamp values for a rq
  * @bucket: utilization clamp buckets affecting a rq
+ * @idle: this is the idle value and must be reset on next increment
  *
  * Keep track of RUNNABLE tasks on a rq to aggregate their clamp values.
  * A clamp value is affecting a rq when there is at least one task RUNNABLE
@@ -909,6 +910,7 @@ struct uclamp_bucket {
 struct uclamp_rq {
 	unsigned int value;
 	struct uclamp_bucket bucket[UCLAMP_BUCKETS];
+	unsigned char idle;
 };
 
 DECLARE_STATIC_KEY_FALSE(sched_uclamp_used);
@@ -953,8 +955,6 @@ struct rq {
 #ifdef CONFIG_UCLAMP_TASK
 	/* Utilization clamp values based on CPU's RUNNABLE tasks */
 	struct uclamp_rq	uclamp[UCLAMP_CNT] ____cacheline_aligned;
-	unsigned int		uclamp_flags;
-#define UCLAMP_FLAG_IDLE 0x01
 #endif
 
 	struct cfs_rq		cfs;
@@ -2027,6 +2027,7 @@ extern const u32		sched_prio_to_wmult[40];
  * ENQUEUE_HEAD      - place at front of runqueue (tail if not specified)
  * ENQUEUE_REPLENISH - CBS (replenish runtime and postpone deadline)
  * ENQUEUE_MIGRATED  - the task was migrated during wakeup
+ * ENQUEUE_SKIP_CPUFREQ  - ignore cpufreq updates for this enqueue
  *
  */
 
@@ -2047,6 +2048,7 @@ extern const u32		sched_prio_to_wmult[40];
 #else
 #define ENQUEUE_MIGRATED	0x00
 #endif
+#define ENQUEUE_SKIP_CPUFREQ	0x80
 
 #define ENQUEUE_WAKEUP_SYNC	0x80
 
@@ -2722,7 +2724,7 @@ unsigned long uclamp_rq_util_with(struct rq *rq, unsigned long util,
 		 * Ignore last runnable task's max clamp, as this task will
 		 * reset it. Similarly, no need to read the rq's min clamp.
 		 */
-		if (rq->uclamp_flags & UCLAMP_FLAG_IDLE)
+		if (!rq->nr_running)
 			goto out;
 	}
 
@@ -2761,6 +2763,36 @@ static inline bool uclamp_is_used(void)
 {
 	return static_branch_likely(&sched_uclamp_used);
 }
+
+static inline void uclamp_rq_set_idle(struct rq *rq, enum uclamp_id clamp_id)
+{
+	rq->uclamp[clamp_id].idle = 1;
+}
+static inline void uclamp_rq_reset_idle(struct rq *rq, enum uclamp_id clamp_id)
+{
+	rq->uclamp[clamp_id].idle = 0;
+}
+static inline bool uclamp_rq_is_idle(struct rq *rq, enum uclamp_id clamp_id)
+{
+	return rq->uclamp[clamp_id].idle;
+}
+
+static inline bool uclamp_is_ignore_uclamp_min(struct task_struct *p)
+{
+	return p->uclamp_req[UCLAMP_MIN].ignored;
+}
+static inline bool uclamp_is_ignore_uclamp_max(struct task_struct *p)
+{
+	return p->uclamp_req[UCLAMP_MAX].ignored;
+}
+inline void uclamp_rq_inc_id(struct rq *rq, struct task_struct *p,
+			     enum uclamp_id clamp_id);
+inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
+			     enum uclamp_id clamp_id);
+
+#define for_each_clamp_id(clamp_id) \
+	for ((clamp_id) = 0; (clamp_id) < UCLAMP_CNT; (clamp_id)++)
+
 #else /* CONFIG_UCLAMP_TASK */
 static inline
 unsigned long uclamp_rq_util_with(struct rq *rq, unsigned long util,
@@ -2778,6 +2810,17 @@ static inline bool uclamp_is_used(void)
 {
 	return false;
 }
+
+static inline bool uclamp_is_ignore_uclamp_max(struct task_struct *p)
+{
+	return false;
+}
+static inline void uclamp_rq_inc_id(struct rq *rq, struct task_struct *p,
+				    enum uclamp_id clamp_id) {}
+static inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
+				    enum uclamp_id clamp_id) {}
+
+#define for_each_clamp_id(clamp_id)
 #endif /* CONFIG_UCLAMP_TASK */
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
