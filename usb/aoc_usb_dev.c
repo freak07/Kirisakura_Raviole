@@ -10,6 +10,8 @@
 #include <linux/init.h>
 #include <linux/jiffies.h>
 #include <linux/module.h>
+#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/slab.h>
 
 #include "aoc.h"
@@ -355,6 +357,51 @@ static void usb_recovery_work(struct work_struct *ws)
 	return;
 }
 
+static int aoc_usb_match(struct device *dev, void *data)
+{
+	if (sysfs_streq(dev_driver_string(dev), "xhci-hcd-exynos"))
+		return 1;
+
+	return 0;
+}
+
+static bool aoc_usb_is_hcd_working()
+{
+	struct device_node *np;
+	struct platform_device *pdev;
+	struct device *udev;
+	int ret;
+
+	np = of_find_node_by_name(NULL, "dwc3");
+	if (!np || !of_device_is_available(np)) {
+		pr_err("Cannot find dwc3 device node\n");
+		return false;
+	}
+
+	pdev = of_find_device_by_node(np);
+	if (!pdev)
+		return false;
+
+	udev = device_find_child(&pdev->dev, NULL, aoc_usb_match);
+	if (!udev)
+		return false;
+
+	ret = usb_host_mode_state_notify(USB_CONNECTED);
+	if (ret)
+		dev_err(udev, "Notifying AoC for xhci driver status is failed.\n");
+
+	return true;
+}
+
+static struct work_struct usb_host_mode_checking_ws;
+static void usb_host_mode_checking_work(struct work_struct *ws)
+{
+	if (aoc_usb_is_hcd_working())
+		pr_info("USB HCD is working, send notification to AoC\n");
+
+	return;
+}
+
 bool aoc_usb_probe_done;
 static int aoc_usb_probe(struct aoc_service_dev *adev)
 {
@@ -390,6 +437,8 @@ static int aoc_usb_probe(struct aoc_service_dev *adev)
 	} else {
 		recover_state = NONE;
 	}
+
+	schedule_work(&usb_host_mode_checking_ws);
 
 	return 0;
 }
@@ -439,6 +488,7 @@ static int __init aoc_usb_init(void)
 	xhci_vendor_helper_init();
 	usb_vendor_helper_init();
 	INIT_WORK(&usb_recovery_ws, usb_recovery_work);
+	INIT_WORK(&usb_host_mode_checking_ws, usb_host_mode_checking_work);
 
 	return aoc_driver_register(&aoc_usb_driver);
 }

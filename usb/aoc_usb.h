@@ -119,6 +119,8 @@ extern void xhci_update_erst_dequeue(struct xhci_hcd *xhci,
 				     union xhci_trb *event_ring_deq);
 extern int xhci_exynos_register_vendor_ops(struct xhci_vendor_ops *vendor_ops);
 
+int usb_host_mode_state_notify(enum aoc_usb_state usb_state);
+
 int register_aoc_usb_notifier(struct notifier_block *nb);
 int unregister_aoc_usb_notifier(struct notifier_block *nb);
 
