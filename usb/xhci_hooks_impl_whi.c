@@ -127,6 +127,11 @@ static int xhci_sync_conn_stat(unsigned int bus_id, unsigned int dev_num, unsign
 	return 0;
 }
 
+int usb_host_mode_state_notify(enum aoc_usb_state usb_state)
+{
+	return xhci_sync_conn_stat(0, 0, 0, usb_state);
+}
+
 static int xhci_get_isoc_tr_info(u16 ep_id, u16 dir, struct xhci_ring *ep_ring)
 {
 	struct get_isoc_tr_info_args tr_info;
@@ -493,7 +498,7 @@ static void usb_audio_offload_cleanup(struct xhci_hcd *xhci)
 	usb_unregister_notify(&xhci_udev_nb);
 
 	/* Notification for xhci driver removing */
-	xhci_sync_conn_stat(0, 0, 0, 0);
+	usb_host_mode_state_notify(USB_DISCONNECTED);
 
 	kfree(vendor_data);
 	xhci_to_priv(xhci)->vendor_data = NULL;
