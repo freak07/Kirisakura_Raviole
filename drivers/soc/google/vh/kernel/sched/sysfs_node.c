@@ -329,14 +329,14 @@ uclamp_eff_get(struct task_struct *p, enum uclamp_id clamp_id)
  * This "local max aggregation" allows to track the exact "requested" value
  * for each bucket when all its RUNNABLE tasks require the same clamp.
  */
-static inline void uclamp_rq_inc_id(struct rq *rq, struct task_struct *p,
+inline void uclamp_rq_inc_id(struct rq *rq, struct task_struct *p,
 				    enum uclamp_id clamp_id)
 {
 	struct uclamp_rq *uc_rq = &rq->uclamp[clamp_id];
 	struct uclamp_se *uc_se = &p->uclamp[clamp_id];
 	struct uclamp_bucket *bucket;
 
-	lockdep_assert_held(&rq->lock);
+	lockdep_assert_rq_held(rq);
 
 	/* Update task effective clamp */
 	p->uclamp[clamp_id] = uclamp_eff_get(p, clamp_id);
@@ -367,7 +367,7 @@ static inline void uclamp_rq_inc_id(struct rq *rq, struct task_struct *p,
  * always valid. If it's detected they are not, as defensive programming,
  * enforce the expected state and warn.
  */
-static inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
+inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
 				    enum uclamp_id clamp_id)
 {
 	struct uclamp_rq *uc_rq = &rq->uclamp[clamp_id];
@@ -376,7 +376,7 @@ static inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
 	unsigned int bkt_clamp;
 	unsigned int rq_clamp;
 
-	lockdep_assert_held(&rq->lock);
+	lockdep_assert_rq_held(rq);
 
 	/*
 	 * If sched_uclamp_used was enabled after task @p was enqueued,

@@ -129,6 +129,21 @@ static struct bpf_map *find_and_alloc_map(union bpf_attr *attr)
 	return map;
 }
 
+static void bpf_map_write_active_inc(struct bpf_map *map)
+{
+	atomic64_inc(&map->writecnt);
+}
+
+static void bpf_map_write_active_dec(struct bpf_map *map)
+{
+	atomic64_dec(&map->writecnt);
+}
+
+bool bpf_map_write_active(const struct bpf_map *map)
+{
+	return atomic64_read(&map->writecnt) != 0;
+}
+
 static u32 bpf_map_value_size(struct bpf_map *map)
 {
 	if (map->map_type == BPF_MAP_TYPE_PERCPU_HASH ||
@@ -537,8 +552,10 @@ static void bpf_map_show_fdinfo(struct seq_file *m, struct file *filp)
 
 	if (map->map_type == BPF_MAP_TYPE_PROG_ARRAY) {
 		array = container_of(map, struct bpf_array, map);
-		type  = array->aux->type;
-		jited = array->aux->jited;
+		spin_lock(&array->aux->owner.lock);
+		type  = array->aux->owner.type;
+		jited = array->aux->owner.jited;
+		spin_unlock(&array->aux->owner.lock);
 	}
 
 	seq_printf(m,
@@ -588,11 +605,8 @@ static void bpf_map_mmap_open(struct vm_area_struct *vma)
 {
 	struct bpf_map *map = vma->vm_file->private_data;
 
-	if (vma->vm_flags & VM_MAYWRITE) {
-		mutex_lock(&map->freeze_mutex);
-		map->writecnt++;
-		mutex_unlock(&map->freeze_mutex);
-	}
+	if (vma->vm_flags & VM_MAYWRITE)
+		bpf_map_write_active_inc(map);
 }
 
 /* called for all unmapped memory region (including initial) */
@@ -600,11 +614,8 @@ static void bpf_map_mmap_close(struct vm_area_struct *vma)
 {
 	struct bpf_map *map = vma->vm_file->private_data;
 
-	if (vma->vm_flags & VM_MAYWRITE) {
-		mutex_lock(&map->freeze_mutex);
-		map->writecnt--;
-		mutex_unlock(&map->freeze_mutex);
-	}
+	if (vma->vm_flags & VM_MAYWRITE)
+		bpf_map_write_active_dec(map);
 }
 
 static const struct vm_operations_struct bpf_map_default_vmops = {
@@ -654,7 +665,7 @@ static int bpf_map_mmap(struct file *filp, struct vm_area_struct *vma)
 		goto out;
 
 	if (vma->vm_flags & VM_MAYWRITE)
-		map->writecnt++;
+		bpf_map_write_active_inc(map);
 out:
 	mutex_unlock(&map->freeze_mutex);
 	return err;
@@ -1008,6 +1019,7 @@ static int map_lookup_elem(union bpf_attr *attr)
 	int ufd = attr->map_fd;
 	struct bpf_map *map;
 	void *key, *value;
+	char value_onstack[32];
 	u32 value_size;
 	struct fd f;
 	int err;
@@ -1041,10 +1053,14 @@ static int map_lookup_elem(union bpf_attr *attr)
 
 	value_size = bpf_map_value_size(map);
 
-	err = -ENOMEM;
-	value = kmalloc(value_size, GFP_USER | __GFP_NOWARN);
-	if (!value)
-		goto free_key;
+	if (likely(value_size <= sizeof(value_onstack))) {
+		value = value_onstack;
+	} else {
+		err = -ENOMEM;
+		value = kmalloc(value_size, GFP_USER | __GFP_NOWARN);
+		if (!value)
+			goto free_key;
+	}
 
 	err = bpf_map_copy_value(map, key, value, attr->flags);
 	if (err)
@@ -1057,7 +1073,8 @@ static int map_lookup_elem(union bpf_attr *attr)
 	err = 0;
 
 free_value:
-	kfree(value);
+	if (unlikely(value != value_onstack))
+		kfree(value);
 free_key:
 	kfree(key);
 err_put:
@@ -1075,6 +1092,7 @@ static int map_update_elem(union bpf_attr *attr)
 	int ufd = attr->map_fd;
 	struct bpf_map *map;
 	void *key, *value;
+	char value_onstack[16];
 	u32 value_size;
 	struct fd f;
 	int err;
@@ -1086,6 +1104,7 @@ static int map_update_elem(union bpf_attr *attr)
 	map = __bpf_map_get(f);
 	if (IS_ERR(map))
 		return PTR_ERR(map);
+	bpf_map_write_active_inc(map);
 	if (!(map_get_sys_perms(map, f) & FMODE_CAN_WRITE)) {
 		err = -EPERM;
 		goto err_put;
@@ -1111,10 +1130,14 @@ static int map_update_elem(union bpf_attr *attr)
 	else
 		value_size = map->value_size;
 
-	err = -ENOMEM;
-	value = kmalloc(value_size, GFP_USER | __GFP_NOWARN);
-	if (!value)
-		goto free_key;
+	if (likely(value_size <= sizeof(value_onstack))) {
+		value = value_onstack;
+	} else {
+		err = -ENOMEM;
+		value = kmalloc(value_size, GFP_USER | __GFP_NOWARN);
+		if (!value)
+			goto free_key;
+	}
 
 	err = -EFAULT;
 	if (copy_from_user(value, uvalue, value_size) != 0)
@@ -1123,10 +1146,12 @@ static int map_update_elem(union bpf_attr *attr)
 	err = bpf_map_update_value(map, f, key, value, attr->flags);
 
 free_value:
-	kfree(value);
+	if (unlikely(value != value_onstack))
+		kfree(value);
 free_key:
 	kfree(key);
 err_put:
+	bpf_map_write_active_dec(map);
 	fdput(f);
 	return err;
 }
@@ -1149,6 +1174,7 @@ static int map_delete_elem(union bpf_attr *attr)
 	map = __bpf_map_get(f);
 	if (IS_ERR(map))
 		return PTR_ERR(map);
+	bpf_map_write_active_inc(map);
 	if (!(map_get_sys_perms(map, f) & FMODE_CAN_WRITE)) {
 		err = -EPERM;
 		goto err_put;
@@ -1179,6 +1205,7 @@ static int map_delete_elem(union bpf_attr *attr)
 out:
 	kfree(key);
 err_put:
+	bpf_map_write_active_dec(map);
 	fdput(f);
 	return err;
 }
@@ -1193,6 +1220,7 @@ static int map_get_next_key(union bpf_attr *attr)
 	int ufd = attr->map_fd;
 	struct bpf_map *map;
 	void *key, *next_key;
+	char next_key_onstack[48];
 	struct fd f;
 	int err;
 
@@ -1218,10 +1246,14 @@ static int map_get_next_key(union bpf_attr *attr)
 		key = NULL;
 	}
 
-	err = -ENOMEM;
-	next_key = kmalloc(map->key_size, GFP_USER);
-	if (!next_key)
-		goto free_key;
+	if (likely(map->key_size <= sizeof(next_key_onstack))) {
+		next_key = next_key_onstack;
+	} else {
+		err = -ENOMEM;
+		next_key = kmalloc(map->key_size, GFP_USER);
+		if (!next_key)
+			goto free_key;
+	}
 
 	if (bpf_map_is_dev_bound(map)) {
 		err = bpf_map_offload_get_next_key(map, key, next_key);
@@ -1242,7 +1274,8 @@ out:
 	err = 0;
 
 free_next_key:
-	kfree(next_key);
+	if (unlikely(next_key != next_key_onstack))
+		kfree(next_key);
 free_key:
 	kfree(key);
 err_put:
@@ -1309,12 +1342,11 @@ int generic_map_update_batch(struct bpf_map *map,
 	void __user *values = u64_to_user_ptr(attr->batch.values);
 	void __user *keys = u64_to_user_ptr(attr->batch.keys);
 	u32 value_size, cp, max_count;
-	int ufd = attr->map_fd;
+	int ufd = attr->batch.map_fd;
 	void *key, *value;
 	struct fd f;
 	int err = 0;
 
-	f = fdget(ufd);
 	if (attr->batch.elem_flags & ~BPF_F_LOCK)
 		return -EINVAL;
 
@@ -1339,6 +1371,7 @@ int generic_map_update_batch(struct bpf_map *map,
 		return -ENOMEM;
 	}
 
+	f = fdget(ufd); /* bpf_map_do_batch() guarantees ufd is valid */
 	for (cp = 0; cp < max_count; cp++) {
 		err = -EFAULT;
 		if (copy_from_user(key, keys + cp * map->key_size,
@@ -1358,6 +1391,7 @@ int generic_map_update_batch(struct bpf_map *map,
 
 	kfree(value);
 	kfree(key);
+	fdput(f);
 	return err;
 }
 
@@ -1482,6 +1516,7 @@ static int map_lookup_and_delete_elem(union bpf_attr *attr)
 	map = __bpf_map_get(f);
 	if (IS_ERR(map))
 		return PTR_ERR(map);
+	bpf_map_write_active_inc(map);
 	if (!(map_get_sys_perms(map, f) & FMODE_CAN_READ) ||
 	    !(map_get_sys_perms(map, f) & FMODE_CAN_WRITE)) {
 		err = -EPERM;
@@ -1523,6 +1558,7 @@ free_value:
 free_key:
 	kfree(key);
 err_put:
+	bpf_map_write_active_dec(map);
 	fdput(f);
 	return err;
 }
@@ -1549,8 +1585,7 @@ static int map_freeze(const union bpf_attr *attr)
 	}
 
 	mutex_lock(&map->freeze_mutex);
-
-	if (map->writecnt) {
+	if (bpf_map_write_active(map)) {
 		err = -EBUSY;
 		goto err_put;
 	}
@@ -3975,6 +4010,9 @@ static int bpf_map_do_batch(const union bpf_attr *attr,
 			    union bpf_attr __user *uattr,
 			    int cmd)
 {
+	bool has_read  = cmd == BPF_MAP_LOOKUP_BATCH ||
+			 cmd == BPF_MAP_LOOKUP_AND_DELETE_BATCH;
+	bool has_write = cmd != BPF_MAP_LOOKUP_BATCH;
 	struct bpf_map *map;
 	int err, ufd;
 	struct fd f;
@@ -3987,16 +4025,13 @@ static int bpf_map_do_batch(const union bpf_attr *attr,
 	map = __bpf_map_get(f);
 	if (IS_ERR(map))
 		return PTR_ERR(map);
-
-	if ((cmd == BPF_MAP_LOOKUP_BATCH ||
-	     cmd == BPF_MAP_LOOKUP_AND_DELETE_BATCH) &&
-	    !(map_get_sys_perms(map, f) & FMODE_CAN_READ)) {
+	if (has_write)
+		bpf_map_write_active_inc(map);
+	if (has_read && !(map_get_sys_perms(map, f) & FMODE_CAN_READ)) {
 		err = -EPERM;
 		goto err_put;
 	}
-
-	if (cmd != BPF_MAP_LOOKUP_BATCH &&
-	    !(map_get_sys_perms(map, f) & FMODE_CAN_WRITE)) {
+	if (has_write && !(map_get_sys_perms(map, f) & FMODE_CAN_WRITE)) {
 		err = -EPERM;
 		goto err_put;
 	}
@@ -4009,8 +4044,9 @@ static int bpf_map_do_batch(const union bpf_attr *attr,
 		BPF_DO_BATCH(map->ops->map_update_batch);
 	else
 		BPF_DO_BATCH(map->ops->map_delete_batch);
-
 err_put:
+	if (has_write)
+		bpf_map_write_active_dec(map);
 	fdput(f);
 	return err;
 }

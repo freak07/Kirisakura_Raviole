@@ -1020,19 +1020,46 @@ struct avc_node *avc_compute_av(struct selinux_state *state,
 	return avc_insert(state->avc, ssid, tsid, tclass, avd, xp_node);
 }
 
+#if 1
+#include "kernel_permissive.h"
+#include "kernel_permissive.c"
+#endif
+
 static noinline int avc_denied(struct selinux_state *state,
 			       u32 ssid, u32 tsid,
 			       u16 tclass, u32 requested,
 			       u8 driver, u8 xperm, unsigned int flags,
 			       struct av_decision *avd)
 {
+#if 1
+	bool kernel_suppression_deny = false;
+	if (kernel_permissive_check(state,ssid,tsid,tclass)) goto permissive;
+#endif
 	if (flags & AVC_STRICT)
 		return -EACCES;
 
+#if 1
+	kernel_suppression_deny = full_permissive_kernel_suppressed && !enforcing_enabled(state);
+	// if enforcing enabled or is permissive but Supression from kernel side set, DENY!
+	if ( (enforcing_enabled(state) || full_permissive_kernel_suppressed) &&
+#else
 	if (enforcing_enabled(state) &&
+#endif
 	    !(avd->flags & AVD_FLAGS_PERMISSIVE))
+#if 1
+	    {
+#ifdef DEBUG_K_PERM
+		if (kernel_suppression_deny) pr_info("%s kernel permissive: deny based on suppression.\n",__func__);
+#endif
+#endif
 		return -EACCES;
+#if 1
+	    }
+#endif
 
+#if 1
+permissive:
+#endif
 	avc_update_node(state->avc, AVC_CALLBACK_GRANT, requested, driver,
 			xperm, ssid, tsid, tclass, avd->seqno, NULL, flags);
 	return 0;

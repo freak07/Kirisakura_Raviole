@@ -436,10 +436,13 @@ cleanup()
 		ip -netns ${NSA} link set dev ${NSA_DEV} down
 		ip -netns ${NSA} link del dev ${NSA_DEV}
 
+		ip netns pids ${NSA} | xargs kill 2>/dev/null
 		ip netns del ${NSA}
 	fi
 
+	ip netns pids ${NSB} | xargs kill 2>/dev/null
 	ip netns del ${NSB}
+	ip netns pids ${NSC} | xargs kill 2>/dev/null
 	ip netns del ${NSC} >/dev/null 2>&1
 }
 
@@ -3908,8 +3911,8 @@ EOF
 ################################################################################
 # main
 
-TESTS_IPV4="ipv4_ping ipv4_tcp ipv4_udp ipv4_addr_bind ipv4_runtime ipv4_netfilter"
-TESTS_IPV6="ipv6_ping ipv6_tcp ipv6_udp ipv6_addr_bind ipv6_runtime ipv6_netfilter"
+TESTS_IPV4="ipv4_ping ipv4_tcp ipv4_udp ipv4_bind ipv4_runtime ipv4_netfilter"
+TESTS_IPV6="ipv6_ping ipv6_tcp ipv6_udp ipv6_bind ipv6_runtime ipv6_netfilter"
 TESTS_OTHER="use_cases"
 
 PAUSE_ON_FAIL=no

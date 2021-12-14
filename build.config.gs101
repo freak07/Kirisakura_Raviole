@@ -66,10 +66,10 @@ BOOT_IMAGE_HEADER_VERSION=4
 VENDOR_DLKM_MODULES_LIST=${KERNEL_DIR}/vendor_dlkm_modules.slider
 VENDOR_DLKM_PROPS=${KERNEL_DIR}/vendor_dlkm.props.slider
 GKI_RAMDISK_PREBUILT_BINARY=${ROOT_DIR}/prebuilts/boot-artifacts/ramdisks/ramdisk-aosp_arm64.img
-VENDOR_RAMDISK_BINARY=${ROOT_DIR}/prebuilts/boot-artifacts/ramdisks/vendor_ramdisk-oriole.img
-KERNEL_VENDOR_CMDLINE="earlycon=exynos4210,0x10A00000 console=ttySAC0,115200 androidboot.console=ttySAC0"
-KERNEL_VENDOR_CMDLINE+=" printk.devkmsg=on"
-KERNEL_VENDOR_CMDLINE+=" at24.write_timeout=100 buildvariant=userdebug"
+VENDOR_RAMDISK_BINARY=${ROOT_DIR}/prebuilts/boot-artifacts/ramdisks/vendor_ramdisk-raven.img
+KERNEL_VENDOR_CMDLINE="dyndbg='func alloc_contig_dump_pages +p' earlycon=exynos4210,0x10A00000 console=ttySAC0,115200 androidboot.console=ttySAC0"
+KERNEL_VENDOR_CMDLINE+=" printk.devkmsg=on cma_sysfs.experimental=Y stack_depot_disable=off page_pinner=on"
+KERNEL_VENDOR_CMDLINE+=" at24.write_timeout=100"
 KERNEL_VENDOR_CMDLINE+=" log_buf_len=1024K"
 VENDOR_BOOTCONFIG="androidboot.boot_devices=14700000.ufs"
 

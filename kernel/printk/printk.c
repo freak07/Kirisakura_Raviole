@@ -697,7 +697,7 @@ int devkmsg_emit(int facility, int level, const char *fmt, ...)
 
 static ssize_t devkmsg_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	char *buf, *line;
+	char buf[LOG_LINE_MAX + 1], *line;
 	int level = default_message_loglevel;
 	int facility = 1;	/* LOG_USER */
 	struct file *file = iocb->ki_filp;
@@ -718,15 +718,9 @@ static ssize_t devkmsg_write(struct kiocb *iocb, struct iov_iter *from)
 			return ret;
 	}
 
-	buf = kmalloc(len+1, GFP_KERNEL);
-	if (buf == NULL)
-		return -ENOMEM;
-
 	buf[len] = '\0';
-	if (!copy_from_iter_full(buf, len, from)) {
-		kfree(buf);
+	if (!copy_from_iter_full(buf, len, from))
 		return -EFAULT;
-	}
 
 	/*
 	 * Extract and skip the syslog prefix <[0-9]*>. Coming from userspace
@@ -754,7 +748,6 @@ static ssize_t devkmsg_write(struct kiocb *iocb, struct iov_iter *from)
 	}
 
 	devkmsg_emit(facility, level, "%s", line);
-	kfree(buf);
 	return ret;
 }
 
@@ -1479,12 +1472,8 @@ static int syslog_print(char __user *buf, int size)
 {
 	struct printk_info info;
 	struct printk_record r;
-	char *text;
+	char text[LOG_LINE_MAX + PREFIX_MAX];
 	int len = 0;
-
-	text = kmalloc(LOG_LINE_MAX + PREFIX_MAX, GFP_KERNEL);
-	if (!text)
-		return -ENOMEM;
 
 	prb_rec_init_rd(&r, &info, text, LOG_LINE_MAX + PREFIX_MAX);
 
@@ -1539,7 +1528,6 @@ static int syslog_print(char __user *buf, int size)
 		buf += n;
 	}
 
-	kfree(text);
 	return len;
 }
 
@@ -2222,8 +2210,15 @@ static int __init console_setup(char *str)
 	char *s, *options, *brl_options = NULL;
 	int idx;
 
-	if (str[0] == 0)
+	/*
+	 * console="" or console=null have been suggested as a way to
+	 * disable console output. Use ttynull that has been created
+	 * for exacly this purpose.
+	 */
+	if (str[0] == 0 || strcmp(str, "null") == 0) {
+		__add_preferred_console("ttynull", 0, NULL, NULL, true);
 		return 1;
+	}
 
 	if (_braille_console_setup(&str, &brl_options))
 		return 1;

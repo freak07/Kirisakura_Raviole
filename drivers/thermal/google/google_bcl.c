@@ -570,7 +570,7 @@ static int google_bcl_set_soc(void *data, int low, int high)
 	mutex_lock(&bcl_dev->state_trans_lock);
 	bcl_dev->trip_low_temp = low;
 	bcl_dev->trip_high_temp = high;
-	schedule_delayed_work(&bcl_dev->soc_eval_work, 0);
+	queue_delayed_work(system_power_efficient_wq, &bcl_dev->soc_eval_work, 0);
 
 	mutex_unlock(&bcl_dev->state_trans_lock);
 	return 0;
@@ -651,7 +651,7 @@ static int battery_supply_callback(struct notifier_block *nb,
 		return NOTIFY_OK;
 
 	if (!strcmp(psy->desc->name, bcl_psy->desc->name))
-		schedule_delayed_work(&bcl_dev->soc_eval_work, 0);
+		queue_delayed_work(system_power_efficient_wq, &bcl_dev->soc_eval_work, 0);
 
 	return NOTIFY_OK;
 }
