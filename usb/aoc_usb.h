@@ -28,7 +28,8 @@ enum aoc_usb_msg {
 	SETUP_DONE,
 	GET_ISOC_TR_INFO,
 	SET_ISOC_TR_INFO,
-	SYNC_CONN_STAT
+	SYNC_CONN_STAT,
+	SET_OFFLOAD_STATE
 };
 
 enum aoc_usb_state {
@@ -64,6 +65,8 @@ struct xhci_vendor_data {
 
 	bool usb_accessory_enabled;
 	bool usb_audio_offload;
+	bool dt_direct_usb_access;
+	bool offload_state;
 
 	enum usb_offload_op_mode op_mode;
 
@@ -111,11 +114,14 @@ struct get_isoc_tr_info_args {
 
 int xhci_vendor_helper_init(void);
 int usb_vendor_helper_init(void);
+int snd_usb_audio_vendor_helper_init(void);
 
 extern int xhci_handle_event(struct xhci_hcd *xhci);
 extern void xhci_update_erst_dequeue(struct xhci_hcd *xhci,
 				     union xhci_trb *event_ring_deq);
 extern int xhci_exynos_register_vendor_ops(struct xhci_vendor_ops *vendor_ops);
+int xhci_set_offload_state(struct xhci_hcd *xhci, bool enabled);
+struct xhci_hcd *get_xhci_hcd_by_udev(struct usb_device *udev);
 
 int usb_host_mode_state_notify(enum aoc_usb_state usb_state);
 

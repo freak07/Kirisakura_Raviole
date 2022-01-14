@@ -37,6 +37,27 @@ int unregister_aoc_usb_notifier(struct notifier_block *nb)
 	return blocking_notifier_chain_unregister(&aoc_usb_notifier_list, nb);
 }
 
+int xhci_set_offload_state(struct xhci_hcd *xhci, bool enabled)
+{
+	struct xhci_vendor_data *vendor_data;
+
+	if (!xhci)
+		return -EINVAL;
+
+	vendor_data = xhci_to_priv(xhci)->vendor_data;
+
+	if (!vendor_data->dt_direct_usb_access)
+		return -EPERM;
+
+	xhci_info(xhci, "Set offloading state %s\n", enabled ? "true" : "false");
+
+	blocking_notifier_call_chain(&aoc_usb_notifier_list, SET_OFFLOAD_STATE,
+				     &enabled);
+	vendor_data->offload_state = enabled;
+
+	return 0;
+}
+
 static int xhci_sync_dev_ctx(struct xhci_hcd *xhci, unsigned int slot_id)
 {
 	struct xhci_virt_device *dev;
@@ -246,7 +267,7 @@ out:
 	return is_video;
 }
 
-static struct xhci_hcd *get_xhci_hcd_by_udev(struct usb_device *udev)
+struct xhci_hcd *get_xhci_hcd_by_udev(struct usb_device *udev)
 {
 	struct usb_hcd *uhcd = container_of(udev->bus, struct usb_hcd, self);
 
@@ -475,6 +496,13 @@ static int usb_audio_offload_init(struct xhci_hcd *xhci)
 		return ret;
 	}
 
+	vendor_data->dt_direct_usb_access =
+		of_property_read_bool(dev->of_node, "direct-usb-access") ? true : false;
+	if (!vendor_data->dt_direct_usb_access)
+		dev_warn(dev, "Direct USB access is not supported\n");
+
+	vendor_data->offload_state = true;
+
 	usb_register_notify(&xhci_udev_nb);
 	vendor_data->op_mode = USB_OFFLOAD_DRAM;
 	vendor_data->xhci = xhci;
@@ -539,7 +567,7 @@ static bool is_usb_offload_enabled(struct xhci_hcd *xhci,
 			if (is_usb_video_device(udev))
 				return false;
 			else if (ep_ring->type == TYPE_ISOC)
-				return true;
+				return vendor_data->offload_state;
 		}
 	}
 
