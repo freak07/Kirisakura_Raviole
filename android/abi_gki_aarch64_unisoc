@@ -245,7 +245,6 @@
   __spi_register_driver
   spi_sync
   __stack_chk_fail
-  __stack_chk_guard
   strcmp
   strncmp
   syscon_regmap_lookup_by_phandle

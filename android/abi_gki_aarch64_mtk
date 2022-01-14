@@ -1797,7 +1797,6 @@
   __srcu_read_unlock
   sscanf
   __stack_chk_fail
-  __stack_chk_guard
   stack_trace_save
   static_key_slow_dec
   static_key_slow_inc

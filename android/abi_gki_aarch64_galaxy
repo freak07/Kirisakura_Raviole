@@ -210,7 +210,6 @@ __spmi_driver_register
 __srcu_read_lock
 __srcu_read_unlock
 __stack_chk_fail
-__stack_chk_guard
 __sw_hweight16
 __sw_hweight32
 __sw_hweight64
