@@ -19,6 +19,13 @@
 #define DRIVER_DESCRIPTION "sweep2sleep driver"
 #define DRIVER_VERSION "4.1"
 
+// to avoid clash with userspace gesture, some devices need full filtering of events instead of off screen coordinate values.
+// .. use FULL_FILTER for those devices.
+#define FULL_FILTER
+// full filtering on certain devices needs to NOT filter the first touch event, even in the filtering area we must let it through,
+// ... or input will not work till screen off/on
+#define FILTER_ONLY_AFTER_SOME_TOUCH_EVENTS
+
 
 //sweep2sleep
 #define S2S_PWRKEY_DUR         20
@@ -170,7 +177,13 @@ static void s2s_setup_values() {
 
 #define HZ_300
 //#define HZ_250
+
+// detailed debug logs, grep for S2S_EVENTS for main events, grep for fresult=? for all event FILTER results
 //#define CONFIG_DEBUG_S2S
+
+// to log all events detailed in __s2s filter
+//#define CONFIG_DEBUG_S2S_EVENTS
+
 
 // pixel lockscreen would kick in, define this:
 #define LOCKSCREEN_PWROFF_WAIT
@@ -178,12 +191,14 @@ static void s2s_setup_values() {
 #ifdef HZ_300
 #define TIME_DIFF 15
 #define LAST_TAP_TIME_DIFF_DOUBLETAP_MAX 150
+#define LAST_TAP_TIME_DIFF_DOUBLETAP_MIN 25
 #define LAST_TAP_TIME_DIFF_VIBRATE 50
 #endif
 
 #ifdef HZ_250
 #define TIME_DIFF 13
 #define LAST_TAP_TIME_DIFF_DOUBLETAP_MAX 125
+#define LAST_TAP_TIME_DIFF_DOUBLETAP_MIN 23
 #define LAST_TAP_TIME_DIFF_VIBRATE 42
 #endif
 
@@ -195,6 +210,12 @@ static int get_s2s_longtap_min_holdtime(void) {
 	return s2s_longtap_min_holdtime;
 #endif
 }
+
+// screen_on_but_before_touch_events tracks whether the screen is freshly on without INPUT passed through
+// ... to be able to not use FULL_FILTER on certain models, where that would render touch inputs useless in userspace
+// ... On those first touch events must be let through!
+static bool screen_on_but_before_touch_events = false;
+static int screen_on_untouch_events_after = 0;
 
 static int finger_counter = 0;
 static bool pause_before_pwr_off = false;
@@ -323,8 +344,14 @@ static void do_longtap_feature(void) {
 		schedule_work(&sweep2sleep_vib_work);
 		if (s2s_kill_app_mode==2) {
 			write_uci_out("fp_kill_app");
+#ifdef CONFIG_DEBUG_S2S
+			pr_info("%s S2S_EVENT: longtap feature execution: fp_kill_app\n",__func__);
+#endif
 		} else {
 			write_uci_out("fp_touch");
+#ifdef CONFIG_DEBUG_S2S
+			pr_info("%s S2S_EVENT: longtap feature execution: fp_touch\n",__func__);
+#endif
 		}
 	} else { // dt notif down mode -> long tap => power off
 		if (s2s_kill_app_mode==1) {
@@ -333,6 +360,9 @@ static void do_longtap_feature(void) {
 			vib_power = 100;
 			schedule_work(&sweep2sleep_vib_work);
 			write_uci_out("fp_kill_app");
+#ifdef CONFIG_DEBUG_S2S
+			pr_info("%s S2S_EVENT: longtap feature execution: fp_kill_app\n",__func__);
+#endif
 		} else {
 			// wait a bit before actually emulate pwr button press in the trigger, to avoid wake screen on lockscreen touch
 			if (uci_get_sys_property_int_mm("locked", 0, 0, 1)) { // if locked...
@@ -340,6 +370,9 @@ static void do_longtap_feature(void) {
 			}
 			touch_down_called = false;
 			sweep2sleep_pwrtrigger();
+#ifdef CONFIG_DEBUG_S2S
+			pr_info("%s S2S_EVENT: longtap feature execution: power off\n",__func__);
+#endif
 		}
 	}
 
@@ -351,7 +384,7 @@ static void sweep2sleep_longtap_count(struct work_struct * sweep2sleep_longtap_c
 	store_longtap_touch();
 	while (true) {
 		mdelay(10);
-		if (last_tap_for_longtap_jiffies == 0) { // doubletap/longtap tracking was reset, when finger pulled off
+		if (last_tap_for_longtap_jiffies == 0||finger_counter==0) { // doubletap/longtap tracking was reset, when finger pulled off
 			break;
 		}
 		last_tap_time_diff = jiffies - last_tap_for_longtap_jiffies;
@@ -359,7 +392,7 @@ static void sweep2sleep_longtap_count(struct work_struct * sweep2sleep_longtap_c
 			int delta_x = last_tap_for_longtap_coord_x - touch_x;
 			int delta_y = last_tap_for_longtap_coord_y - touch_y;
 #ifdef CONFIG_DEBUG_S2S
-			pr_info("%s longtap check at finger mvmnt, Time: %u X: %d Y: %d\n",__func__,last_tap_time_diff,delta_x,delta_y);
+			pr_info("%s S2S_EVENT: longtap check at finger mvmnt, Time: %u X: %d Y: %d\n",__func__,last_tap_time_diff,delta_x,delta_y);
 #endif
 			if (delta_x > 60 || delta_x < -60 || delta_y > 60 || delta_y < -60) {
 				goto exit_mutex;
@@ -545,8 +578,6 @@ static int real_x = 0; // reported thru s2s_freeze_cords by touchscreen driver
 static int real_y = 0;
 
 
-#define FULL_FILTER
-
 #ifdef FULL_FILTER
 static int in_gesture_finger_counter = 0;
 #endif
@@ -599,7 +630,7 @@ bool s2s_freeze_coords(int *x, int *y, int r_x2, int r_y2) {
 				*x = r_x + (frozen_rand)%2; // make some random variance so input report will actually get it through
 				*y = S2S_Y_MAX + 3 + (frozen_rand++)%2; // don't let real Y get thru, it crashes the framework occasionally
 #ifdef CONFIG_DEBUG_S2S
-				pr_info("%s first touch --- frozen coords used filtered mode: %d %d\n",__func__,*x,*y);
+				pr_info("%s S2S_EVENT: first touch --- frozen coords used filtered mode: %d %d\n",__func__,*x,*y);
 #endif
 				freeze_touch_area_detected = true;
 				return true;
@@ -616,6 +647,17 @@ EXPORT_SYMBOL_GPL(s2s_freeze_coords);
 
 #ifdef FULL_FILTER
 static bool filtering_on(void) {
+#ifdef FILTER_ONLY_AFTER_SOME_TOUCH_EVENTS
+	// full filtering on certain devices needs to NOT filter the first touch event, even in the filtering area we must let it through,
+	// ... or input will not work till screen off/on
+	if (screen_on_but_before_touch_events) {
+#ifdef CONFIG_DEBUG_S2S
+    		pr_info("%s [screen_wake], letting through events...\n",__func__);
+#endif
+		return false;
+	}
+#endif
+
 	return get_s2s_switch() && get_s2s_filter_mode() && (((filter_coords_status || freeze_touch_area_detected) && finger_counter<=1) || in_gesture_finger_counter>0);
 }
 #endif
@@ -635,8 +677,11 @@ static bool __s2s_input_filter(struct input_handle *handle, unsigned int type,
 	}
 
 #ifdef CONFIG_DEBUG_S2S
-	if ((log_throttling_count++)%50>40) {
-		pr_info("%s type: %d code: %d value: %d -- max y = %d | finger_counter %d freeze_touch: %d \n",__func__,type,code,value,S2S_Y_MAX, finger_counter, freeze_touch_area_detected);
+#ifndef CONFIG_DEBUG_S2S_EVENTS
+	if ((log_throttling_count++)%50>40)
+#endif
+	{
+		pr_info("%s S2S_EVENT: S2S_FILTER: type: %d code: %d value: %d -- max y = %d | finger_counter %d freeze_touch: %d | in_gesture_finger_counter: %d finger_counter: %d\n",__func__,type,code,value,S2S_Y_MAX, finger_counter, freeze_touch_area_detected, in_gesture_finger_counter, finger_counter);
 	}
 	if (log_throttling_count%50==49) log_throttling_count = 0;
 #endif
@@ -645,6 +690,9 @@ static bool __s2s_input_filter(struct input_handle *handle, unsigned int type,
 #ifdef FULL_FILTER
 		if (filtering_on()) {
 			in_gesture_finger_counter++;
+#ifdef CONFIG_DEBUG_S2S
+			pr_info("%s S2S_EVENT: touch... raising counter to in_gesture_finger_counter: %d\n",__func__, in_gesture_finger_counter);
+#endif
 		}
 #endif
 		finger_counter++;
@@ -661,7 +709,7 @@ static bool __s2s_input_filter(struct input_handle *handle, unsigned int type,
 		last_tap_starts_in_dt_area = false; // reset boolean
 		sweep2sleep_reset(true);
 #ifdef CONFIG_DEBUG_S2S
-		pr_info("%s first touch...\n",__func__);
+		pr_info("%s S2S_EVENT: first touch... in_gesture_finger_counter: %d finger_counter: %d\n",__func__, in_gesture_finger_counter, finger_counter);
 #endif
 #ifdef FULL_FILTER
 		return filtering_on();
@@ -675,6 +723,9 @@ static bool __s2s_input_filter(struct input_handle *handle, unsigned int type,
 		bool is_filtering_on = filtering_on();
 		if (filtering_on()) {
 			in_gesture_finger_counter--;
+#ifdef CONFIG_DEBUG_S2S
+			pr_info("%s S2S_EVENT: untouch... decreasing counter to in_gesture_finger_counter: %d\n",__func__, in_gesture_finger_counter);
+#endif
 			if (in_gesture_finger_counter<0) in_gesture_finger_counter = 0;
 		}
 #else
@@ -692,7 +743,7 @@ static bool __s2s_input_filter(struct input_handle *handle, unsigned int type,
 			int delta_y = last_tap_coord_y - touch_y;
 			unsigned int last_tap_time_diff = jiffies - last_tap_jiffies;
 #ifdef CONFIG_DEBUG_S2S
-			pr_info("%s doubletap check at btn leave, Time: %u X: %d Y: %d\n",__func__,last_tap_time_diff,delta_x,delta_y);
+			pr_info("%s S2S_EVENT: touch up doubletap check at btn leave, Time: %u X: %d Y: %d\n",__func__,last_tap_time_diff,delta_x,delta_y);
 #endif
 			if (delta_x < 20 && delta_x > -20 && delta_y < 20 && delta_y > -20) {
 				// first touch time is very close and didn't move more than 20px before leaving screen... finishing that touch within the area? vibrate...
@@ -725,7 +776,7 @@ static bool __s2s_input_filter(struct input_handle *handle, unsigned int type,
 		last_tap_starts_in_dt_area = false; // reset boolean
 		sweep2sleep_reset(true);
 #ifdef CONFIG_DEBUG_S2S
-		pr_info("%s untouch...\n",__func__);
+		pr_info("%s S2S_EVENT: untouch... in_gesture_finger_counter: %d finger_counter: %d\n",__func__, in_gesture_finger_counter, finger_counter);
 #endif
 		return is_filtering_on;
 	}
@@ -737,7 +788,7 @@ static bool __s2s_input_filter(struct input_handle *handle, unsigned int type,
 		touch_x_called = false;
 		touch_y_called = false;
 #ifdef CONFIG_DEBUG_S2S
-		pr_info("%s reset based on slot...\n",__func__);
+		pr_info("%s S2S_EVENT: reset based on slot...\n",__func__);
 #endif
 		sweep2sleep_reset(false);
 #ifdef FULL_FILTER
@@ -753,7 +804,7 @@ static bool __s2s_input_filter(struct input_handle *handle, unsigned int type,
 		touch_y_called = false;
 		sweep2sleep_reset(false);
 #ifdef CONFIG_DEBUG_S2S
-		pr_info("%s untouch based on tracking id...\n",__func__);
+		pr_info("%s S2S_EVENT: untouch based on tracking id...\n",__func__);
 #endif
 #ifdef FULL_FILTER
 		return filtering_on();
@@ -786,7 +837,7 @@ static bool __s2s_input_filter(struct input_handle *handle, unsigned int type,
 		touch_x_called = false;
 		touch_y_called = false;
 #ifdef CONFIG_DEBUG_S2S
-		pr_info("%s touch x/y gathered. x %d y %d - limit: %d above %d \n",__func__, touch_x,touch_y, s2s_y_limit, s2s_y_above);
+		pr_info("%s S2S_EVENT: touch x/y gathered. x %d y %d - limit: %d above %d \n",__func__, touch_x,touch_y, s2s_y_limit, s2s_y_above);
 #endif
 		if (
 			// if ... first touch was not registered (filter_coords_status = false) && register only in corner area, and X is outside cordner area,
@@ -815,36 +866,48 @@ static bool __s2s_input_filter(struct input_handle *handle, unsigned int type,
 					int delta_x = last_tap_coord_x - touch_x;
 					int delta_y = last_tap_coord_y - touch_y;
 #ifdef CONFIG_DEBUG_S2S
-					pr_info("%d doubletap check, Time: %u X: %d Y: %d\n",last_tap_time_diff,delta_x,delta_y);
+					pr_info("%s S2S_EVENT: touch down doubletap check, Time: %u X: %d Y: %d\n",__func__,last_tap_time_diff,delta_x,delta_y);
 #endif
-					if (last_tap_time_diff < LAST_TAP_TIME_DIFF_DOUBLETAP_MAX) { // previous first touch time and coordinate comparision to detect double tap...
+					if (last_tap_time_diff > LAST_TAP_TIME_DIFF_DOUBLETAP_MIN && last_tap_time_diff < LAST_TAP_TIME_DIFF_DOUBLETAP_MAX) { // previous first touch time and coordinate comparision to detect double tap...
 						if (delta_x < 60 && delta_x > -60 && delta_y < 60 && delta_y > -60) {
 							touch_down_called = false;
 							sweep2sleep_reset(false); // do not let coordinate freezing yet off, finger is on screen and gesture is still on => (false)
 							filter_coords_status = true; // set filtering on...
 							if (get_s2s_swipeup_switch()!=3) // if swipeup mode = 3, block dtap!
 							{
-							if (get_s2s_doubletap_mode()==1) { // power button mode
+							    if (get_s2s_doubletap_mode()==1) { // power button mode
 								if (s2s_kill_app_mode==1) {
 									vib_power = 90;
 									schedule_work(&sweep2sleep_vib_work);
 									write_uci_out("fp_kill_app");
+#ifdef CONFIG_DEBUG_S2S
+									pr_info("%s S2S_EVENT: doubletap mode 1: kill_app\n",__func__);
+#endif
 								} else {
 									// wait a bit before actually emulate pwr button press in the trigger, to avoid wake screen on lockscreen touch
 									if (uci_get_sys_property_int_mm("locked", 0, 0, 1)) { // if locked...
 										pause_before_pwr_off = true;
 									}
 									sweep2sleep_pwrtrigger();
+#ifdef CONFIG_DEBUG_S2S
+									pr_info("%s S2S_EVENT: doubletap mode 1: power off\n",__func__);
+#endif
 								}
-							} else { // mode 2
+							    } else { // mode 2
 								vib_power = 90;
 								schedule_work(&sweep2sleep_vib_work);
 								if (s2s_kill_app_mode==2) {
 									write_uci_out("fp_kill_app");
+#ifdef CONFIG_DEBUG_S2S
+									pr_info("%s S2S_EVENT: doubletap mode 2: power off\n",__func__);
+#endif
 								} else {
 									write_uci_out("fp_touch");
+#ifdef CONFIG_DEBUG_S2S
+									pr_info("%s S2S_EVENT: doubletap mode 2: fp_touch\n",__func__);
+#endif
 								}
-							}
+							    }
 							}
 							reset_doubletap_tracking();
 #ifdef FULL_FILTER
@@ -858,8 +921,13 @@ static bool __s2s_input_filter(struct input_handle *handle, unsigned int type,
 					}
 					store_doubletap_touch();
 					if (get_s2s_longtap_switch()) {
-						vib_power = 80;
-						schedule_work(&sweep2sleep_vib_work);
+						if (last_tap_time_diff > LAST_TAP_TIME_DIFF_DOUBLETAP_MIN) {
+							// only vibrate when a min time passed since last touch. on some devices, spurious events
+							// ...happen within a very short period, like a doubletap, with only one actual user tap.
+							// .. in that case, do not vibrate, only do the rest...
+							vib_power = 80;
+							schedule_work(&sweep2sleep_vib_work);
+						}
 						if (get_s2s_swipeup_switch()!=2 && get_s2s_swipeup_switch()!=3) { // if swipeup 2/3 - longtap shouldn't be intercepted, only vibrate...
 							schedule_work(&sweep2sleep_longtap_count_work);
 						}
@@ -899,6 +967,19 @@ static bool s2s_input_filter(struct input_handle *handle, unsigned int type,
 #ifdef CONFIG_DEBUG_S2S
 	pr_info("%s [FILTER] fresult=%s , type: %d code: %d value: %d\n",__func__,ret?"TRUE":"FALSE",type,code,value);
 #endif
+	if (!ret && type == 1 && code == 330 && value == 0) {
+		// an untouch event was passed through, this can be set to true
+		screen_on_untouch_events_after++;
+#ifdef CONFIG_DEBUG_S2S
+		pr_info("%s [screen_wake], counting untouch events: %d\n",__func__, screen_on_untouch_events_after);
+#endif
+		if (screen_on_untouch_events_after==3) {
+#ifdef CONFIG_DEBUG_S2S
+			pr_info("%s [screen_wake], enough events (3), setting filtering possible.\n",__func__);
+#endif
+			screen_on_but_before_touch_events = false;
+		}
+	}
 	return ret;
 
 }
@@ -945,6 +1026,15 @@ static void ntf_listener(char* event, int num_param, char* str_param) {
 		screen_off_after_gesture = true;
 		finger_counter = 0;
         }
+	if (!strcmp(event,NTF_EVENT_WAKE_BY_USER) ||
+		!strcmp(event,NTF_EVENT_WAKE_BY_FRAMEWORK)
+	) {
+#ifdef CONFIG_DEBUG_S2S
+		pr_info("%s [screen_wake], setting screen on before touch events...\n",__func__);
+#endif
+		screen_on_but_before_touch_events = true;
+		screen_on_untouch_events_after = 0;
+	}
 }
 
 static int input_dev_filter(struct input_dev *dev) {
