@@ -200,7 +200,7 @@ static enum hrtimer_restart aoc_pcm_hrtimer_irq_handler(struct hrtimer *timer)
 		alsa_stream->pos = (consumed - alsa_stream->hw_ptr_base) % alsa_stream->buffer_size;
 	}
 
-	schedule_work(&alsa_stream->pcm_period_work);
+	queue_work(system_highpri_wq, &alsa_stream->pcm_period_work);
 
 	return HRTIMER_RESTART;
 }
