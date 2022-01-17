@@ -24,7 +24,7 @@
 };
 
 &cpufreq_domain0 {
-	max-freq = <1803000>;
+	max-freq = <2024000>;
 };
 &cpufreq_domain2 {
 	max-freq = <2802000>;
