@@ -4426,12 +4426,12 @@ static ssize_t f2fs_dio_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	trace_f2fs_direct_IO_enter(inode, iocb, count, READ);
 
 	if (iocb->ki_flags & IOCB_NOWAIT) {
-		if (!down_read_trylock(&fi->i_gc_rwsem[READ])) {
+		if (!f2fs_down_read_trylock(&fi->i_gc_rwsem[READ])) {
 			ret = -EAGAIN;
 			goto out;
 		}
 	} else {
-		down_read(&fi->i_gc_rwsem[READ]);
+		f2fs_down_read(&fi->i_gc_rwsem[READ]);
 	}
 
 	/*
@@ -4450,7 +4450,7 @@ static ssize_t f2fs_dio_read_iter(struct kiocb *iocb, struct iov_iter *to)
 		ret = iomap_dio_complete(dio);
 	}
 
-	up_read(&fi->i_gc_rwsem[READ]);
+	f2fs_up_read(&fi->i_gc_rwsem[READ]);
 
 	file_accessed(file);
 out:
@@ -4632,12 +4632,12 @@ static ssize_t f2fs_dio_write_iter(struct kiocb *iocb, struct iov_iter *from,
 			goto out;
 		}
 
-		if (!down_read_trylock(&fi->i_gc_rwsem[WRITE])) {
+		if (!f2fs_down_read_trylock(&fi->i_gc_rwsem[WRITE])) {
 			ret = -EAGAIN;
 			goto out;
 		}
-		if (do_opu && !down_read_trylock(&fi->i_gc_rwsem[READ])) {
-			up_read(&fi->i_gc_rwsem[WRITE]);
+		if (do_opu && !f2fs_down_read_trylock(&fi->i_gc_rwsem[READ])) {
+			f2fs_up_read(&fi->i_gc_rwsem[WRITE]);
 			ret = -EAGAIN;
 			goto out;
 		}
@@ -4646,9 +4646,9 @@ static ssize_t f2fs_dio_write_iter(struct kiocb *iocb, struct iov_iter *from,
 		if (ret)
 			goto out;
 
-		down_read(&fi->i_gc_rwsem[WRITE]);
+		f2fs_down_read(&fi->i_gc_rwsem[WRITE]);
 		if (do_opu)
-			down_read(&fi->i_gc_rwsem[READ]);
+			f2fs_down_read(&fi->i_gc_rwsem[READ]);
 	}
 	if (whint_mode == WHINT_MODE_OFF)
 		iocb->ki_hint = WRITE_LIFE_NOT_SET;
@@ -4678,8 +4678,8 @@ static ssize_t f2fs_dio_write_iter(struct kiocb *iocb, struct iov_iter *from,
 	if (whint_mode == WHINT_MODE_OFF)
 		iocb->ki_hint = hint;
 	if (do_opu)
-		up_read(&fi->i_gc_rwsem[READ]);
-	up_read(&fi->i_gc_rwsem[WRITE]);
+		f2fs_up_read(&fi->i_gc_rwsem[READ]);
+	f2fs_up_read(&fi->i_gc_rwsem[WRITE]);
 
 	if (ret < 0)
 		goto out;

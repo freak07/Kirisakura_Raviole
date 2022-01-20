@@ -431,7 +431,7 @@ static void cache_nat_entry(struct f2fs_sb_info *sbi, nid_t nid,
 	struct nat_entry *new, *e;
 
 	/* Let's mitigate lock contention of nat_tree_lock during checkpoint */
-	if (rwsem_is_locked(&sbi->cp_global_sem))
+	if (f2fs_rwsem_is_locked(&sbi->cp_global_sem))
 		return;
 
 	new = __alloc_nat_entry(sbi, nid, false);
@@ -578,7 +578,7 @@ retry:
 	 */
 	if (!f2fs_rwsem_is_locked(&sbi->cp_global_sem) || checkpoint_context) {
 		down_read(&curseg->journal_rwsem);
-	} else if (rwsem_is_contended(&nm_i->nat_tree_lock) ||
+	} else if (f2fs_rwsem_is_contended(&nm_i->nat_tree_lock) ||
 				!down_read_trylock(&curseg->journal_rwsem)) {
 		f2fs_up_read(&nm_i->nat_tree_lock);
 		goto retry;
