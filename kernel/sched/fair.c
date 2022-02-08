@@ -5794,7 +5794,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	}
 
 	should_iowait_boost = p->in_iowait;
-	trace_android_rvh_set_iowait(p, rq, &should_iowait_boost);
+	trace_android_rvh_set_iowait(p, &should_iowait_boost);
 	cfs_rq_util_change(cfs_rq, should_iowait_boost ? SCHED_CPUFREQ_IOWAIT : 0);
 
 	trace_android_rvh_enqueue_task_fair(rq, p, flags);
