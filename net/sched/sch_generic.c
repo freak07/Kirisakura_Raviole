@@ -886,7 +886,7 @@ struct Qdisc *qdisc_alloc(struct netdev_queue *dev_queue,
 
 	/* seqlock has the same scope of busylock, for NOLOCK qdisc */
 	spin_lock_init(&sch->seqlock);
-	lockdep_set_class(&sch->busylock,
+	lockdep_set_class(&sch->seqlock,
 			  dev->qdisc_tx_busylock ?: &qdisc_tx_busylock);
 
 	seqcount_init(&sch->running);
@@ -1377,6 +1377,7 @@ void psched_ratecfg_precompute(struct psched_ratecfg *r,
 {
 	memset(r, 0, sizeof(*r));
 	r->overhead = conf->overhead;
+	r->mpu = conf->mpu;
 	r->rate_bytes_ps = max_t(u64, conf->rate, rate64);
 	r->linklayer = (conf->linklayer & TC_LINKLAYER_MASK);
 	r->mult = 1;

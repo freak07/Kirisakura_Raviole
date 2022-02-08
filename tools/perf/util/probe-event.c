@@ -180,8 +180,10 @@ struct map *get_target_map(const char *target, struct nsinfo *nsi, bool user)
 		struct map *map;
 
 		map = dso__new_map(target);
-		if (map && map->dso)
+		if (map && map->dso) {
+			nsinfo__put(map->dso->nsinfo);
 			map->dso->nsinfo = nsinfo__get(nsi);
+		}
 		return map;
 	} else {
 		return kernel_get_module_map(target);
@@ -3032,6 +3034,9 @@ static int find_probe_trace_events_from_map(struct perf_probe_event *pev,
 
 	for (j = 0; j < num_matched_functions; j++) {
 		sym = syms[j];
+
+		if (sym->type != STT_FUNC)
+			continue;
 
 		/* There can be duplicated symbols in the map */
 		for (i = 0; i < j; i++)

@@ -1621,7 +1621,6 @@
   __srcu_read_unlock
   sscanf
   __stack_chk_fail
-  __stack_chk_guard
   stack_depot_fetch
   static_key_disable
   stop_machine

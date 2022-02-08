@@ -448,7 +448,7 @@ struct zone {
 	 */
 	long lowmem_reserve[MAX_NR_ZONES];
 
-#ifdef CONFIG_NUMA
+#ifdef CONFIG_NEED_MULTIPLE_NODES
 	int node;
 #endif
 	struct pglist_data	*zone_pgdat;
@@ -922,7 +922,7 @@ static inline bool populated_zone(struct zone *zone)
 	return zone->present_pages;
 }
 
-#ifdef CONFIG_NUMA
+#ifdef CONFIG_NEED_MULTIPLE_NODES
 static inline int zone_to_nid(struct zone *zone)
 {
 	return zone->node;
@@ -963,6 +963,15 @@ static inline int is_highmem_idx(enum zone_type idx)
 	return 0;
 #endif
 }
+
+#ifdef CONFIG_ZONE_DMA
+bool has_managed_dma(void);
+#else
+static inline bool has_managed_dma(void)
+{
+	return false;
+}
+#endif
 
 /**
  * is_highmem - helper function to quickly check if a struct zone is a

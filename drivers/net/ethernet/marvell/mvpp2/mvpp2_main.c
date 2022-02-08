@@ -2607,11 +2607,11 @@ static int mvpp2_rxq_init(struct mvpp2_port *port,
 	mvpp2_rxq_status_update(port, rxq->id, 0, rxq->size);
 
 	if (priv->percpu_pools) {
-		err = xdp_rxq_info_reg(&rxq->xdp_rxq_short, port->dev, rxq->id);
+		err = xdp_rxq_info_reg(&rxq->xdp_rxq_short, port->dev, rxq->logic_rxq);
 		if (err < 0)
 			goto err_free_dma;
 
-		err = xdp_rxq_info_reg(&rxq->xdp_rxq_long, port->dev, rxq->id);
+		err = xdp_rxq_info_reg(&rxq->xdp_rxq_long, port->dev, rxq->logic_rxq);
 		if (err < 0)
 			goto err_unregister_rxq_short;
 
@@ -4652,11 +4652,13 @@ static int mvpp2_change_mtu(struct net_device *dev, int mtu)
 		mtu = ALIGN(MVPP2_RX_PKT_SIZE(mtu), 8);
 	}
 
+	if (port->xdp_prog && mtu > MVPP2_MAX_RX_BUF_SIZE) {
+		netdev_err(dev, "Illegal MTU value %d (> %d) for XDP mode\n",
+			   mtu, (int)MVPP2_MAX_RX_BUF_SIZE);
+		return -EINVAL;
+	}
+
 	if (MVPP2_RX_PKT_SIZE(mtu) > MVPP2_BM_LONG_PKT_SIZE) {
-		if (port->xdp_prog) {
-			netdev_err(dev, "Jumbo frames are not supported with XDP\n");
-			return -EINVAL;
-		}
 		if (priv->percpu_pools) {
 			netdev_warn(dev, "mtu %d too high, switching to shared buffers", mtu);
 			mvpp2_bm_switch_buffers(priv, false);
@@ -4942,8 +4944,8 @@ static int mvpp2_xdp_setup(struct mvpp2_port *port, struct netdev_bpf *bpf)
 	bool running = netif_running(port->dev);
 	bool reset = !prog != !port->xdp_prog;
 
-	if (port->dev->mtu > ETH_DATA_LEN) {
-		NL_SET_ERR_MSG_MOD(bpf->extack, "XDP is not supported with jumbo frames enabled");
+	if (port->dev->mtu > MVPP2_MAX_RX_BUF_SIZE) {
+		NL_SET_ERR_MSG_MOD(bpf->extack, "MTU too large for XDP");
 		return -EOPNOTSUPP;
 	}
 
@@ -6871,6 +6873,10 @@ static int mvpp2_probe(struct platform_device *pdev)
 			return PTR_ERR(priv->lms_base);
 	} else {
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+		if (!res) {
+			dev_err(&pdev->dev, "Invalid resource\n");
+			return -EINVAL;
+		}
 		if (has_acpi_companion(&pdev->dev)) {
 			/* In case the MDIO memory region is declared in
 			 * the ACPI, it can already appear as 'in-use'
@@ -6912,7 +6918,7 @@ static int mvpp2_probe(struct platform_device *pdev)
 
 	shared = num_present_cpus() - priv->nthreads;
 	if (shared > 0)
-		bitmap_fill(&priv->lock_map,
+		bitmap_set(&priv->lock_map, 0,
 			    min_t(int, shared, MVPP2_MAX_THREADS));
 
 	for (i = 0; i < MVPP2_MAX_THREADS; i++) {
@@ -7045,6 +7051,8 @@ static int mvpp2_probe(struct platform_device *pdev)
 	return 0;
 
 err_port_probe:
+	fwnode_handle_put(port_fwnode);
+
 	i = 0;
 	fwnode_for_each_available_child_node(fwnode, port_fwnode) {
 		if (priv->port_list[i])

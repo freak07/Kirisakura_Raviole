@@ -10,6 +10,7 @@
 #include <linux/ioprio.h>
 /* struct bio, bio_vec and BIO_* flags are defined in blk_types.h */
 #include <linux/blk_types.h>
+#include <linux/uio.h>
 #include <linux/android_kabi.h>
 
 #define BIO_DEBUG
@@ -20,7 +21,12 @@
 #define BIO_BUG_ON
 #endif
 
-#define BIO_MAX_PAGES		256
+#define BIO_MAX_PAGES		256U
+
+static inline unsigned int bio_max_segs(unsigned int nr_segs)
+{
+	return min(nr_segs, BIO_MAX_PAGES);
+}
 
 #define bio_prio(bio)			(bio)->bi_ioprio
 #define bio_set_prio(bio, prio)		((bio)->bi_ioprio = prio)
@@ -38,9 +44,6 @@
 #define bio_page(bio)		bio_iter_page((bio), (bio)->bi_iter)
 #define bio_offset(bio)		bio_iter_offset((bio), (bio)->bi_iter)
 #define bio_iovec(bio)		bio_iter_iovec((bio), (bio)->bi_iter)
-
-#define bio_multiple_segments(bio)				\
-	((bio)->bi_iter.bi_size != bio_iovec(bio).bv_len)
 
 #define bvec_iter_sectors(iter)	((iter).bi_size >> 9)
 #define bvec_iter_end_sector(iter) ((iter).bi_sector + bvec_iter_sectors((iter)))
@@ -253,7 +256,7 @@ static inline void bio_clear_flag(struct bio *bio, unsigned int bit)
 
 static inline void bio_get_first_bvec(struct bio *bio, struct bio_vec *bv)
 {
-	*bv = bio_iovec(bio);
+	*bv = mp_bvec_iter_bvec(bio->bi_io_vec, bio->bi_iter);
 }
 
 static inline void bio_get_last_bvec(struct bio *bio, struct bio_vec *bv)
@@ -261,10 +264,9 @@ static inline void bio_get_last_bvec(struct bio *bio, struct bio_vec *bv)
 	struct bvec_iter iter = bio->bi_iter;
 	int idx;
 
-	if (unlikely(!bio_multiple_segments(bio))) {
-		*bv = bio_iovec(bio);
-		return;
-	}
+	bio_get_first_bvec(bio, bv);
+	if (bv->bv_len == bio->bi_iter.bi_size)
+		return;		/* this bio only has a single bvec */
 
 	bio_advance_iter(bio, &iter, iter.bi_size);
 
@@ -431,6 +433,18 @@ static inline void bio_wouldblock_error(struct bio *bio)
 	bio_set_flag(bio, BIO_QUIET);
 	bio->bi_status = BLK_STS_AGAIN;
 	bio_endio(bio);
+}
+
+/*
+ * Calculate number of bvec segments that should be allocated to fit data
+ * pointed by @iter. If @iter is backed by bvec it's going to be reused
+ * instead of allocating a new one.
+ */
+static inline int bio_iov_vecs_to_alloc(struct iov_iter *iter, int max_segs)
+{
+	if (iov_iter_is_bvec(iter))
+		return 0;
+	return iov_iter_npages(iter, max_segs);
 }
 
 struct request_queue;

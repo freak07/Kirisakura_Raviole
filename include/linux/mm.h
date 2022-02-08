@@ -1716,6 +1716,7 @@ struct zap_details {
 	struct address_space *check_mapping;	/* Check page->mapping if set */
 	pgoff_t	first_index;			/* Lowest page->index to unmap */
 	pgoff_t last_index;			/* Highest page->index to unmap */
+	struct page *single_page;		/* Locked page to be unmapped */
 };
 
 struct page *_vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
@@ -1831,6 +1832,7 @@ static inline bool can_reuse_spf_vma(struct vm_area_struct *vma,
 }
 #endif /* CONFIG_SPECULATIVE_PAGE_FAULT */
 
+void unmap_mapping_page(struct page *page);
 void unmap_mapping_pages(struct address_space *mapping,
 		pgoff_t start, pgoff_t nr, bool even_cows);
 void unmap_mapping_range(struct address_space *mapping,
@@ -1851,6 +1853,7 @@ static inline int fixup_user_fault(struct mm_struct *mm, unsigned long address,
 	BUG();
 	return -EFAULT;
 }
+static inline void unmap_mapping_page(struct page *page) { }
 static inline void unmap_mapping_pages(struct address_space *mapping,
 		pgoff_t start, pgoff_t nr, bool even_cows) { }
 static inline void unmap_mapping_range(struct address_space *mapping,
@@ -2670,16 +2673,16 @@ extern struct vm_area_struct *__vma_merge(struct mm_struct *mm,
 	struct vm_area_struct *prev, unsigned long addr, unsigned long end,
 	unsigned long vm_flags, struct anon_vma *anon, struct file *file,
 	pgoff_t pgoff, struct mempolicy *mpol, struct vm_userfaultfd_ctx uff,
-	const char __user *user, bool keep_locked);
+	const char *, bool keep_locked);
 
 static inline struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	struct vm_area_struct *prev, unsigned long addr, unsigned long end,
 	unsigned long vm_flags, struct anon_vma *anon, struct file *file,
 	pgoff_t off, struct mempolicy *pol, struct vm_userfaultfd_ctx uff,
-	const char __user *user)
+	const char *anon_name)
 {
 	return __vma_merge(mm, prev, addr, end, vm_flags, anon, file, off,
-			   pol, uff, user, false);
+			   pol, uff, anon_name, false);
 }
 
 extern struct anon_vma *find_mergeable_anon_vma(struct vm_area_struct *);
@@ -3392,6 +3395,17 @@ static inline int seal_check_future_write(int seals, struct vm_area_struct *vma)
 
 	return 0;
 }
+
+#ifdef CONFIG_ANON_VMA_NAME
+int madvise_set_anon_name(struct mm_struct *mm, unsigned long start,
+			  unsigned long len_in, const char *name);
+#else
+static inline int
+madvise_set_anon_name(struct mm_struct *mm, unsigned long start,
+		      unsigned long len_in, const char *name) {
+	return 0;
+}
+#endif
 
 #endif /* __KERNEL__ */
 #endif /* _LINUX_MM_H */

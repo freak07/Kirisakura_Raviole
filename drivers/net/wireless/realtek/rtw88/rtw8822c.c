@@ -1248,7 +1248,7 @@ static void rtw8822c_phy_set_param(struct rtw_dev *rtwdev)
 #define WLAN_TX_FUNC_CFG2		0x30
 #define WLAN_MAC_OPT_NORM_FUNC1		0x98
 #define WLAN_MAC_OPT_LB_FUNC1		0x80
-#define WLAN_MAC_OPT_FUNC2		0x30810041
+#define WLAN_MAC_OPT_FUNC2		0xb0810041
 #define WLAN_MAC_INT_MIG_CFG		0x33330000
 
 #define WLAN_SIFS_CFG	(WLAN_SIFS_CCK_CONT_TX | \
@@ -3510,26 +3510,28 @@ static void rtw8822c_pwrtrack_set(struct rtw_dev *rtwdev, u8 rf_path)
 	}
 }
 
-static void rtw8822c_pwr_track_path(struct rtw_dev *rtwdev,
-				    struct rtw_swing_table *swing_table,
-				    u8 path)
+static void rtw8822c_pwr_track_stats(struct rtw_dev *rtwdev, u8 path)
 {
-	struct rtw_dm_info *dm_info = &rtwdev->dm_info;
-	u8 thermal_value, delta;
+	u8 thermal_value;
 
 	if (rtwdev->efuse.thermal_meter[path] == 0xff)
 		return;
 
 	thermal_value = rtw_read_rf(rtwdev, path, RF_T_METER, 0x7e);
-
 	rtw_phy_pwrtrack_avg(rtwdev, thermal_value, path);
+}
+
+static void rtw8822c_pwr_track_path(struct rtw_dev *rtwdev,
+				    struct rtw_swing_table *swing_table,
+				    u8 path)
+{
+	struct rtw_dm_info *dm_info = &rtwdev->dm_info;
+	u8 delta;
 
 	delta = rtw_phy_pwrtrack_get_delta(rtwdev, path);
-
 	dm_info->delta_power_index[path] =
 		rtw_phy_pwrtrack_get_pwridx(rtwdev, swing_table, path, path,
 					    delta);
-
 	rtw8822c_pwrtrack_set(rtwdev, path);
 }
 
@@ -3540,12 +3542,12 @@ static void __rtw8822c_pwr_track(struct rtw_dev *rtwdev)
 
 	rtw_phy_config_swing_table(rtwdev, &swing_table);
 
+	for (i = 0; i < rtwdev->hal.rf_path_num; i++)
+		rtw8822c_pwr_track_stats(rtwdev, i);
 	if (rtw_phy_pwrtrack_need_lck(rtwdev))
 		rtw8822c_do_lck(rtwdev);
-
 	for (i = 0; i < rtwdev->hal.rf_path_num; i++)
 		rtw8822c_pwr_track_path(rtwdev, &swing_table, i);
-
 }
 
 static void rtw8822c_pwr_track(struct rtw_dev *rtwdev)

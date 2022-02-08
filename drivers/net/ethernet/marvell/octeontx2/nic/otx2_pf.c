@@ -386,7 +386,12 @@ static int otx2_forward_vf_mbox_msgs(struct otx2_nic *pf,
 		dst_mdev->msg_size = mbox_hdr->msg_size;
 		dst_mdev->num_msgs = num_msgs;
 		err = otx2_sync_mbox_msg(dst_mbox);
-		if (err) {
+		/* Error code -EIO indicate there is a communication failure
+		 * to the AF. Rest of the error codes indicate that AF processed
+		 * VF messages and set the error codes in response messages
+		 * (if any) so simply forward responses to VF.
+		 */
+		if (err == -EIO) {
 			dev_warn(pf->dev,
 				 "AF not responding to VF%d messages\n", vf);
 			/* restore PF mbase and exit */
@@ -1592,6 +1597,7 @@ int otx2_open(struct net_device *netdev)
 err_tx_stop_queues:
 	netif_tx_stop_all_queues(netdev);
 	netif_carrier_off(netdev);
+	pf->flags |= OTX2_FLAG_INTF_DOWN;
 err_free_cints:
 	otx2_free_cints(pf, qidx);
 	vec = pci_irq_vector(pf->pdev,
@@ -1618,6 +1624,10 @@ int otx2_stop(struct net_device *netdev)
 	struct otx2_qset *qset = &pf->qset;
 	struct otx2_rss_info *rss;
 	int qidx, vec, wrk;
+
+	/* If the DOWN flag is set resources are already freed */
+	if (pf->flags & OTX2_FLAG_INTF_DOWN)
+		return 0;
 
 	netif_carrier_off(netdev);
 	netif_tx_stop_all_queues(netdev);

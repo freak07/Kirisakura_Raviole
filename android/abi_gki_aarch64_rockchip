@@ -110,7 +110,6 @@
   __spi_register_driver
   __srcu_read_unlock
   __stack_chk_fail
-  __stack_chk_guard
   __sw_hweight64
   __sysfs_match_string
   __task_pid_nr_ns

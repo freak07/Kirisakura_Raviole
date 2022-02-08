@@ -32,6 +32,66 @@
 #include <trace/events/power.h>
 #include <trace/hooks/cpufreq.h>
 
+#ifdef CONFIG_UCI
+#include <linux/uci/uci.h>
+#include <linux/notification/notification.h>
+
+/*
+raven:/sys/devices/system/cpu/cpufreq $ cat policy0/scaling_available_frequencies
+300000 574000 738000 930000 1098000 1197000 1328000 1401000 1598000 1704000 1803000
+raven:/sys/devices/system/cpu/cpufreq $ cat policy4/scaling_available_frequencies
+400000 553000 696000 799000 910000 1024000 1197000 1328000 1491000 1663000 1836000 1999000 2130000 2253000
+raven:/sys/devices/system/cpu/cpufreq $ cat policy6/scaling_available_frequencies
+500000 851000 984000 1106000 1277000 1426000 1582000 1745000 1826000 2048000 2188000 2252000 2401000 2507000 2630000 2704000 2802000
+*/
+
+// saver 1
+#define LVL1_LITTLE 1704000
+#define LVL1_BIG    2130000
+#define LVL1_PRIME  2401000
+
+// saver 2
+#define LVL2_LITTLE 1598000
+#define LVL2_BIG    1836000
+#define LVL2_PRIME  2188000
+
+// saver 3
+#define LVL3_LITTLE 1401000
+#define LVL3_BIG    1491000
+#define LVL3_PRIME  1745000
+
+static int batterysaver = 0; // 0 - 1 - 3
+// default 0, seriously cutting back max freqs for sunshine inside car/long gps tracking...
+// 1 medium cutback, 2 full cutback, 3 full cutback and disable touch freq min boost
+static int batterysaver_level = 0; // 0 - 1 - 3
+static bool batterysaver_touch_limiting = false;
+#define BATTERY_SAVER_MAX_LEVEL 3
+
+static void uci_user_listener(void) {
+    batterysaver = !!uci_get_user_property_int_mm("batterysaver", 0,0,1);
+    batterysaver_level = uci_get_user_property_int_mm("batterysaver_level", 0,0,BATTERY_SAVER_MAX_LEVEL);
+    batterysaver_touch_limiting = !!uci_get_user_property_int_mm("batterysaver_touch_limiting", 0,0,1);
+}
+
+static bool suspend_batterysaver = false;
+
+static void ntf_listener(char* event, int num_param, char* str_param) {
+        if (strcmp(event,NTF_EVENT_CHARGE_LEVEL) && strcmp(event, NTF_EVENT_INPUT)) {
+                pr_info("%s CPUFREQ listener event %s %d %s\n",__func__,event,num_param,str_param);
+        }
+
+        if (!strcmp(event,NTF_EVENT_CAMERA_ON)) {
+                if (!!num_param) {
+                        // camera on..
+			pr_info("%s suspending battery saver, camera on\n",__func__);
+			suspend_batterysaver = true;
+		} else {
+			pr_info("%s stop suspending battery saver, camera off\n",__func__);
+			suspend_batterysaver = false;
+		}
+	}
+}
+#endif
 static LIST_HEAD(cpufreq_policy_list);
 
 /* Macros to iterate over CPU policies */
@@ -529,6 +589,34 @@ void cpufreq_disable_fast_switch(struct cpufreq_policy *policy)
 }
 EXPORT_SYMBOL_GPL(cpufreq_disable_fast_switch);
 
+#ifdef CONFIG_UCI
+
+// cpu max freqs for saver modes...
+static int batterysaver_max_freqs[BATTERY_SAVER_MAX_LEVEL][8] = {
+	// little x 4 , big x 2, prime x 2 - clusters
+	// saver 1
+	{ LVL1_LITTLE,LVL1_LITTLE,LVL1_LITTLE,LVL1_LITTLE,
+	LVL1_BIG,LVL1_BIG,
+	LVL1_PRIME,LVL1_PRIME },
+	// saver 2
+	{ LVL2_LITTLE,LVL2_LITTLE,LVL2_LITTLE,LVL2_LITTLE,
+	LVL2_BIG,LVL2_BIG,
+	LVL2_PRIME,LVL2_PRIME },
+	// saver 3
+	{ LVL3_LITTLE,LVL3_LITTLE,LVL3_LITTLE,LVL3_LITTLE,
+	LVL3_BIG,LVL3_BIG,
+	LVL3_PRIME,LVL3_PRIME }
+};
+
+static int get_cpu_max_for_core(unsigned int cpu, int batterysaverlevel) {
+	if (cpu<=7 && batterysaverlevel>0 && batterysaverlevel<=BATTERY_SAVER_MAX_LEVEL) {
+		return batterysaver_max_freqs[batterysaverlevel-1][cpu];
+	} else {
+	    return -EINVAL;
+	}
+}
+#endif
+
 /**
  * cpufreq_driver_resolve_freq - Map a target frequency to a driver-supported
  * one.
@@ -543,7 +631,21 @@ EXPORT_SYMBOL_GPL(cpufreq_disable_fast_switch);
 unsigned int cpufreq_driver_resolve_freq(struct cpufreq_policy *policy,
 					 unsigned int target_freq)
 {
+	unsigned int old_target_freq = target_freq;
+#ifdef CONFIG_UCI
+	if (!suspend_batterysaver && batterysaver>0) {
+		unsigned int cpu = policy->cpu;
+		int max = 0;
+		max = get_cpu_max_for_core(cpu,batterysaver_level);
+#if 0
+		pr_info("%s max freq for core: %u saver_level %d  cpu: %d  target: %u",__func__,max,batterysaver_level,cpu,target_freq);
+#endif
+		if (max<=0) max = policy->max;
+		target_freq = clamp_val(target_freq, policy->min, max);
+	} else
+#endif
 	target_freq = clamp_val(target_freq, policy->min, policy->max);
+	trace_android_vh_cpufreq_resolve_freq(policy, target_freq, old_target_freq);
 	policy->cached_target_freq = target_freq;
 
 	if (cpufreq_driver->target_index) {
@@ -1016,10 +1118,9 @@ static struct kobj_type ktype_cpufreq = {
 	.release	= cpufreq_sysfs_release,
 };
 
-static void add_cpu_dev_symlink(struct cpufreq_policy *policy, unsigned int cpu)
+static void add_cpu_dev_symlink(struct cpufreq_policy *policy, unsigned int cpu,
+				struct device *dev)
 {
-	struct device *dev = get_cpu_device(cpu);
-
 	if (unlikely(!dev))
 		return;
 
@@ -1380,9 +1481,14 @@ static int cpufreq_online(unsigned int cpu)
 			goto out_free_policy;
 		}
 
+		/*
+		 * The initialization has succeeded and the policy is online.
+		 * If there is a problem with its frequency table, take it
+		 * offline and drop it.
+		 */
 		ret = cpufreq_table_validate_and_sort(policy);
 		if (ret)
-			goto out_exit_policy;
+			goto out_offline_policy;
 
 		/* related_cpus should at least include policy->cpus. */
 		cpumask_copy(policy->related_cpus, policy->cpus);
@@ -1398,7 +1504,7 @@ static int cpufreq_online(unsigned int cpu)
 	if (new_policy) {
 		for_each_cpu(j, policy->related_cpus) {
 			per_cpu(cpufreq_cpu_data, j) = policy;
-			add_cpu_dev_symlink(policy, j);
+			add_cpu_dev_symlink(policy, j, get_cpu_device(j));
 		}
 
 		policy->min_freq_req = kzalloc(2 * sizeof(*policy->min_freq_req),
@@ -1408,7 +1514,7 @@ static int cpufreq_online(unsigned int cpu)
 
 		ret = freq_qos_add_request(&policy->constraints,
 					   policy->min_freq_req, FREQ_QOS_MIN,
-					   policy->min);
+					   FREQ_QOS_MIN_DEFAULT_VALUE);
 		if (ret < 0) {
 			/*
 			 * So we don't call freq_qos_remove_request() for an
@@ -1428,7 +1534,7 @@ static int cpufreq_online(unsigned int cpu)
 
 		ret = freq_qos_add_request(&policy->constraints,
 					   policy->max_freq_req, FREQ_QOS_MAX,
-					   policy->max);
+					   FREQ_QOS_MAX_DEFAULT_VALUE);
 		if (ret < 0) {
 			policy->max_freq_req = NULL;
 			goto out_destroy_policy;
@@ -1526,6 +1632,10 @@ out_destroy_policy:
 
 	up_write(&policy->rwsem);
 
+out_offline_policy:
+	if (cpufreq_driver->offline)
+		cpufreq_driver->offline(policy);
+
 out_exit_policy:
 	if (cpufreq_driver->exit)
 		cpufreq_driver->exit(policy);
@@ -1557,7 +1667,7 @@ static int cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
 	/* Create sysfs link on CPU registration */
 	policy = per_cpu(cpufreq_cpu_data, cpu);
 	if (policy)
-		add_cpu_dev_symlink(policy, cpu);
+		add_cpu_dev_symlink(policy, cpu, dev);
 
 	return 0;
 }
@@ -2085,9 +2195,11 @@ unsigned int cpufreq_driver_fast_switch(struct cpufreq_policy *policy,
 					unsigned int target_freq)
 {
 	unsigned int freq;
+	unsigned int old_target_freq = target_freq;
 	int cpu;
 
 	target_freq = clamp_val(target_freq, policy->min, policy->max);
+	trace_android_vh_cpufreq_fast_switch(policy, target_freq, old_target_freq);
 	freq = cpufreq_driver->fast_switch(policy, target_freq);
 
 	if (!freq)
@@ -2097,6 +2209,7 @@ unsigned int cpufreq_driver_fast_switch(struct cpufreq_policy *policy,
 	arch_set_freq_scale(policy->related_cpus, freq,
 			    policy->cpuinfo.max_freq);
 	cpufreq_stats_record_transition(policy, freq);
+	cpufreq_times_record_transition(policy, freq);
 	trace_android_rvh_cpufreq_transition(policy);
 
 	if (trace_cpu_frequency_enabled()) {
@@ -2203,6 +2316,7 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 
 	/* Make sure that target_freq is within supported range */
 	target_freq = clamp_val(target_freq, policy->min, policy->max);
+	trace_android_vh_cpufreq_target(policy, target_freq, old_target_freq);
 
 	pr_debug("target for CPU %u: %u kHz, relation %u, requested %u kHz\n",
 		 policy->cpu, target_freq, relation, old_target_freq);
@@ -2487,6 +2601,27 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 
 	policy->min = new_data.min;
 	policy->max = new_data.max;
+#ifdef CONFIG_UCI
+	if (!suspend_batterysaver && batterysaver && batterysaver_touch_limiting) {
+		unsigned int cpu = policy->cpu;
+		int max = 0;
+		pr_debug("%s [cleanslate_policy] new min and max freqs are %u - %u kHz\n",__func__,
+			 policy->min, policy->max);
+		max = get_cpu_max_for_core(cpu,batterysaver_level);
+		if (policy->min>max) {
+			pr_debug("%s [cleanslate_policy] freq for core: %u saver_level %d  cpu: %d  target MIN: %u",__func__,max,batterysaver_level,cpu,policy->min);
+			policy->min = max;
+			new_data.min = max;
+		}
+		if (policy->max>max) {
+			pr_debug("%s [cleanslate_policy] freq for core: %u saver_level %d  cpu: %d  target MAX: %u",__func__,max,batterysaver_level,cpu,policy->max);
+			policy->max = max;
+			new_data.max = max;
+		}
+		pr_debug("%s [cleanslate_policy] OVERRIDDEN: new min and max freqs are %u - %u kHz\n",__func__,
+			 policy->min, policy->max);
+	}
+#endif
 	trace_cpu_frequency_limits(policy);
 
 	policy->cached_target_freq = UINT_MAX;
@@ -2864,6 +2999,10 @@ static int __init cpufreq_core_init(void)
 	if (!strlen(default_governor))
 		strncpy(default_governor, gov->name, CPUFREQ_NAME_LEN);
 
+#ifdef CONFIG_UCI
+	uci_add_user_listener(uci_user_listener);
+	ntf_add_listener(ntf_listener);
+#endif
 	return 0;
 }
 module_param(off, int, 0444);

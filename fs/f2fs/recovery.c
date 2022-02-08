@@ -81,7 +81,7 @@ static struct fsync_inode_entry *add_fsync_inode(struct f2fs_sb_info *sbi,
 	if (IS_ERR(inode))
 		return ERR_CAST(inode);
 
-	err = dquot_initialize(inode);
+	err = f2fs_dquot_initialize(inode);
 	if (err)
 		goto err_out;
 
@@ -91,7 +91,8 @@ static struct fsync_inode_entry *add_fsync_inode(struct f2fs_sb_info *sbi,
 			goto err_out;
 	}
 
-	entry = f2fs_kmem_cache_alloc(fsync_entry_slab, GFP_F2FS_ZERO);
+	entry = f2fs_kmem_cache_alloc(fsync_entry_slab,
+					GFP_F2FS_ZERO, true, NULL);
 	entry->inode = inode;
 	list_add_tail(&entry->list, head);
 
@@ -202,7 +203,7 @@ retry:
 			goto out_put;
 		}
 
-		err = dquot_initialize(einode);
+		err = f2fs_dquot_initialize(einode);
 		if (err) {
 			iput(einode);
 			goto out_put;
@@ -507,7 +508,7 @@ got_it:
 		if (IS_ERR(inode))
 			return PTR_ERR(inode);
 
-		ret = dquot_initialize(inode);
+		ret = f2fs_dquot_initialize(inode);
 		if (ret) {
 			iput(inode);
 			return ret;
@@ -594,7 +595,7 @@ retry_dn:
 
 	f2fs_wait_on_page_writeback(dn.node_page, NODE, true, true);
 
-	err = f2fs_get_node_info(sbi, dn.nid, &ni);
+	err = f2fs_get_node_info(sbi, dn.nid, &ni, false);
 	if (err)
 		goto err;
 
@@ -786,8 +787,6 @@ int f2fs_recover_fsync_data(struct f2fs_sb_info *sbi, bool check_only)
 	}
 
 #ifdef CONFIG_QUOTA
-	/* Needed for iput() to work correctly and not trash data */
-	sbi->sb->s_flags |= SB_ACTIVE;
 	/* Turn on quotas so that they are updated correctly */
 	quota_enabled = f2fs_enable_quota_files(sbi, s_flags & SB_RDONLY);
 #endif
@@ -797,7 +796,7 @@ int f2fs_recover_fsync_data(struct f2fs_sb_info *sbi, bool check_only)
 	INIT_LIST_HEAD(&dir_list);
 
 	/* prevent checkpoint */
-	down_write(&sbi->cp_global_sem);
+	f2fs_down_write(&sbi->cp_global_sem);
 
 	/* step #1: find fsynced inode numbers */
 	err = find_fsync_dnodes(sbi, &inode_list, check_only);
@@ -815,10 +814,8 @@ int f2fs_recover_fsync_data(struct f2fs_sb_info *sbi, bool check_only)
 	err = recover_data(sbi, &inode_list, &tmp_inode_list, &dir_list);
 	if (!err)
 		f2fs_bug_on(sbi, !list_empty(&inode_list));
-	else {
-		/* restore s_flags to let iput() trash data */
-		sbi->sb->s_flags = s_flags;
-	}
+	else
+		f2fs_bug_on(sbi, sbi->sb->s_flags & SB_ACTIVE);
 skip:
 	fix_curseg_write_pointer = !check_only || list_empty(&inode_list);
 
@@ -848,7 +845,7 @@ skip:
 	if (!err)
 		clear_sbi_flag(sbi, SBI_POR_DOING);
 
-	up_write(&sbi->cp_global_sem);
+	f2fs_up_write(&sbi->cp_global_sem);
 
 	/* let's drop all the directory inodes for clean checkpoint */
 	destroy_fsync_dnodes(&dir_list, err);

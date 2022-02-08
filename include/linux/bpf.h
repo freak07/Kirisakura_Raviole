@@ -177,7 +177,14 @@ struct bpf_map {
 	atomic64_t usercnt;
 	struct work_struct work;
 	struct mutex freeze_mutex;
-	u64 writecnt; /* writable mmap cnt; protected by freeze_mutex */
+#ifdef __GENKSYMS__
+	/* Preserve the CRC change that commit 33fe044f6a9e ("bpf: Fix toctou on
+	 * read-only map's constant scalar tracking") caused.
+	 */
+	u64 writecnt;
+#else
+	atomic64_t writecnt;
+#endif
 };
 
 static inline bool map_value_has_spin_lock(const struct bpf_map *map)
@@ -534,6 +541,8 @@ struct btf_func_model {
  * programs only. Should not be used with normal calls and indirect calls.
  */
 #define BPF_TRAMP_F_SKIP_FRAME		BIT(2)
+/* Return the return value of fentry prog. Only used by bpf_struct_ops. */
+#define BPF_TRAMP_F_RET_FENTRY_RET	BIT(4)
 
 /* Each call __bpf_prog_enter + call bpf_func + call __bpf_prog_exit is ~50
  * bytes on x86.  Pick a number to fit into BPF_IMAGE_SIZE / 2
@@ -672,6 +681,7 @@ int bpf_trampoline_unlink_prog(struct bpf_prog *prog, struct bpf_trampoline *tr)
 struct bpf_trampoline *bpf_trampoline_get(u64 key,
 					  struct bpf_attach_target_info *tgt_info);
 void bpf_trampoline_put(struct bpf_trampoline *tr);
+int arch_prepare_bpf_dispatcher(void *image, s64 *funcs, int num_funcs);
 #define BPF_DISPATCHER_INIT(_name) {				\
 	.mutex = __MUTEX_INITIALIZER(_name.mutex),		\
 	.func = &_name##_func,					\
@@ -868,8 +878,11 @@ struct bpf_array_aux {
 	 * stored in the map to make sure that all callers and callees have
 	 * the same prog type and JITed flag.
 	 */
-	enum bpf_prog_type type;
-	bool jited;
+	struct {
+		spinlock_t lock;
+		enum bpf_prog_type type;
+		bool jited;
+	} owner;
 	/* Programs with direct jumps into programs part of this array. */
 	struct list_head poke_progs;
 	struct bpf_map *map;
@@ -1097,9 +1110,14 @@ int bpf_prog_array_copy(struct bpf_prog_array *old_array,
 			goto _out;			\
 		_item = &_array->items[0];		\
 		while ((_prog = READ_ONCE(_item->prog))) {		\
-			if (set_cg_storage)		\
-				bpf_cgroup_storage_set(_item->cgroup_storage);	\
-			_ret &= func(_prog, ctx);	\
+			if (!set_cg_storage) {			\
+				_ret &= func(_prog, ctx);	\
+			} else {				\
+				if (unlikely(bpf_cgroup_storage_set(_item->cgroup_storage)))	\
+					break;			\
+				_ret &= func(_prog, ctx);	\
+				bpf_cgroup_storage_unset();	\
+			}				\
 			_item++;			\
 		}					\
 _out:							\
@@ -1143,8 +1161,10 @@ _out:							\
 		_array = rcu_dereference(array);	\
 		_item = &_array->items[0];		\
 		while ((_prog = READ_ONCE(_item->prog))) {		\
-			bpf_cgroup_storage_set(_item->cgroup_storage);	\
+			if (unlikely(bpf_cgroup_storage_set(_item->cgroup_storage)))	\
+				break;			\
 			ret = func(_prog, ctx);		\
+			bpf_cgroup_storage_unset();	\
 			_ret &= (ret & 1);		\
 			_cn |= (ret & 2);		\
 			_item++;			\
@@ -1248,6 +1268,7 @@ void bpf_map_charge_move(struct bpf_map_memory *dst,
 void *bpf_map_area_alloc(u64 size, int numa_node);
 void *bpf_map_area_mmapable_alloc(u64 size, int numa_node);
 void bpf_map_area_free(void *base);
+bool bpf_map_write_active(const struct bpf_map *map);
 void bpf_map_init_from_attr(struct bpf_map *map, union bpf_attr *attr);
 int  generic_map_lookup_batch(struct bpf_map *map,
 			      const union bpf_attr *attr,

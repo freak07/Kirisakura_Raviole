@@ -134,7 +134,9 @@ static struct ieee80211_supported_band wcn_band_2ghz = {
 		.cap =	IEEE80211_HT_CAP_GRN_FLD |
 			IEEE80211_HT_CAP_SGI_20 |
 			IEEE80211_HT_CAP_DSSSCCK40 |
-			IEEE80211_HT_CAP_LSIG_TXOP_PROT,
+			IEEE80211_HT_CAP_LSIG_TXOP_PROT |
+			IEEE80211_HT_CAP_SGI_40 |
+			IEEE80211_HT_CAP_SUP_WIDTH_20_40,
 		.ht_supported = true,
 		.ampdu_factor = IEEE80211_HT_MAX_AMPDU_64K,
 		.ampdu_density = IEEE80211_HT_MPDU_DENSITY_16,
@@ -293,23 +295,16 @@ static int wcn36xx_start(struct ieee80211_hw *hw)
 		goto out_free_dxe_pool;
 	}
 
-	wcn->hal_buf = kmalloc(WCN36XX_HAL_BUF_SIZE, GFP_KERNEL);
-	if (!wcn->hal_buf) {
-		wcn36xx_err("Failed to allocate smd buf\n");
-		ret = -ENOMEM;
-		goto out_free_dxe_ctl;
-	}
-
 	ret = wcn36xx_smd_load_nv(wcn);
 	if (ret) {
 		wcn36xx_err("Failed to push NV to chip\n");
-		goto out_free_smd_buf;
+		goto out_free_dxe_ctl;
 	}
 
 	ret = wcn36xx_smd_start(wcn);
 	if (ret) {
 		wcn36xx_err("Failed to start chip\n");
-		goto out_free_smd_buf;
+		goto out_free_dxe_ctl;
 	}
 
 	if (!wcn36xx_is_fw_version(wcn, 1, 2, 2, 24)) {
@@ -336,8 +331,6 @@ static int wcn36xx_start(struct ieee80211_hw *hw)
 
 out_smd_stop:
 	wcn36xx_smd_stop(wcn);
-out_free_smd_buf:
-	kfree(wcn->hal_buf);
 out_free_dxe_ctl:
 	wcn36xx_dxe_free_ctl_blks(wcn);
 out_free_dxe_pool:
@@ -372,8 +365,6 @@ static void wcn36xx_stop(struct ieee80211_hw *hw)
 
 	wcn36xx_dxe_free_mem_pools(wcn);
 	wcn36xx_dxe_free_ctl_blks(wcn);
-
-	kfree(wcn->hal_buf);
 }
 
 static void wcn36xx_change_ps(struct wcn36xx *wcn, bool enable)
@@ -406,6 +397,7 @@ static void wcn36xx_change_opchannel(struct wcn36xx *wcn, int ch)
 static int wcn36xx_config(struct ieee80211_hw *hw, u32 changed)
 {
 	struct wcn36xx *wcn = hw->priv;
+	int ret;
 
 	wcn36xx_dbg(WCN36XX_DBG_MAC, "mac config changed 0x%08x\n", changed);
 
@@ -416,19 +408,35 @@ static int wcn36xx_config(struct ieee80211_hw *hw, u32 changed)
 		wcn36xx_dbg(WCN36XX_DBG_MAC, "wcn36xx_config channel switch=%d\n",
 			    ch);
 
-		if (wcn->sw_scan_opchannel == ch) {
+		if (wcn->sw_scan_opchannel == ch && wcn->sw_scan_channel) {
 			/* If channel is the initial operating channel, we may
 			 * want to receive/transmit regular data packets, then
 			 * simply stop the scan session and exit PS mode.
 			 */
-			wcn36xx_smd_finish_scan(wcn, HAL_SYS_MODE_SCAN,
-						wcn->sw_scan_vif);
+			if (wcn->sw_scan_channel)
+				wcn36xx_smd_end_scan(wcn, wcn->sw_scan_channel);
+			if (wcn->sw_scan_init) {
+				wcn36xx_smd_finish_scan(wcn, HAL_SYS_MODE_SCAN,
+							wcn->sw_scan_vif);
+			}
 		} else if (wcn->sw_scan) {
 			/* A scan is ongoing, do not change the operating
 			 * channel, but start a scan session on the channel.
 			 */
-			wcn36xx_smd_init_scan(wcn, HAL_SYS_MODE_SCAN,
-					      wcn->sw_scan_vif);
+			if (wcn->sw_scan_channel)
+				wcn36xx_smd_end_scan(wcn, wcn->sw_scan_channel);
+			if (!wcn->sw_scan_init) {
+				/* This can fail if we are unable to notify the
+				 * operating channel.
+				 */
+				ret = wcn36xx_smd_init_scan(wcn,
+							    HAL_SYS_MODE_SCAN,
+							    wcn->sw_scan_vif);
+				if (ret) {
+					mutex_unlock(&wcn->conf_mutex);
+					return -EIO;
+				}
+			}
 			wcn36xx_smd_start_scan(wcn, ch);
 		} else {
 			wcn36xx_change_opchannel(wcn, ch);
@@ -575,12 +583,14 @@ static int wcn36xx_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 		if (IEEE80211_KEY_FLAG_PAIRWISE & key_conf->flags) {
 			sta_priv->is_data_encrypted = true;
 			/* Reconfigure bss with encrypt_type */
-			if (NL80211_IFTYPE_STATION == vif->type)
+			if (NL80211_IFTYPE_STATION == vif->type) {
 				wcn36xx_smd_config_bss(wcn,
 						       vif,
 						       sta,
 						       sta->addr,
 						       true);
+				wcn36xx_smd_config_sta(wcn, vif, sta);
+			}
 
 			wcn36xx_smd_set_stakey(wcn,
 				vif_priv->encrypt_type,
@@ -610,15 +620,6 @@ static int wcn36xx_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 				}
 			}
 		}
-		/* FIXME: Only enable bmps support when encryption is enabled.
-		 * For any reasons, when connected to open/no-security BSS,
-		 * the wcn36xx controller in bmps mode does not forward
-		 * 'wake-up' beacons despite AP sends DTIM with station AID.
-		 * It could be due to a firmware issue or to the way driver
-		 * configure the station.
-		 */
-		if (vif->type == NL80211_IFTYPE_STATION)
-			vif_priv->allow_bmps = true;
 		break;
 	case DISABLE_KEY:
 		if (!(IEEE80211_KEY_FLAG_PAIRWISE & key_conf->flags)) {
@@ -710,6 +711,7 @@ static void wcn36xx_sw_scan_start(struct ieee80211_hw *hw,
 
 	wcn->sw_scan = true;
 	wcn->sw_scan_vif = vif;
+	wcn->sw_scan_channel = 0;
 	if (vif_priv->sta_assoc)
 		wcn->sw_scan_opchannel = WCN36XX_HW_CHANNEL(wcn);
 	else
@@ -722,7 +724,12 @@ static void wcn36xx_sw_scan_complete(struct ieee80211_hw *hw,
 	struct wcn36xx *wcn = hw->priv;
 
 	/* ensure that any scan session is finished */
-	wcn36xx_smd_finish_scan(wcn, HAL_SYS_MODE_SCAN, wcn->sw_scan_vif);
+	if (wcn->sw_scan_channel)
+		wcn36xx_smd_end_scan(wcn, wcn->sw_scan_channel);
+	if (wcn->sw_scan_init) {
+		wcn36xx_smd_finish_scan(wcn, HAL_SYS_MODE_SCAN,
+					wcn->sw_scan_vif);
+	}
 	wcn->sw_scan = false;
 	wcn->sw_scan_opchannel = 0;
 }
@@ -917,7 +924,6 @@ static void wcn36xx_bss_info_changed(struct ieee80211_hw *hw,
 				    vif->addr,
 				    bss_conf->aid);
 			vif_priv->sta_assoc = false;
-			vif_priv->allow_bmps = false;
 			wcn36xx_smd_set_link_st(wcn,
 						bss_conf->bssid,
 						vif->addr,
@@ -1397,6 +1403,12 @@ static int wcn36xx_probe(struct platform_device *pdev)
 	mutex_init(&wcn->conf_mutex);
 	mutex_init(&wcn->hal_mutex);
 	mutex_init(&wcn->scan_lock);
+
+	wcn->hal_buf = devm_kmalloc(wcn->dev, WCN36XX_HAL_BUF_SIZE, GFP_KERNEL);
+	if (!wcn->hal_buf) {
+		ret = -ENOMEM;
+		goto out_wq;
+	}
 
 	ret = dma_set_mask_and_coherent(wcn->dev, DMA_BIT_MASK(32));
 	if (ret < 0) {

@@ -411,19 +411,19 @@ struct fuse_iqueue_ops {
 	/**
 	 * Signal that a forget has been queued
 	 */
-	void (*wake_forget_and_unlock)(struct fuse_iqueue *fiq)
+	void (*wake_forget_and_unlock)(struct fuse_iqueue *fiq, bool sync)
 		__releases(fiq->lock);
 
 	/**
 	 * Signal that an INTERRUPT request has been queued
 	 */
-	void (*wake_interrupt_and_unlock)(struct fuse_iqueue *fiq)
+	void (*wake_interrupt_and_unlock)(struct fuse_iqueue *fiq, bool sync)
 		__releases(fiq->lock);
 
 	/**
 	 * Signal that a request has been queued
 	 */
-	void (*wake_pending_and_unlock)(struct fuse_iqueue *fiq)
+	void (*wake_pending_and_unlock)(struct fuse_iqueue *fiq, bool sync)
 		__releases(fiq->lock);
 
 	/**
@@ -884,6 +884,13 @@ static inline u64 fuse_get_attr_version(struct fuse_conn *fc)
 	return atomic64_read(&fc->attr_version);
 }
 
+static inline bool fuse_stale_inode(const struct inode *inode, int generation,
+				    struct fuse_attr *attr)
+{
+	return inode->i_generation != generation ||
+		inode_wrong_type(inode, attr->mode);
+}
+
 static inline void fuse_make_bad(struct inode *inode)
 {
 	remove_inode_hash(inode);
@@ -1130,6 +1137,7 @@ int fuse_allow_current_process(struct fuse_conn *fc);
 
 u64 fuse_lock_owner_id(struct fuse_conn *fc, fl_owner_t id);
 
+void fuse_flush_time_update(struct inode *inode);
 void fuse_update_ctime(struct inode *inode);
 
 int fuse_update_attributes(struct inode *inode, struct file *file);

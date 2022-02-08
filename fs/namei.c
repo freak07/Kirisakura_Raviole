@@ -40,6 +40,12 @@
 #include <linux/init_task.h>
 #include <linux/uaccess.h>
 
+//#undef CONFIG_UCI
+
+#ifdef CONFIG_UCI
+#include <linux/uci/uci.h>
+#endif
+
 #include "internal.h"
 #include "mount.h"
 
@@ -2186,6 +2192,16 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 {
 	int depth = 0; // depth <= nd->depth
 	int err;
+#ifdef CONFIG_UCI
+	bool uci = false;
+	if (name==NULL || IS_ERR(name)) {
+//		pr_err("%s [cleanslate] critical name is null or ERR!\n",__func__);
+		nd->last_type = LAST_ROOT;
+		nd->flags |= LOOKUP_PARENT;
+		return PTR_ERR(name);
+	}
+	uci = is_uci_path(name);
+#endif
 
 	nd->last_type = LAST_ROOT;
 	nd->flags |= LOOKUP_PARENT;
@@ -2203,6 +2219,10 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 		int type;
 
 		err = may_lookup(nd);
+#ifdef CONFIG_UCI
+		if (uci && err==-13) { //pr_debug("%s uci overriding may_lookup error. file name %s err %d\n",__func__,name, err); 
+			err = 0; }
+#endif
 		if (err)
 			return err;
 
@@ -2533,7 +2553,7 @@ int kern_path(const char *name, unsigned int flags, struct path *path)
 	return filename_lookup(AT_FDCWD, getname_kernel(name),
 			       flags, path, NULL);
 }
-EXPORT_SYMBOL(kern_path);
+EXPORT_SYMBOL_NS(kern_path, ANDROID_GKI_VFS_EXPORT_ONLY);
 
 /**
  * vfs_path_lookup - lookup a file path relative to a dentry-vfsmount pair
@@ -2887,7 +2907,7 @@ int vfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		fsnotify_create(dir, dentry);
 	return error;
 }
-EXPORT_SYMBOL(vfs_create);
+EXPORT_SYMBOL_NS(vfs_create, ANDROID_GKI_VFS_EXPORT_ONLY);
 
 int vfs_mkobj(struct dentry *dentry, umode_t mode,
 		int (*f)(struct dentry *, umode_t, void *),
@@ -3466,6 +3486,17 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
 	struct nameidata nd;
 	int flags = op->lookup_flags;
 	struct file *filp;
+#ifdef CONFIG_UCI
+	bool uci = pathname!=NULL && is_uci_path(pathname->name);
+	if (uci) {
+		if (op->acc_mode & MAY_WRITE || op->acc_mode & MAY_APPEND) {
+			//pr_debug("%s filp may write, may open... %s\n",__func__,pathname->name);
+			notify_uci_file_write_opened(pathname->name);
+		} else {
+			//pr_debug("%s filp not may write, may open... %s  %d\n",__func__,pathname->name,op->acc_mode);
+		}
+	}
+#endif
 
 	set_nameidata(&nd, dfd, pathname);
 	filp = path_openat(&nd, op, flags | LOOKUP_RCU);
@@ -3494,6 +3525,19 @@ struct file *do_file_open_root(struct dentry *dentry, struct vfsmount *mnt,
 	filename = getname_kernel(name);
 	if (IS_ERR(filename))
 		return ERR_CAST(filename);
+#ifdef CONFIG_UCI
+	{
+		bool uci = filename!=NULL && (is_uci_path(filename->name) || is_uci_file(filename->name));
+		if (uci) {
+			if (op->acc_mode & MAY_WRITE || op->acc_mode & MAY_APPEND) {
+				//pr_debug("%s filp may write, may open... %s\n",__func__,filename->name);
+				notify_uci_file_write_opened(filename->name);
+			} else {
+				//pr_debug("%s filp not may write, may open... %s  %d\n",__func__,filename->name,op->acc_mode);
+			}
+		}
+	}
+#endif
 
 	set_nameidata(&nd, -1, filename);
 	file = path_openat(&nd, op, flags | LOOKUP_RCU);
@@ -3562,6 +3606,14 @@ static struct dentry *filename_create(int dfd, struct filename *name,
 		error = err2;
 		goto fail;
 	}
+#ifdef CONFIG_UCI
+	{
+		bool uci = name!=NULL && (is_uci_path(name->name) || is_uci_file(name->name));
+		if (uci) {
+			notify_uci_file_write_opened(name->name);
+		}
+	}
+#endif
 	putname(name);
 	return dentry;
 fail:
@@ -3727,7 +3779,7 @@ int vfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 		fsnotify_mkdir(dir, dentry);
 	return error;
 }
-EXPORT_SYMBOL(vfs_mkdir);
+EXPORT_SYMBOL_NS(vfs_mkdir, ANDROID_GKI_VFS_EXPORT_ONLY);
 
 static long do_mkdirat(int dfd, const char __user *pathname, umode_t mode)
 {
@@ -3793,16 +3845,15 @@ int vfs_rmdir(struct inode *dir, struct dentry *dentry)
 	dentry->d_inode->i_flags |= S_DEAD;
 	dont_mount(dentry);
 	detach_mounts(dentry);
-	fsnotify_rmdir(dir, dentry);
 
 out:
 	inode_unlock(dentry->d_inode);
 	dput(dentry);
 	if (!error)
-		d_delete(dentry);
+		d_delete_notify(dir, dentry);
 	return error;
 }
-EXPORT_SYMBOL(vfs_rmdir);
+EXPORT_SYMBOL_NS(vfs_rmdir, ANDROID_GKI_VFS_EXPORT_ONLY);
 
 long do_rmdir(int dfd, struct filename *name)
 {
@@ -3909,7 +3960,6 @@ int vfs_unlink(struct inode *dir, struct dentry *dentry, struct inode **delegate
 			if (!error) {
 				dont_mount(dentry);
 				detach_mounts(dentry);
-				fsnotify_unlink(dir, dentry);
 			}
 		}
 	}
@@ -3917,14 +3967,16 @@ out:
 	inode_unlock(target);
 
 	/* We don't d_delete() NFS sillyrenamed files--they still exist. */
-	if (!error && !(dentry->d_flags & DCACHE_NFSFS_RENAMED)) {
+	if (!error && dentry->d_flags & DCACHE_NFSFS_RENAMED) {
+		fsnotify_unlink(dir, dentry);
+	} else if (!error) {
 		fsnotify_link_count(target);
-		d_delete(dentry);
+		d_delete_notify(dir, dentry);
 	}
 
 	return error;
 }
-EXPORT_SYMBOL(vfs_unlink);
+EXPORT_SYMBOL_NS(vfs_unlink, ANDROID_GKI_VFS_EXPORT_ONLY);
 
 /*
  * Make sure that the actual truncation of the file will occur outside its
@@ -4159,7 +4211,7 @@ int vfs_link(struct dentry *old_dentry, struct inode *dir, struct dentry *new_de
 		fsnotify_link(dir, inode, new_dentry);
 	return error;
 }
-EXPORT_SYMBOL(vfs_link);
+EXPORT_SYMBOL_NS(vfs_link, ANDROID_GKI_VFS_EXPORT_ONLY);
 
 /*
  * Hardlinks are often used in delicate situations.  We avoid
@@ -4419,7 +4471,7 @@ out:
 
 	return error;
 }
-EXPORT_SYMBOL(vfs_rename);
+EXPORT_SYMBOL_NS(vfs_rename, ANDROID_GKI_VFS_EXPORT_ONLY);
 
 static int do_renameat2(int olddfd, const char __user *oldname, int newdfd,
 			const char __user *newname, unsigned int flags)

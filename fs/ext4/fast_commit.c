@@ -832,6 +832,12 @@ static int ext4_fc_write_inode_data(struct inode *inode, u32 *crc)
 					    sizeof(lrange), (u8 *)&lrange, crc))
 				return -ENOSPC;
 		} else {
+			unsigned int max = (map.m_flags & EXT4_MAP_UNWRITTEN) ?
+				EXT_UNWRITTEN_MAX_LEN : EXT_INIT_MAX_LEN;
+
+			/* Limit the number of blocks in one extent */
+			map.m_len = min(max, map.m_len);
+
 			fc_ext.fc_ino = cpu_to_le32(inode->i_ino);
 			ex = (struct ext4_extent *)&fc_ext.fc_ex;
 			ex->ee_block = cpu_to_le32(map.m_lblk);
@@ -1758,11 +1764,14 @@ ext4_fc_replay_del_range(struct super_block *sb, struct ext4_fc_tl *tl,
 		}
 	}
 
-	ret = ext4_punch_hole(inode,
-		le32_to_cpu(lrange.fc_lblk) << sb->s_blocksize_bits,
-		le32_to_cpu(lrange.fc_len) <<  sb->s_blocksize_bits);
-	if (ret)
-		jbd_debug(1, "ext4_punch_hole returned %d", ret);
+	down_write(&EXT4_I(inode)->i_data_sem);
+	ret = ext4_ext_remove_space(inode, lrange.fc_lblk,
+				lrange.fc_lblk + lrange.fc_len - 1);
+	up_write(&EXT4_I(inode)->i_data_sem);
+	if (ret) {
+		iput(inode);
+		return 0;
+	}
 	ext4_ext_replay_shrink_inode(inode,
 		i_size_read(inode) >> sb->s_blocksize_bits);
 	ext4_mark_inode_dirty(NULL, inode);
@@ -2159,4 +2168,9 @@ int __init ext4_fc_init_dentry_cache(void)
 		return -ENOMEM;
 
 	return 0;
+}
+
+void ext4_fc_destroy_dentry_cache(void)
+{
+	kmem_cache_destroy(ext4_fc_dentry_cachep);
 }

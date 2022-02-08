@@ -68,6 +68,8 @@ extern unsigned int sysctl_sched_dl_period_min;
 extern unsigned int sysctl_sched_uclamp_util_min;
 extern unsigned int sysctl_sched_uclamp_util_max;
 extern unsigned int sysctl_sched_uclamp_util_min_rt_default;
+extern unsigned int sysctl_sched_uclamp_min_filter_multiplier;
+extern unsigned int sysctl_sched_uclamp_max_filter_divider;
 #endif
 
 #ifdef CONFIG_CFS_BANDWIDTH
@@ -91,6 +93,13 @@ int sysctl_numa_balancing(struct ctl_table *table, int write, void *buffer,
 		size_t *lenp, loff_t *ppos);
 int sysctl_schedstats(struct ctl_table *table, int write, void *buffer,
 		size_t *lenp, loff_t *ppos);
+
+#ifdef CONFIG_SMP
+extern unsigned int sysctl_sched_pelt_multiplier;
+
+int sched_pelt_multiplier(struct ctl_table *table, int write, void *buffer,
+		size_t *lenp, loff_t *ppos);
+#endif
 
 #if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
 extern unsigned int sysctl_sched_energy_aware;

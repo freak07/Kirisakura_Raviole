@@ -54,11 +54,8 @@ void init_rt_bandwidth(struct rt_bandwidth *rt_b, u64 period, u64 runtime)
 	rt_b->rt_period_timer.function = sched_rt_period_timer;
 }
 
-static void start_rt_bandwidth(struct rt_bandwidth *rt_b)
+static inline void do_start_rt_bandwidth(struct rt_bandwidth *rt_b)
 {
-	if (!rt_bandwidth_enabled() || rt_b->rt_runtime == RUNTIME_INF)
-		return;
-
 	raw_spin_lock(&rt_b->rt_runtime_lock);
 	if (!rt_b->rt_period_active) {
 		rt_b->rt_period_active = 1;
@@ -75,6 +72,14 @@ static void start_rt_bandwidth(struct rt_bandwidth *rt_b)
 				      HRTIMER_MODE_ABS_PINNED_HARD);
 	}
 	raw_spin_unlock(&rt_b->rt_runtime_lock);
+}
+
+static void start_rt_bandwidth(struct rt_bandwidth *rt_b)
+{
+	if (!rt_bandwidth_enabled() || rt_b->rt_runtime == RUNTIME_INF)
+		return;
+
+	do_start_rt_bandwidth(rt_b);
 }
 
 void init_rt_rq(struct rt_rq *rt_rq)
@@ -889,7 +894,7 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 		if (skip)
 			continue;
 
-		raw_spin_lock(&rq->lock);
+		raw_spin_rq_lock(rq);
 		update_rq_clock(rq);
 
 		if (rt_rq->rt_time) {
@@ -927,7 +932,7 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 
 		if (enqueue)
 			sched_rt_rq_enqueue(rt_rq);
-		raw_spin_unlock(&rq->lock);
+		raw_spin_rq_unlock(rq);
 	}
 
 	if (!throttled && (!rt_bandwidth_enabled() || rt_b->rt_runtime == RUNTIME_INF))
@@ -1026,18 +1031,24 @@ static void update_curr_rt(struct rq *rq)
 	curr->se.exec_start = now;
 	cgroup_account_cputime(curr, delta_exec);
 
+	trace_android_vh_sched_stat_runtime_rt(curr, delta_exec);
+
 	if (!rt_bandwidth_enabled())
 		return;
 
 	for_each_sched_rt_entity(rt_se) {
 		struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
+		int exceeded;
 
 		if (sched_rt_runtime(rt_rq) != RUNTIME_INF) {
 			raw_spin_lock(&rt_rq->rt_runtime_lock);
 			rt_rq->rt_time += delta_exec;
-			if (sched_rt_runtime_exceeded(rt_rq))
+			exceeded = sched_rt_runtime_exceeded(rt_rq);
+			if (exceeded)
 				resched_curr(rq);
 			raw_spin_unlock(&rt_rq->rt_runtime_lock);
+			if (exceeded)
+				do_start_rt_bandwidth(sched_rt_bandwidth(rt_rq));
 		}
 	}
 }
@@ -1402,6 +1413,12 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_rt_entity *rt_se = &p->rt;
 	bool sync = !!(flags & ENQUEUE_WAKEUP_SYNC);
 
+	if (uclamp_is_used()) {
+		enum uclamp_id clamp_id;
+		for_each_clamp_id(clamp_id)
+			uclamp_rq_inc_id(rq, p, clamp_id);
+	}
+
 	if (flags & ENQUEUE_WAKEUP)
 		rt_se->timeout = 0;
 
@@ -1415,6 +1432,12 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_rt_entity *rt_se = &p->rt;
+
+	if (uclamp_is_used()) {
+		enum uclamp_id clamp_id;
+		for_each_clamp_id(clamp_id)
+			uclamp_rq_dec_id(rq, p, clamp_id);
+	}
 
 	update_curr_rt(rq);
 	dequeue_rt_entity(rt_se, flags);
@@ -1711,7 +1734,7 @@ static struct task_struct *_pick_next_task_rt(struct rq *rq)
 	return rt_task_of(rt_se);
 }
 
-static struct task_struct *pick_next_task_rt(struct rq *rq)
+static struct task_struct *pick_task_rt(struct rq *rq)
 {
 	struct task_struct *p;
 
@@ -1719,7 +1742,17 @@ static struct task_struct *pick_next_task_rt(struct rq *rq)
 		return NULL;
 
 	p = _pick_next_task_rt(rq);
-	set_next_task_rt(rq, p, true);
+
+	return p;
+}
+
+static struct task_struct *pick_next_task_rt(struct rq *rq)
+{
+	struct task_struct *p = pick_task_rt(rq);
+
+	if (p)
+		set_next_task_rt(rq, p, true);
+
 	return p;
 }
 
@@ -2188,9 +2221,9 @@ void rto_push_irq_work_func(struct irq_work *work)
 	 * When it gets updated, a check is made if a push is possible.
 	 */
 	if (has_pushable_tasks(rq)) {
-		raw_spin_lock(&rq->lock);
+		raw_spin_rq_lock(rq);
 		push_rt_tasks(rq);
-		raw_spin_unlock(&rq->lock);
+		raw_spin_rq_unlock(rq);
 	}
 
 	raw_spin_lock(&rd->rto_lock);
@@ -2385,13 +2418,20 @@ void __init init_sched_rt_class(void)
 static void switched_to_rt(struct rq *rq, struct task_struct *p)
 {
 	/*
-	 * If we are already running, then there's nothing
-	 * that needs to be done. But if we are not running
-	 * we may need to preempt the current running task.
-	 * If that current running task is also an RT task
+	 * If we are running, update the avg_rt tracking, as the running time
+	 * will now on be accounted into the latter.
+	 */
+	if (task_current(rq, p)) {
+		update_rt_rq_load_avg(rq_clock_pelt(rq), rq, 0);
+		return;
+	}
+
+	/*
+	 * If we are not running we may need to preempt the current
+	 * running task. If that current running task is also an RT task
 	 * then see if we can move to another run queue.
 	 */
-	if (task_on_rq_queued(p) && rq->curr != p) {
+	if (task_on_rq_queued(p)) {
 #ifdef CONFIG_SMP
 		if (p->nr_cpus_allowed > 1 && rq->rt.overloaded)
 			rt_queue_push_tasks(rq);
@@ -2537,6 +2577,7 @@ const struct sched_class rt_sched_class
 
 #ifdef CONFIG_SMP
 	.balance		= balance_rt,
+	.pick_task		= pick_task_rt,
 	.select_task_rq		= select_task_rq_rt,
 	.set_cpus_allowed       = set_cpus_allowed_common,
 	.rq_online              = rq_online_rt,
@@ -2553,10 +2594,6 @@ const struct sched_class rt_sched_class
 	.switched_to		= switched_to_rt,
 
 	.update_curr		= update_curr_rt,
-
-#ifdef CONFIG_UCLAMP_TASK
-	.uclamp_enabled		= 1,
-#endif
 };
 
 #ifdef CONFIG_RT_GROUP_SCHED
@@ -2814,8 +2851,12 @@ static int sched_rt_global_validate(void)
 
 static void sched_rt_do_global(void)
 {
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&def_rt_bandwidth.rt_runtime_lock, flags);
 	def_rt_bandwidth.rt_runtime = global_rt_runtime();
 	def_rt_bandwidth.rt_period = ns_to_ktime(global_rt_period());
+	raw_spin_unlock_irqrestore(&def_rt_bandwidth.rt_runtime_lock, flags);
 }
 
 int sched_rt_handler(struct ctl_table *table, int write, void *buffer,

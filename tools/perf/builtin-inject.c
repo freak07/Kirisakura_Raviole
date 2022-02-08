@@ -358,9 +358,10 @@ static struct dso *findnew_dso(int pid, int tid, const char *filename,
 		dso = machine__findnew_dso_id(machine, filename, id);
 	}
 
-	if (dso)
+	if (dso) {
+		nsinfo__put(dso->nsinfo);
 		dso->nsinfo = nsi;
-	else
+	} else
 		nsinfo__put(nsi);
 
 	thread__put(thread);
@@ -751,7 +752,7 @@ static int __cmd_inject(struct perf_inject *inject)
 		inject->tool.ordered_events = true;
 		inject->tool.ordering_requires_timestamps = true;
 		/* Allow space in the header for new attributes */
-		output_data_offset = 4096;
+		output_data_offset = roundup(8192 + session->header.data_offset, 4096);
 		if (inject->strip)
 			strip_init(inject);
 	}
@@ -905,8 +906,10 @@ int cmd_inject(int argc, const char **argv)
 
 	data.path = inject.input_name;
 	inject.session = perf_session__new(&data, inject.output.is_pipe, &inject.tool);
-	if (IS_ERR(inject.session))
-		return PTR_ERR(inject.session);
+	if (IS_ERR(inject.session)) {
+		ret = PTR_ERR(inject.session);
+		goto out_close_output;
+	}
 
 	if (zstd_init(&(inject.session->zstd_data), 0) < 0)
 		pr_warning("Decompression initialization failed.\n");
@@ -948,5 +951,7 @@ int cmd_inject(int argc, const char **argv)
 out_delete:
 	zstd_fini(&(inject.session->zstd_data));
 	perf_session__delete(inject.session);
+out_close_output:
+	perf_data__close(&inject.output);
 	return ret;
 }

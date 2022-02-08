@@ -1,0 +1,19 @@
+#
+# Unprivileged Configuration Interface
+#
+menu "UCI Notifications Module"
+config UCI_NOTIFICATIONS
+       default n
+       tristate "UCI notifications module"
+
+config UCI_NOTIFICATIONS_SCREEN_CALLBACKS
+       default n
+       bool "UCI notifications should expose screen state callbacks"
+       depends on UCI_NOTIFICATIONS
+
+config UCI_NOTIFICATIONS_DETECT_VIBRATIONS
+       default n
+       bool "UCI notifications is possible to be detected thru vibration drivers. Set N if not implemented."
+       depends on UCI_NOTIFICATIONS
+
+endmenu

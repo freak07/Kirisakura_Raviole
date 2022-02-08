@@ -323,7 +323,7 @@ jumped:
 		if (!err && ops->suppress && INDIRECT_CALL_MT(ops->suppress,
 							      fib6_rule_suppress,
 							      fib4_rule_suppress,
-							      rule, arg))
+							      rule, flags, arg))
 			continue;
 
 		if (err != -EAGAIN) {
@@ -1168,7 +1168,7 @@ static void notify_rule_change(int event, struct fib_rule *rule,
 {
 	struct net *net;
 	struct sk_buff *skb;
-	int err = -ENOBUFS;
+	int err = -ENOMEM;
 
 	net = ops->fro_net;
 	skb = nlmsg_new(fib_rule_nlmsg_size(ops, rule), GFP_KERNEL);

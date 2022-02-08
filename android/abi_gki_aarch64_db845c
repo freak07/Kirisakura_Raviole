@@ -598,7 +598,6 @@
   sprintf
   sscanf
   __stack_chk_fail
-  __stack_chk_guard
   strcmp
   strcpy
   strlcpy

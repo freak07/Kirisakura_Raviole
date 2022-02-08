@@ -326,7 +326,10 @@ int __sk_backlog_rcv(struct sock *sk, struct sk_buff *skb)
 	BUG_ON(!sock_flag(sk, SOCK_MEMALLOC));
 
 	noreclaim_flag = memalloc_noreclaim_save();
-	ret = sk->sk_backlog_rcv(sk, skb);
+	ret = INDIRECT_CALL_INET(sk->sk_backlog_rcv,
+				 tcp_v6_do_rcv,
+				 tcp_v4_do_rcv,
+				 sk, skb);
 	memalloc_noreclaim_restore(noreclaim_flag);
 
 	return ret;
@@ -1166,7 +1169,7 @@ set_sndbuf:
 			if (val < 0)
 				ret = -EINVAL;
 			else
-				sk->sk_ll_usec = val;
+				WRITE_ONCE(sk->sk_ll_usec, val);
 		}
 		break;
 #endif
@@ -1257,6 +1260,16 @@ set_sndbuf:
 }
 EXPORT_SYMBOL(sock_setsockopt);
 
+static const struct cred *sk_get_peer_cred(struct sock *sk)
+{
+	const struct cred *cred;
+
+	spin_lock(&sk->sk_peer_lock);
+	cred = get_cred(sk->sk_peer_cred);
+	spin_unlock(&sk->sk_peer_lock);
+
+	return cred;
+}
 
 static void cred_to_ucred(struct pid *pid, const struct cred *cred,
 			  struct ucred *ucred)
@@ -1430,7 +1443,11 @@ int sock_getsockopt(struct socket *sock, int level, int optname,
 		struct ucred peercred;
 		if (len > sizeof(peercred))
 			len = sizeof(peercred);
+
+		spin_lock(&sk->sk_peer_lock);
 		cred_to_ucred(sk->sk_peer_pid, sk->sk_peer_cred, &peercred);
+		spin_unlock(&sk->sk_peer_lock);
+
 		if (copy_to_user(optval, &peercred, len))
 			return -EFAULT;
 		goto lenout;
@@ -1438,20 +1455,23 @@ int sock_getsockopt(struct socket *sock, int level, int optname,
 
 	case SO_PEERGROUPS:
 	{
+		const struct cred *cred;
 		int ret, n;
 
-		if (!sk->sk_peer_cred)
+		cred = sk_get_peer_cred(sk);
+		if (!cred)
 			return -ENODATA;
 
-		n = sk->sk_peer_cred->group_info->ngroups;
+		n = cred->group_info->ngroups;
 		if (len < n * sizeof(gid_t)) {
 			len = n * sizeof(gid_t);
+			put_cred(cred);
 			return put_user(len, optlen) ? -EFAULT : -ERANGE;
 		}
 		len = n * sizeof(gid_t);
 
-		ret = groups_to_user((gid_t __user *)optval,
-				     sk->sk_peer_cred->group_info);
+		ret = groups_to_user((gid_t __user *)optval, cred->group_info);
+		put_cred(cred);
 		if (ret)
 			return ret;
 		goto lenout;
@@ -1794,9 +1814,10 @@ static void __sk_destruct(struct rcu_head *head)
 		sk->sk_frag.page = NULL;
 	}
 
-	if (sk->sk_peer_cred)
-		put_cred(sk->sk_peer_cred);
+	/* We do not need to acquire sk->sk_peer_lock, we are the last user. */
+	put_cred(sk->sk_peer_cred);
 	put_pid(sk->sk_peer_pid);
+
 	if (likely(sk->sk_net_refcnt))
 		put_net(sock_net(sk));
 	sk_prot_free(sk->sk_prot_creator, sk);
@@ -1871,123 +1892,120 @@ static void sk_init_common(struct sock *sk)
 struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority)
 {
 	struct proto *prot = READ_ONCE(sk->sk_prot);
-	struct sock *newsk;
+	struct sk_filter *filter;
 	bool is_charged = true;
+	struct sock *newsk;
 
 	newsk = sk_prot_alloc(prot, priority, sk->sk_family);
-	if (newsk != NULL) {
-		struct sk_filter *filter;
+	if (!newsk)
+		goto out;
 
-		sock_copy(newsk, sk);
+	sock_copy(newsk, sk);
 
-		newsk->sk_prot_creator = prot;
+	newsk->sk_prot_creator = prot;
 
-		/* SANITY */
-		if (likely(newsk->sk_net_refcnt))
-			get_net(sock_net(newsk));
-		sk_node_init(&newsk->sk_node);
-		sock_lock_init(newsk);
-		bh_lock_sock(newsk);
-		newsk->sk_backlog.head	= newsk->sk_backlog.tail = NULL;
-		newsk->sk_backlog.len = 0;
-
-		atomic_set(&newsk->sk_rmem_alloc, 0);
-		/*
-		 * sk_wmem_alloc set to one (see sk_free() and sock_wfree())
-		 */
-		refcount_set(&newsk->sk_wmem_alloc, 1);
-		atomic_set(&newsk->sk_omem_alloc, 0);
-		sk_init_common(newsk);
-
-		newsk->sk_dst_cache	= NULL;
-		newsk->sk_dst_pending_confirm = 0;
-		newsk->sk_wmem_queued	= 0;
-		newsk->sk_forward_alloc = 0;
-		atomic_set(&newsk->sk_drops, 0);
-		newsk->sk_send_head	= NULL;
-		newsk->sk_userlocks	= sk->sk_userlocks & ~SOCK_BINDPORT_LOCK;
-		atomic_set(&newsk->sk_zckey, 0);
-
-		sock_reset_flag(newsk, SOCK_DONE);
-
-		/* sk->sk_memcg will be populated at accept() time */
-		newsk->sk_memcg = NULL;
-
-		cgroup_sk_clone(&newsk->sk_cgrp_data);
-
-		rcu_read_lock();
-		filter = rcu_dereference(sk->sk_filter);
-		if (filter != NULL)
-			/* though it's an empty new sock, the charging may fail
-			 * if sysctl_optmem_max was changed between creation of
-			 * original socket and cloning
-			 */
-			is_charged = sk_filter_charge(newsk, filter);
-		RCU_INIT_POINTER(newsk->sk_filter, filter);
-		rcu_read_unlock();
-
-		if (unlikely(!is_charged || xfrm_sk_clone_policy(newsk, sk))) {
-			/* We need to make sure that we don't uncharge the new
-			 * socket if we couldn't charge it in the first place
-			 * as otherwise we uncharge the parent's filter.
-			 */
-			if (!is_charged)
-				RCU_INIT_POINTER(newsk->sk_filter, NULL);
-			sk_free_unlock_clone(newsk);
-			newsk = NULL;
-			goto out;
-		}
-		RCU_INIT_POINTER(newsk->sk_reuseport_cb, NULL);
-
-		if (bpf_sk_storage_clone(sk, newsk)) {
-			sk_free_unlock_clone(newsk);
-			newsk = NULL;
-			goto out;
-		}
-
-		/* Clear sk_user_data if parent had the pointer tagged
-		 * as not suitable for copying when cloning.
-		 */
-		if (sk_user_data_is_nocopy(newsk))
-			newsk->sk_user_data = NULL;
-
-		newsk->sk_err	   = 0;
-		newsk->sk_err_soft = 0;
-		newsk->sk_priority = 0;
-		newsk->sk_incoming_cpu = raw_smp_processor_id();
-		if (likely(newsk->sk_net_refcnt))
-			sock_inuse_add(sock_net(newsk), 1);
-
-		/*
-		 * Before updating sk_refcnt, we must commit prior changes to memory
-		 * (Documentation/RCU/rculist_nulls.rst for details)
-		 */
-		smp_wmb();
-		refcount_set(&newsk->sk_refcnt, 2);
-
-		/*
-		 * Increment the counter in the same struct proto as the master
-		 * sock (sk_refcnt_debug_inc uses newsk->sk_prot->socks, that
-		 * is the same as sk->sk_prot->socks, as this field was copied
-		 * with memcpy).
-		 *
-		 * This _changes_ the previous behaviour, where
-		 * tcp_create_openreq_child always was incrementing the
-		 * equivalent to tcp_prot->socks (inet_sock_nr), so this have
-		 * to be taken into account in all callers. -acme
-		 */
-		sk_refcnt_debug_inc(newsk);
-		sk_set_socket(newsk, NULL);
-		sk_tx_queue_clear(newsk);
-		RCU_INIT_POINTER(newsk->sk_wq, NULL);
-
-		if (newsk->sk_prot->sockets_allocated)
-			sk_sockets_allocated_inc(newsk);
-
-		if (sock_needs_netstamp(sk) &&
-		    newsk->sk_flags & SK_FLAGS_TIMESTAMP)
-			net_enable_timestamp();
+	/* SANITY */
+	if (likely(newsk->sk_net_refcnt)) {
+		get_net(sock_net(newsk));
+		sock_inuse_add(sock_net(newsk), 1);
 	}
+	sk_node_init(&newsk->sk_node);
+	sock_lock_init(newsk);
+	bh_lock_sock(newsk);
+	newsk->sk_backlog.head	= newsk->sk_backlog.tail = NULL;
+	newsk->sk_backlog.len = 0;
+
+	atomic_set(&newsk->sk_rmem_alloc, 0);
+
+	/* sk_wmem_alloc set to one (see sk_free() and sock_wfree()) */
+	refcount_set(&newsk->sk_wmem_alloc, 1);
+
+	atomic_set(&newsk->sk_omem_alloc, 0);
+	sk_init_common(newsk);
+
+	newsk->sk_dst_cache	= NULL;
+	newsk->sk_dst_pending_confirm = 0;
+	newsk->sk_wmem_queued	= 0;
+	newsk->sk_forward_alloc = 0;
+	atomic_set(&newsk->sk_drops, 0);
+	newsk->sk_send_head	= NULL;
+	newsk->sk_userlocks	= sk->sk_userlocks & ~SOCK_BINDPORT_LOCK;
+	atomic_set(&newsk->sk_zckey, 0);
+
+	sock_reset_flag(newsk, SOCK_DONE);
+
+	/* sk->sk_memcg will be populated at accept() time */
+	newsk->sk_memcg = NULL;
+
+	cgroup_sk_clone(&newsk->sk_cgrp_data);
+
+	rcu_read_lock();
+	filter = rcu_dereference(sk->sk_filter);
+	if (filter != NULL)
+		/* though it's an empty new sock, the charging may fail
+		 * if sysctl_optmem_max was changed between creation of
+		 * original socket and cloning
+		 */
+		is_charged = sk_filter_charge(newsk, filter);
+	RCU_INIT_POINTER(newsk->sk_filter, filter);
+	rcu_read_unlock();
+
+	if (unlikely(!is_charged || xfrm_sk_clone_policy(newsk, sk))) {
+		/* We need to make sure that we don't uncharge the new
+		 * socket if we couldn't charge it in the first place
+		 * as otherwise we uncharge the parent's filter.
+		 */
+		if (!is_charged)
+			RCU_INIT_POINTER(newsk->sk_filter, NULL);
+		sk_free_unlock_clone(newsk);
+		newsk = NULL;
+		goto out;
+	}
+	RCU_INIT_POINTER(newsk->sk_reuseport_cb, NULL);
+
+	if (bpf_sk_storage_clone(sk, newsk)) {
+		sk_free_unlock_clone(newsk);
+		newsk = NULL;
+		goto out;
+	}
+
+	/* Clear sk_user_data if parent had the pointer tagged
+	 * as not suitable for copying when cloning.
+	 */
+	if (sk_user_data_is_nocopy(newsk))
+		newsk->sk_user_data = NULL;
+
+	newsk->sk_err	   = 0;
+	newsk->sk_err_soft = 0;
+	newsk->sk_priority = 0;
+	newsk->sk_incoming_cpu = raw_smp_processor_id();
+
+	/* Before updating sk_refcnt, we must commit prior changes to memory
+	 * (Documentation/RCU/rculist_nulls.rst for details)
+	 */
+	smp_wmb();
+	refcount_set(&newsk->sk_refcnt, 2);
+
+	/* Increment the counter in the same struct proto as the master
+	 * sock (sk_refcnt_debug_inc uses newsk->sk_prot->socks, that
+	 * is the same as sk->sk_prot->socks, as this field was copied
+	 * with memcpy).
+	 *
+	 * This _changes_ the previous behaviour, where
+	 * tcp_create_openreq_child always was incrementing the
+	 * equivalent to tcp_prot->socks (inet_sock_nr), so this have
+	 * to be taken into account in all callers. -acme
+	 */
+	sk_refcnt_debug_inc(newsk);
+	sk_set_socket(newsk, NULL);
+	sk_tx_queue_clear(newsk);
+	RCU_INIT_POINTER(newsk->sk_wq, NULL);
+
+	if (newsk->sk_prot->sockets_allocated)
+		sk_sockets_allocated_inc(newsk);
+
+	if (sock_needs_netstamp(sk) && newsk->sk_flags & SK_FLAGS_TIMESTAMP)
+		net_enable_timestamp();
 out:
 	return newsk;
 }
@@ -3016,6 +3034,8 @@ void sock_init_data(struct socket *sock, struct sock *sk)
 
 	sk->sk_peer_pid 	=	NULL;
 	sk->sk_peer_cred	=	NULL;
+	spin_lock_init(&sk->sk_peer_lock);
+
 	sk->sk_write_pending	=	0;
 	sk->sk_rcvlowat		=	1;
 	sk->sk_rcvtimeo		=	MAX_SCHEDULE_TIMEOUT;

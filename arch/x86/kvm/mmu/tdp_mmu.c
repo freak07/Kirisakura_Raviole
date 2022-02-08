@@ -527,7 +527,7 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu, int write,
 					  kvm_pfn_t pfn, bool prefault)
 {
 	u64 new_spte;
-	int ret = 0;
+	int ret = RET_PF_FIXED;
 	int make_spte_ret = 0;
 
 	if (unlikely(is_noslot_pfn(pfn))) {
@@ -1130,11 +1130,11 @@ static bool write_protect_gfn(struct kvm *kvm, struct kvm_mmu_page *root,
 	bool spte_set = false;
 
 	tdp_root_for_each_leaf_pte(iter, root, gfn, gfn + 1) {
-		if (!is_writable_pte(iter.old_spte))
-			break;
-
 		new_spte = iter.old_spte &
 			~(PT_WRITABLE_MASK | SPTE_MMU_WRITEABLE);
+
+		if (new_spte == iter.old_spte)
+			break;
 
 		tdp_mmu_set_spte(kvm, &iter, new_spte);
 		spte_set = true;

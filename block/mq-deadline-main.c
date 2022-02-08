@@ -675,6 +675,8 @@ static int dd_request_merge(struct request_queue *q, struct request **rq,
 
 		if (elv_bio_merge_ok(__rq, bio)) {
 			*rq = __rq;
+			if (blk_discard_mergable(__rq))
+				return ELEVATOR_DISCARD_MERGE;
 			return ELEVATOR_FRONT_MERGE;
 		}
 	}
@@ -717,6 +719,7 @@ static void dd_insert_request(struct blk_mq_hw_ctx *hctx, struct request *rq,
 	struct dd_per_prio *per_prio;
 	enum dd_prio prio;
 	struct dd_blkcg *blkcg;
+	LIST_HEAD(free);
 
 	lockdep_assert_held(&dd->lock);
 
@@ -739,8 +742,10 @@ static void dd_insert_request(struct blk_mq_hw_ctx *hctx, struct request *rq,
 	ddcg_count(blkcg, inserted, ioprio_class);
 	rq->elv.priv[0] = blkcg;
 
-	if (blk_mq_sched_try_insert_merge(q, rq))
+	if (blk_mq_sched_try_insert_merge(q, rq, &free)) {
+		blk_mq_free_requests(&free);
 		return;
+	}
 
 	blk_mq_sched_request_inserted(rq);
 

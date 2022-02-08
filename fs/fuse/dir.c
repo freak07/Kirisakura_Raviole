@@ -252,7 +252,7 @@ static int fuse_dentry_revalidate(struct dentry *entry, unsigned int flags)
 		if (ret == -ENOMEM)
 			goto out;
 		if (ret || fuse_invalid_attr(&outarg.attr) ||
-		    (outarg.attr.mode ^ inode->i_mode) & S_IFMT)
+		    fuse_stale_inode(inode, outarg.generation, &outarg.attr))
 			goto invalid;
 
 		forget_all_cached_acls(inode);
@@ -340,17 +340,32 @@ static struct vfsmount *fuse_dentry_automount(struct path *path)
 
 	/* Initialize superblock, making @mp_fi its root */
 	err = fuse_fill_super_submount(sb, mp_fi);
-	if (err)
+	if (err) {
+		fuse_conn_put(fc);
+		kfree(fm);
+		sb->s_fs_info = NULL;
 		goto out_put_sb;
-
-	sb->s_flags |= SB_ACTIVE;
-	fsc->root = dget(sb->s_root);
-	/* We are done configuring the superblock, so unlock it */
-	up_write(&sb->s_umount);
+	}
 
 	down_write(&fc->killsb);
 	list_add_tail(&fm->fc_entry, &fc->mounts);
 	up_write(&fc->killsb);
+
+	sb->s_flags |= SB_ACTIVE;
+	fsc->root = dget(sb->s_root);
+
+	/*
+	 * FIXME: setting SB_BORN requires a write barrier for
+	 *        super_cache_count(). We should actually come
+	 *        up with a proper ->get_tree() implementation
+	 *        for submounts and call vfs_get_tree() to take
+	 *        care of the write barrier.
+	 */
+	smp_wmb();
+	sb->s_flags |= SB_BORN;
+
+	/* We are done configuring the superblock, so unlock it */
+	up_write(&sb->s_umount);
 
 	/* Create the submount */
 	mnt = vfs_create_mount(fsc);
@@ -818,11 +833,19 @@ static int fuse_symlink(struct inode *dir, struct dentry *entry,
 	return create_new_entry(fm, &args, dir, entry, S_IFLNK);
 }
 
+void fuse_flush_time_update(struct inode *inode)
+{
+	int err = sync_inode_metadata(inode, 1);
+
+	mapping_set_error(inode->i_mapping, err);
+}
+
 void fuse_update_ctime(struct inode *inode)
 {
 	if (!IS_NOCMTIME(inode)) {
 		inode->i_ctime = current_time(inode);
 		mark_inode_dirty_sync(inode);
+		fuse_flush_time_update(inode);
 	}
 }
 
@@ -1089,7 +1112,7 @@ static int fuse_do_getattr(struct inode *inode, struct kstat *stat,
 	err = fuse_simple_request(fm, &args);
 	if (!err) {
 		if (fuse_invalid_attr(&outarg.attr) ||
-		    (inode->i_mode ^ outarg.attr.mode) & S_IFMT) {
+		    inode_wrong_type(inode, outarg.attr.mode)) {
 			fuse_make_bad(inode);
 			err = -EIO;
 		} else {
@@ -1151,7 +1174,7 @@ int fuse_reverse_inval_entry(struct fuse_conn *fc, u64 parent_nodeid,
 	if (!parent)
 		return -ENOENT;
 
-	inode_lock(parent);
+	inode_lock_nested(parent, I_MUTEX_PARENT);
 	if (!S_ISDIR(parent->i_mode))
 		goto unlock;
 
@@ -1726,7 +1749,7 @@ int fuse_do_setattr(struct dentry *dentry, struct iattr *attr,
 	}
 
 	if (fuse_invalid_attr(&outarg.attr) ||
-	    (inode->i_mode ^ outarg.attr.mode) & S_IFMT) {
+	    inode_wrong_type(inode, outarg.attr.mode)) {
 		fuse_make_bad(inode);
 		err = -EIO;
 		goto error;
