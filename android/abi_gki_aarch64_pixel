@@ -1943,8 +1943,24 @@
   __xfrm_state_destroy
   xfrm_state_lookup_byspi
   xfrm_stateonly_find
+  xhci_address_device
+  xhci_bus_resume
+  xhci_bus_suspend
   xhci_gen_setup
+  xhci_get_ep_ctx
+  xhci_get_slot_ctx
+  xhci_handle_event
   xhci_init_driver
   xhci_resume
+  xhci_ring_alloc
+  xhci_ring_free
   xhci_run
   xhci_suspend
+  xhci_update_erst_dequeue
+  xhci_vendor_get_ops
+  __tracepoint_android_vh_usb_dev_resume
+  __traceiter_android_vh_usb_dev_resume
+  __tracepoint_android_vh_usb_dev_suspend
+  __traceiter_android_vh_usb_dev_suspend
+  __traceiter_android_vh_sound_usb_support_cpu_suspend
+  __tracepoint_android_vh_sound_usb_support_cpu_suspend
