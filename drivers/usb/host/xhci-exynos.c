@@ -35,6 +35,7 @@
 #include <soc/google/exynos-cpupm.h>
 #include <trace/hooks/sound.h>
 #include <trace/hooks/usb.h>
+#include "../../soc/google/cal-if/pmucal_system.h"
 
 static struct hc_driver xhci_exynos_hc_driver;
 
@@ -92,6 +93,9 @@ int xhci_exynos_bus_suspend(struct usb_hcd *hcd)
 		ret_phy = exynos_usbdrd_phy_vendor_set(xhci_exynos->phy_usb2, 1, 0);
 		if (ret_phy)
 			dev_info(xhci_exynos->dev, "phy vendor set fail\n");
+
+		/* Vote to turn off tcxo when suspend with USB2 */
+		pmucal_tcxo_demand(false);
 	}
 
 	xhci_exynos_wake_lock(xhci_exynos, main_hcd, 0);
@@ -718,12 +722,12 @@ static int xhci_exynos_probe(struct platform_device *pdev)
 	xhci->reg_clk = devm_clk_get_optional(&pdev->dev, "reg");
 	if (IS_ERR(xhci->reg_clk)) {
 		ret = PTR_ERR(xhci->reg_clk);
-		goto put_hcd;
+		goto unregister_notify;
 	}
 
 	ret = clk_prepare_enable(xhci->reg_clk);
 	if (ret)
-		goto put_hcd;
+		goto unregister_notify;
 
 	xhci->clk = devm_clk_get_optional(&pdev->dev, NULL);
 	if (IS_ERR(xhci->clk)) {
@@ -843,6 +847,9 @@ disable_clk:
 
 disable_reg_clk:
 	clk_disable_unprepare(xhci->reg_clk);
+
+unregister_notify:
+	xhci_exynos_unregister_notify();
 
 put_hcd:
 	usb_put_hcd(hcd);

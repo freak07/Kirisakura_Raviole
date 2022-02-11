@@ -495,11 +495,6 @@ static void dwc3_otg_retry_configuration(struct timer_list *t)
 	dev_dbg(exynos->dev, "retry done\n");
 }
 
-static void dwc3_otg_disable_gadget_irq(struct dwc3 *dwc)
-{
-	dwc3_writel(dwc->regs, DWC3_DEVTEN, 0x00);
-}
-
 static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 {
 	struct usb_otg	*otg = fsm->otg;
@@ -509,7 +504,6 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 	struct device	*dev = dotg->dwc->dev;
 	int ret = 0;
 	int wait_counter = 0;
-	u32 evt_count;
 
 	if (!otg->gadget) {
 		dev_err(dev, "%s does not have any gadget\n", __func__);
@@ -548,36 +542,10 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 		exynos->vbus_state = false;
 		del_timer_sync(&exynos->usb_connect_timer);
 
-		/* Wait until dwc connected is off */
-		evt_count = dwc3_readl(dwc->regs, DWC3_GEVNTCOUNT(0));
-		evt_count &= DWC3_GEVNTCOUNT_MASK;
-		while (evt_count) {
-			wait_counter++;
-			msleep(20);
-
-			if (wait_counter > 20) {
-				dev_err(dev, "Can't wait dwc disconnect!\n");
-				break;
-			}
-			evt_count = dwc3_readl(dwc->regs, DWC3_GEVNTCOUNT(0));
-			evt_count &= DWC3_GEVNTCOUNT_MASK;
-			dev_dbg(dev, "%s: evt = %d\n", __func__, evt_count);
-		}
-
-		/*
-		 * we can extra work corresponding each functions by
-		 * the following function.
-		 */
 		if (exynos->config.is_not_vbus_pad && exynos_usbdrd_get_ldo_status() &&
 				!dotg->in_shutdown)
 			dwc3_exynos_gadget_disconnect_proc(dwc);
 
-		dwc3_otg_disable_gadget_irq(dwc);
-
-		/*
-		 * We can block udc core operation by the following flags.
-		 *  - gadget->connected and gadget->deactivated
-		 */
 		if (exynos->extra_delay)
 			msleep(100);
 
@@ -888,7 +856,7 @@ u32 dwc3_otg_is_connect(void)
 
 	exynos = exynos_dwusb_get_struct();
 	if (!exynos) {
-		dev_err(exynos->dev, "[%s] error\n", __func__);
+		pr_err("[%s] error\n", __func__);
 		return -ENODEV;
 	}
 	dotg = exynos->dotg;
@@ -959,13 +927,14 @@ emeg_out:
 
 int dwc3_otg_usb_recovery_reconn(struct dwc3_exynos *exynos)
 {
-	struct dwc3_otg *dotg = exynos->dotg;
+	struct dwc3_otg *dotg;
 
 	if (exynos == NULL) {
 		pr_err("WARNING : exynos is NULL\n");
 		return -ENODEV;
 	}
 
+	dotg = exynos->dotg;
 	schedule_work(&dotg->recov_work);
 
 	return 0;

@@ -318,6 +318,9 @@
 				/* I2C */
 				i2c-addr = <0x50>;
 
+				/* Access mode property*/
+				lwis,read-only;
+
 				/* Power supplies */
 				regulators = <&slg51000_ldo7>;
 				regulator-voltages = <1800000>;
@@ -342,6 +345,9 @@
 
 			/* Eeprom m24c64x for imx386 */
 			eeprom2: eeprom@2 {
+				/* Access mode property*/
+				lwis,read-only;
+
 				/* Power supplies */
 				regulators = <&slg51000_ldo7>;
 				regulator-voltages = <1800000>;

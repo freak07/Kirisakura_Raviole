@@ -45,51 +45,6 @@
 		dma-heap,alignment = <0x10000>;
 	};
 
-	faceauth_tpu_dma_heap {
-		compatible = "samsung,dma-heap-cma";
-		memory-region = <&faceauth_tpu>;
-		dma-heap,name = "faceauth_tpu";
-		dma-heap,secure;
-		dma-heap,protection_id = <15>;
-		dma-heap,alignment = <0x10000>;
-	};
-
-	faceauth_image_heap {
-		compatible = "samsung,dma-heap-cma";
-		memory-region = <&faimg>;
-		dma-heap,name = "faimg";
-		dma-heap,secure;
-		dma-heap,protection_id = <16>;
-		dma-heap,alignment = <0x10000>;
-	};
-
-	faceauth_rawimage_heap {
-		compatible = "samsung,dma-heap-cma";
-		memory-region = <&farawimg>;
-		dma-heap,name = "farawimg";
-		dma-heap,secure;
-		dma-heap,protection_id = <17>;
-		dma-heap,alignment = <0x10000>;
-	};
-
-	faceauth_preview_heap {
-		compatible = "samsung,dma-heap-cma";
-		memory-region = <&faprev>;
-		dma-heap,name = "faprev";
-		dma-heap,secure;
-		dma-heap,protection_id = <18>;
-		dma-heap,alignment = <0x10000>;
-	};
-
-	faceauth_model_heap {
-		compatible = "samsung,dma-heap-carveout";
-		memory-region = <&famodel>;
-		dma-heap,name = "famodel";
-		dma-heap,dynamic-secure;
-		dma-heap,protection_id = <19>;
-		dma-heap,alignment = <0x10000>;
-	};
-
 	tui_dma_heap {
 		compatible = "samsung,dma-heap-carveout";
 		memory-region = <&tui>;
@@ -97,6 +52,56 @@
 		dma-heap,secure;
 		dma-heap,protection_id = <20>;
 		dma-heap,alignment = <0x10000>;
+	};
+
+	faceauth_tpu_dma_heap: faceauth_tpu_dma_heap {
+		compatible = "samsung,dma-heap-chunk";
+		memory-region = <&faceauth_tpu>;
+		dma-heap,name = "faceauth_tpu";
+		dma-heap,secure;
+		dma-heap,protection_id = <15>;
+		dma-heap,alignment = <0x10000>;
+		status = "disabled";
+	};
+
+	faceauth_image_heap: faceauth_image_heap {
+		compatible = "samsung,dma-heap-cma";
+		memory-region = <&faimg>;
+		dma-heap,name = "faimg";
+		dma-heap,secure;
+		dma-heap,protection_id = <16>;
+		dma-heap,alignment = <0x10000>;
+		status = "disabled";
+	};
+
+	faceauth_rawimage_heap: faceauth_rawimage_heap {
+		compatible = "samsung,dma-heap-cma";
+		memory-region = <&farawimg>;
+		dma-heap,name = "farawimg";
+		dma-heap,secure;
+		dma-heap,protection_id = <17>;
+		dma-heap,alignment = <0x10000>;
+		status = "disabled";
+	};
+
+	faceauth_preview_heap: faceauth_preview_heap {
+		compatible = "samsung,dma-heap-cma";
+		memory-region = <&faprev>;
+		dma-heap,name = "faprev";
+		dma-heap,secure;
+		dma-heap,protection_id = <18>;
+		dma-heap,alignment = <0x10000>;
+		status = "disabled";
+	};
+
+	faceauth_model_heap: faceauth_model_heap {
+		compatible = "samsung,dma-heap-carveout";
+		memory-region = <&famodel>;
+		dma-heap,name = "famodel";
+		dma-heap,dynamic-secure;
+		dma-heap,protection_id = <19>;
+		dma-heap,alignment = <0x10000>;
+		status = "disabled";
 	};
 };
 
@@ -137,6 +142,18 @@
 		reusable;
 	};
 
+	tui: tui {
+		size = <0x3000000>;
+		alloc-ranges = <0x0 0x80000000 0x80000000>;
+		alignment = <0x0 0x00010000>;
+	};
+
+	xhci_dma: xhci_dma@0x97000000 {
+		compatible = "shared-dma-pool";
+		reg = <0x0 0x97000000 0x400000>;
+		no-map;
+	};
+
 	faceauth_tpu: faceauth_tpu {
 		compatible = "shared-dma-pool";
 		reusable;
@@ -146,6 +163,7 @@
 			       <0x9 0x00000000 0x80000000>,
 			       <0x8 0x80000000 0x80000000>,
 			       <0x0 0x80000000 0x80000000>;
+		status = "disabled";
 	};
 
 	famodel: famodel {
@@ -155,12 +173,7 @@
 			       <0x9 0x00000000 0x80000000>,
 			       <0x8 0x80000000 0x80000000>,
 			       <0x0 0x80000000 0x80000000>;
-	};
-
-	tui: tui {
-		size = <0x3000000>;
-		alloc-ranges = <0x0 0x80000000 0x80000000>;
-		alignment = <0x0 0x00010000>;
+		status = "disabled";
 	};
 
 	faimg: faimg {
@@ -172,6 +185,7 @@
 			       <0x9 0x00000000 0x80000000>,
 			       <0x8 0x80000000 0x80000000>,
 			       <0x0 0x80000000 0x80000000>;
+		status = "disabled";
 	};
 
 	farawimg: farawimg {
@@ -183,6 +197,7 @@
 			       <0x9 0x00000000 0x80000000>,
 			       <0x8 0x80000000 0x80000000>,
 			       <0x0 0x80000000 0x80000000>;
+		status = "disabled";
 	};
 
 	faprev: faprev {
@@ -194,11 +209,6 @@
 			       <0x9 0x00000000 0x80000000>,
 			       <0x8 0x80000000 0x80000000>,
 			       <0x0 0x80000000 0x80000000>;
-	};
-
-	xhci_dma: xhci_dma@0x97000000 {
-		compatible = "shared-dma-pool";
-		reg = <0x0 0x97000000 0x400000>;
-		no-map;
+		status = "disabled";
 	};
 };
