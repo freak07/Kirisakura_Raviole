@@ -31,6 +31,8 @@
   __arch_copy_in_user
   __arch_copy_to_user
   arch_timer_read_counter
+  argv_free
+  argv_split
   arm64_const_caps_ready
   arm64_use_ng_mappings
   __arm_smccc_smc
@@ -41,6 +43,7 @@
   atomic_notifier_chain_unregister
   autoremove_wake_function
   available_idle_cpu
+  backlight_device_set_brightness
   bcmp
   bdget_disk
   bdput
@@ -60,6 +63,7 @@
   bitmap_to_arr32
   __bitmap_weight
   blk_alloc_queue
+  blk_check_plugged
   blk_cleanup_queue
   blkdev_get_by_dev
   blkdev_put
@@ -494,7 +498,6 @@
   dma_unmap_resource
   dma_unmap_sg_attrs
   do_SAK
-  do_wait_intr_irq
   down
   downgrade_write
   down_interruptible
@@ -502,9 +505,7 @@
   down_trylock
   down_write
   drain_workqueue
-  driver_create_file
   driver_register
-  driver_remove_file
   driver_unregister
   drm_add_modes_noedid
   drm_atomic_add_affected_connectors
@@ -574,6 +575,7 @@
   drm_connector_list_iter_end
   drm_connector_list_iter_next
   drm_connector_register
+  drm_connector_set_panel_orientation
   drm_connector_unregister
   drm_crtc_arm_vblank_event
   drm_crtc_cleanup
@@ -655,6 +657,7 @@
   drm_plane_create_alpha_property
   drm_plane_create_blend_mode_property
   drm_plane_create_rotation_property
+  drm_plane_create_zpos_immutable_property
   drm_plane_create_zpos_property
   drm_poll
   drm_prime_gem_destroy
@@ -669,6 +672,7 @@
   drm_property_create_bool
   drm_property_create_enum
   drm_property_create_range
+  drm_property_create_signed_range
   drm_property_lookup_blob
   drm_property_replace_blob
   __drm_puts_seq_file
@@ -997,6 +1001,7 @@
   __kfifo_in
   __kfifo_init
   __kfifo_out
+  __kfifo_out_peek
   kfree
   kfree_sensitive
   kfree_skb
@@ -1006,7 +1011,6 @@
   kimage_voffset
   __kmalloc
   kmalloc_caches
-  kmalloc_order
   kmalloc_order_trace
   kmem_cache_alloc
   kmem_cache_alloc_trace
@@ -1017,6 +1021,7 @@
   kobject_add
   kobject_create_and_add
   kobject_del
+  kobject_get
   kobject_init
   kobject_init_and_add
   kobject_put
@@ -1064,6 +1069,7 @@
   ktime_get_real_seconds
   ktime_get_real_ts64
   ktime_get_seconds
+  ktime_get_snapshot
   ktime_get_ts64
   ktime_get_with_offset
   kvfree
@@ -1210,6 +1216,7 @@
   of_dma_controller_register
   of_drm_find_bridge
   of_drm_find_panel
+  of_find_backlight_by_node
   of_find_compatible_node
   of_find_device_by_node
   of_find_i2c_adapter_by_node
@@ -1901,6 +1908,7 @@
   __traceiter_android_rvh_typec_tcpci_chk_contaminant
   __traceiter_android_rvh_typec_tcpci_get_vbus
   __traceiter_android_rvh_uclamp_eff_get
+  __traceiter_android_rvh_ufs_complete_init
   __traceiter_android_rvh_ufs_reprogram_all_keys
   __traceiter_android_rvh_util_est_update
   __traceiter_android_vh_arch_set_freq_scale
@@ -1908,6 +1916,7 @@
   __traceiter_android_vh_cma_alloc_start
   __traceiter_android_vh_cpu_idle_enter
   __traceiter_android_vh_cpu_idle_exit
+  __traceiter_android_vh_dup_task_struct
   __traceiter_android_vh_enable_thermal_genl_check
   __traceiter_android_vh_ep_create_wakeup_source
   __traceiter_android_vh_ipi_stop
@@ -1976,6 +1985,7 @@
   __tracepoint_android_rvh_typec_tcpci_chk_contaminant
   __tracepoint_android_rvh_typec_tcpci_get_vbus
   __tracepoint_android_rvh_uclamp_eff_get
+  __tracepoint_android_rvh_ufs_complete_init
   __tracepoint_android_rvh_ufs_reprogram_all_keys
   __tracepoint_android_rvh_util_est_update
   __tracepoint_android_vh_arch_set_freq_scale
@@ -1983,6 +1993,7 @@
   __tracepoint_android_vh_cma_alloc_start
   __tracepoint_android_vh_cpu_idle_enter
   __tracepoint_android_vh_cpu_idle_exit
+  __tracepoint_android_vh_dup_task_struct
   __tracepoint_android_vh_enable_thermal_genl_check
   __tracepoint_android_vh_ep_create_wakeup_source
   __tracepoint_android_vh_ipi_stop
@@ -2285,8 +2296,11 @@
   devm_free_percpu
   devm_pwm_get
   devm_regmap_add_irq_chip
+  do_wait_intr_irq
   down_read_trylock
   down_timeout
+  driver_create_file
+  driver_remove_file
   drm_atomic_helper_disable_all
   drm_atomic_set_mode_for_crtc
   drm_mode_copy
@@ -2297,6 +2311,7 @@
   hid_destroy_device
   hid_input_report
   hid_parse_report
+  kmalloc_order
   lru_cache_disable
   lru_cache_enable
   mktime64
@@ -2316,10 +2331,8 @@
   strnchr
   system_long_wq
   __trace_bputs
-  __traceiter_android_rvh_ufs_complete_init
   __traceiter_android_vh_finish_update_load_avg_se
   __traceiter_android_vh_typec_tcpm_adj_current_limit
-  __tracepoint_android_rvh_ufs_complete_init
   __tracepoint_android_vh_finish_update_load_avg_se
   __tracepoint_android_vh_typec_tcpm_adj_current_limit
   wait_for_completion_killable_timeout
