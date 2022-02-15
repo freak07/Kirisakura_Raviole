@@ -61,11 +61,6 @@ void free_pgtables(struct mmu_gather *tlb, struct maple_tree *mt,
 		   struct vm_area_struct *start_vma, unsigned long floor,
 		   unsigned long ceiling);
 
-static inline bool can_madv_lru_vma(struct vm_area_struct *vma)
-{
-	return !(vma->vm_flags & (VM_LOCKED|VM_HUGETLB|VM_PFNMAP));
-}
-
 void unmap_page_range(struct mmu_gather *tlb,
 			     struct vm_area_struct *vma,
 			     unsigned long addr, unsigned long end,
@@ -359,21 +354,14 @@ static inline bool is_data_mapping(vm_flags_t flags)
 #ifdef CONFIG_MMU
 extern long populate_vma_page_range(struct vm_area_struct *vma,
 		unsigned long start, unsigned long end, int *nonblocking);
-extern void munlock_vma_pages_range(struct vm_area_struct *vma,
-			unsigned long start, unsigned long end);
-static inline void munlock_vma_pages_all(struct vm_area_struct *vma)
-{
-	munlock_vma_pages_range(vma, vma->vm_start, vma->vm_end);
-}
+extern int mlock_future_check(struct mm_struct *mm, unsigned long flags,
+			      unsigned long len);
 
 /*
  * must be called with vma's mmap_lock held for read or write, and page locked.
  */
 extern void mlock_vma_page(struct page *page);
 extern unsigned int munlock_vma_page(struct page *page);
-
-extern int mlock_future_check(struct mm_struct *mm, unsigned long flags,
-			      unsigned long len);
 
 /*
  * Clear the page's PageMlocked().  This can be useful in a situation where

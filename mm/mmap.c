@@ -2316,22 +2316,6 @@ int split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	return __split_vma(mm, vma, addr, new_below);
 }
 
-static inline void
-unlock_range(struct vm_area_struct *start, unsigned long limit)
-{
-	struct mm_struct *mm = start->vm_mm;
-	struct vm_area_struct *tmp = start;
-
-	while (tmp && tmp->vm_start < limit) {
-		if (tmp->vm_flags & VM_LOCKED) {
-			mm->locked_vm -= vma_pages(tmp);
-			munlock_vma_pages_all(tmp);
-		}
-
-		tmp = tmp->vm_next;
-	}
-}
-
 static inline int munmap_sidetree(struct vm_area_struct *vma,
 				   struct ma_state *mas_detach)
 {
@@ -2462,12 +2446,6 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 		if (error)
 			goto userfaultfd_error;
 	}
-
-	/*
-	 * unlock any mlock()ed ranges before detaching vmas
-	 */
-	if (mm->locked_vm)
-		unlock_range(vma, end);
 
 			tmp = tmp->vm_next;
 
@@ -3175,20 +3153,12 @@ void exit_mmap(struct mm_struct *mm)
 		 * Nothing can be holding mm->mmap_lock here and the above call
 		 * to mmu_notifier_release(mm) ensures mmu notifier callbacks in
 		 * __oom_reap_task_mm() will not block.
-		 *
-		 * This needs to be done before calling munlock_vma_pages_all(),
-		 * which clears VM_LOCKED, otherwise the oom reaper cannot
-		 * reliably test it.
 		 */
 		(void)__oom_reap_task_mm(mm);
-
 		set_bit(MMF_OOM_SKIP, &mm->flags);
 	}
 
 	mmap_write_lock(mm);
-	if (mm->locked_vm)
-		unlock_range(mm->mmap, ULONG_MAX);
-
 	arch_exit_mmap(mm);
 
 	vma = mas_find(&mas, ULONG_MAX);
