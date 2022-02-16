@@ -217,7 +217,6 @@
   cpumask_any_but
   cpumask_next
   cpumask_next_and
-  cpumask_next_wrap
   cpu_number
   __cpu_online_mask
   cpu_pm_register_notifier
@@ -505,7 +504,9 @@
   down_trylock
   down_write
   drain_workqueue
+  driver_create_file
   driver_register
+  driver_remove_file
   driver_unregister
   drm_add_modes_noedid
   drm_atomic_add_affected_connectors
@@ -1011,6 +1012,7 @@
   kimage_voffset
   __kmalloc
   kmalloc_caches
+  kmalloc_order
   kmalloc_order_trace
   kmem_cache_alloc
   kmem_cache_alloc_trace
@@ -1895,7 +1897,6 @@
   __traceiter_android_rvh_cpu_cgroup_online
   __traceiter_android_rvh_cpu_overutilized
   __traceiter_android_rvh_dequeue_task
-  __traceiter_android_rvh_find_energy_efficient_cpu
   __traceiter_android_rvh_irqs_disable
   __traceiter_android_rvh_irqs_enable
   __traceiter_android_rvh_pci_d3_sleep
@@ -1903,6 +1904,7 @@
   __traceiter_android_rvh_preempt_disable
   __traceiter_android_rvh_preempt_enable
   __traceiter_android_rvh_sched_fork
+  __traceiter_android_rvh_select_task_rq_fair
   __traceiter_android_rvh_select_task_rq_rt
   __traceiter_android_rvh_set_iowait
   __traceiter_android_rvh_typec_tcpci_chk_contaminant
@@ -1972,7 +1974,6 @@
   __tracepoint_android_rvh_cpu_cgroup_online
   __tracepoint_android_rvh_cpu_overutilized
   __tracepoint_android_rvh_dequeue_task
-  __tracepoint_android_rvh_find_energy_efficient_cpu
   __tracepoint_android_rvh_irqs_disable
   __tracepoint_android_rvh_irqs_enable
   __tracepoint_android_rvh_pci_d3_sleep
@@ -1980,6 +1981,7 @@
   __tracepoint_android_rvh_preempt_disable
   __tracepoint_android_rvh_preempt_enable
   __tracepoint_android_rvh_sched_fork
+  __tracepoint_android_rvh_select_task_rq_fair
   __tracepoint_android_rvh_select_task_rq_rt
   __tracepoint_android_rvh_set_iowait
   __tracepoint_android_rvh_typec_tcpci_chk_contaminant
@@ -2115,7 +2117,6 @@
   unregister_virtio_driver
   up
   update_devfreq
-  __update_load_avg_blocked_se
   update_rq_clock
   up_read
   up_write
@@ -2292,6 +2293,7 @@
   bpf_trace_run9
   clk_notifier_register
   clk_notifier_unregister
+  cpumask_next_wrap
   __devm_alloc_percpu
   devm_free_percpu
   devm_pwm_get
@@ -2299,8 +2301,6 @@
   do_wait_intr_irq
   down_read_trylock
   down_timeout
-  driver_create_file
-  driver_remove_file
   drm_atomic_helper_disable_all
   drm_atomic_set_mode_for_crtc
   drm_mode_copy
@@ -2311,7 +2311,6 @@
   hid_destroy_device
   hid_input_report
   hid_parse_report
-  kmalloc_order
   lru_cache_disable
   lru_cache_enable
   mktime64
@@ -2331,8 +2330,11 @@
   strnchr
   system_long_wq
   __trace_bputs
+  __traceiter_android_rvh_find_energy_efficient_cpu
   __traceiter_android_vh_finish_update_load_avg_se
   __traceiter_android_vh_typec_tcpm_adj_current_limit
+  __tracepoint_android_rvh_find_energy_efficient_cpu
   __tracepoint_android_vh_finish_update_load_avg_se
   __tracepoint_android_vh_typec_tcpm_adj_current_limit
+  __update_load_avg_blocked_se
   wait_for_completion_killable_timeout
