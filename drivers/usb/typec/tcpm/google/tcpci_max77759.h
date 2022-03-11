@@ -48,6 +48,8 @@ struct max77759_plat {
 	bool attached;
 	/* Reflects the signal sent out to the data stack */
 	bool data_active;
+	/* Alernate data path */
+	bool alt_path_active;
 	/* Reflects whether the current partner can do PD */
 	bool pd_capable;
 	void *usb_psy_data;
@@ -64,6 +66,8 @@ struct max77759_plat {
 	struct usb_psy_ops psy_ops;
 	/* toggle in_switch to kick debug accessory statemachine when already connected */
 	int in_switch_gpio;
+	/* 0:active_low 1:active_high */
+	bool in_switch_gpio_active_high;
 	bool first_toggle;
 
 	/* True when TCPC is in SINK DEBUG ACCESSORY CONNECTED state */
@@ -170,4 +174,6 @@ enum tcpm_psy_online_states {
 	TCPM_PSY_PROG_ONLINE,
 };
 
+void enable_data_path_locked(struct max77759_plat *chip);
+void data_alt_path_active(struct max77759_plat *chip, bool active);
 #endif /* __TCPCI_MAX77759_H */

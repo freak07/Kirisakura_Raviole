@@ -28,7 +28,7 @@
 #include "bc_max77759.h"
 #include "max77759_export.h"
 #include "max77759_helper.h"
-#include "tcpci.h"
+#include "../tcpci.h"
 #include "tcpci_max77759.h"
 #include "tcpci_max77759_vendor_reg.h"
 #include "usb_icl_voter.h"
@@ -89,6 +89,10 @@ static struct logbuffer *tcpm_log;
 static bool modparam_conf_sbu;
 module_param_named(conf_sbu, modparam_conf_sbu, bool, 0644);
 MODULE_PARM_DESC(conf_sbu, "Configure sbu pins");
+
+static char boot_mode_string[64];
+module_param_string(mode, boot_mode_string, sizeof(boot_mode_string), 0440);
+MODULE_PARM_DESC(mode, "Android bootmode");
 
 static bool hooks_installed;
 
@@ -503,7 +507,7 @@ static void enable_dp_pulse(struct max77759_plat *chip)
 		logbuffer_log(chip->log, "%s failed to disable dpDnMan and dpDrv", __func__);
 }
 
-static void enable_data_path_locked(struct max77759_plat *chip)
+void enable_data_path_locked(struct max77759_plat *chip)
 {
 	int ret;
 	bool enable_data = false;
@@ -511,6 +515,11 @@ static void enable_data_path_locked(struct max77759_plat *chip)
 
 	if (chip->force_device_mode_on) {
 		logbuffer_log(chip->log, "%s skipping as force_device_mode_on is set", __func__);
+		return;
+	}
+
+	if (chip->alt_path_active) {
+		logbuffer_log(chip->log, "%s skipping as alt path is active", __func__);
 		return;
 	}
 
@@ -575,6 +584,13 @@ static void enable_data_path_locked(struct max77759_plat *chip)
 		}
 	}
 }
+EXPORT_SYMBOL_GPL(enable_data_path_locked);
+
+void data_alt_path_active(struct max77759_plat *chip, bool active)
+{
+	chip->alt_path_active = active;
+}
+EXPORT_SYMBOL_GPL(data_alt_path_active);
 
 static void enable_vbus_work(struct kthread_work *work)
 {
@@ -733,6 +749,12 @@ static void process_power_status(struct max77759_plat *chip)
 		chip->vbus_present = 0;
 	logbuffer_log(chip->log, "[%s]: vbus_present %d", __func__, chip->vbus_present);
 	tcpm_vbus_change(tcpci->port);
+
+	/* TODO: remove this cc event b/211341677 */
+	if (!strncmp(boot_mode_string, "charger", strlen("charger")) && chip->vbus_present) {
+		dev_info(chip->dev, "WA: trigger cc event in charger mode");
+		tcpm_cc_change(tcpci->port);
+	}
 
 	/*
 	 * Enable data path when TCPC signals sink debug accesssory connected
@@ -1195,9 +1217,9 @@ static int max77759_start_toggling(struct tcpci *tcpci,
 	/* Kick debug accessory state machine when enabling toggling for the first time */
 	if (chip->first_toggle && chip->in_switch_gpio >= 0) {
 		logbuffer_log(chip->log, "[%s]: Kick Debug accessory FSM", __func__);
-		gpio_set_value_cansleep(chip->in_switch_gpio, 0);
+		gpio_set_value_cansleep(chip->in_switch_gpio, !chip->in_switch_gpio_active_high);
 		mdelay(10);
-		gpio_set_value_cansleep(chip->in_switch_gpio, 1);
+		gpio_set_value_cansleep(chip->in_switch_gpio, chip->in_switch_gpio_active_high);
 		chip->first_toggle = false;
 	}
 
@@ -1579,16 +1601,26 @@ static void max77759_toggle_disable_votable_callback(struct gvotable_election *e
 		update_contaminant_detection_locked(chip, CONTAMINANT_DETECT_DISABLE);
 		disable_contaminant_detection(chip);
 		max77759_enable_toggling_locked(chip, false);
-		gpio_set_value_cansleep(chip->in_switch_gpio, 0);
-		logbuffer_log(chip->log, "[%s]: Disable in-switch", __func__);
+		if (chip->in_switch_gpio >= 0) {
+			gpio_set_value_cansleep(chip->in_switch_gpio,
+						!chip->in_switch_gpio_active_high);
+			logbuffer_log(chip->log, "[%s]: Disable in-switch set %s / active %s",
+				      __func__, !chip->in_switch_gpio_active_high ? "high" : "low",
+				      chip->in_switch_gpio_active_high ? "high" : "low");
+		}
 	} else {
 		if (chip->contaminant_detection_userspace)
 			update_contaminant_detection_locked(chip,
 							    chip->contaminant_detection_userspace);
 		else
 			max77759_enable_toggling_locked(chip, true);
-		gpio_set_value_cansleep(chip->in_switch_gpio, 1);
-		logbuffer_log(chip->log, "[%s]: Enable in-switch", __func__);
+		if (chip->in_switch_gpio >= 0) {
+			gpio_set_value_cansleep(chip->in_switch_gpio,
+						chip->in_switch_gpio_active_high);
+			logbuffer_log(chip->log, "[%s]: Enable in-switch set %s / active %s",
+				      __func__, chip->in_switch_gpio_active_high ? "high" : "low",
+				      chip->in_switch_gpio_active_high ? "high" : "low");
+		}
 	}
 	mutex_unlock(&chip->rc_lock);
 	logbuffer_log(chip->log, "%s: reason %s value %ld\n", __func__, reason, (long)value);
@@ -1859,6 +1891,7 @@ static int max77759_probe(struct i2c_client *client,
 	u16 device_id;
 	u32 ovp_handle;
 	const char *ovp_status;
+	enum of_gpio_flags flags;
 
 	ret = max77759_register_vendor_hooks(client);
 	if (ret)
@@ -1893,16 +1926,26 @@ static int max77759_probe(struct i2c_client *client,
 		return -EINVAL;
 	}
 
-	if (!of_property_read_u32(dn, "max20339,ovp", &ovp_handle)) {
+	chip->in_switch_gpio = -EINVAL;
+	if (of_property_read_bool(dn, "ovp-present")) {
+		chip->in_switch_gpio = of_get_named_gpio_flags(dn, "in-switch-gpio", 0, &flags);
+		if (chip->in_switch_gpio < 0) {
+			dev_err(&client->dev, "in-switch-gpio not found\n");
+			return -EPROBE_DEFER;
+		}
+		chip->in_switch_gpio_active_high = (flags & OF_GPIO_ACTIVE_LOW) ? 0 : 1;
+	} else if (!of_property_read_u32(dn, "max20339,ovp", &ovp_handle)) {
 		ovp_dn = of_find_node_by_phandle(ovp_handle);
 		if (!IS_ERR_OR_NULL(ovp_dn) &&
 		    !of_property_read_string(ovp_dn, "status", &ovp_status) &&
 		    strncmp(ovp_status, "disabled", strlen("disabled"))) {
-			chip->in_switch_gpio = of_get_named_gpio(dn, "in-switch-gpio", 0);
+			chip->in_switch_gpio = of_get_named_gpio_flags(dn, "in-switch-gpio", 0,
+								       &flags);
 			if (chip->in_switch_gpio < 0) {
 				dev_err(&client->dev, "in-switch-gpio not found\n");
 				return -EPROBE_DEFER;
 			}
+			chip->in_switch_gpio_active_high = (flags & OF_GPIO_ACTIVE_LOW) ? 0 : 1;
 		}
 	}
 

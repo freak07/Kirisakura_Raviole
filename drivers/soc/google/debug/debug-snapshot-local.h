@@ -51,6 +51,7 @@ struct dbg_snapshot_desc {
 	int sjtag_status;
 	bool in_reboot;
 	bool in_panic;
+	bool in_warm;
 	int panic_action;
 };
 
@@ -123,6 +124,7 @@ extern struct itmon_logs *dss_itmon;
 #define DSS_SIGN_PANIC			0xBABA
 #define DSS_SIGN_UNKNOWN_REBOOT	0xCACA
 #define DSS_SIGN_EMERGENCY_REBOOT	0xCACB
+#define DSS_SIGN_WARM_REBOOT		0xCACC
 #define DSS_SIGN_SAFE_FAULT		0xFAFA
 #define DSS_SIGN_NORMAL_REBOOT		0xCAFE
 #define DSS_SIGN_LOCKUP			0xDEADBEEF

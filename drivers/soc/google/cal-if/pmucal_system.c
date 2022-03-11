@@ -97,7 +97,7 @@ int pmucal_system_exit(int mode)
 
 	err_msg[0] = '\0';
 	if (mode == SYS_SLEEP)
-		tcxo_req = 1;
+		tcxo_req = true;
 
 	if (mode != SYS_SICD)
 		dbg_snapshot_pmu(mode, __func__, DSS_FLAG_IN);
