@@ -4299,9 +4299,9 @@ struct page *shmem_read_mapping_page_gfp(struct address_space *mapping,
 }
 EXPORT_SYMBOL_GPL(shmem_read_mapping_page_gfp);
 
-void shmem_mark_page_lazyfree(struct page *page, bool tail)
+void shmem_mark_page_lazyfree(struct page *page)
 {
-	mark_page_lazyfree_movetail(page, tail);
+	mark_page_lazyfree_movetail(page);
 }
 EXPORT_SYMBOL_GPL(shmem_mark_page_lazyfree);
 
