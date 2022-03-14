@@ -663,14 +663,13 @@ static void lru_lazyfree_movetail_fn(struct page *page, struct lruvec *lruvec,
 		!PageSwapCache(page)) {
 		bool active = PageActive(page);
 
-		del_page_from_lru_list(page, lruvec,
-				       LRU_INACTIVE_ANON + active);
+		del_page_from_lru_list(page, lruvec);
 		ClearPageActive(page);
 		ClearPageReferenced(page);
 		if (add_to_tail && *add_to_tail)
-			add_page_to_lru_list_tail(page, lruvec, LRU_INACTIVE_FILE);
+			add_page_to_lru_list_tail(page, lruvec);
 		else
-			add_page_to_lru_list(page, lruvec, LRU_INACTIVE_FILE);
+			add_page_to_lru_list(page, lruvec);
 	}
 }
 
@@ -711,7 +710,7 @@ void lru_add_drain_cpu(int cpu)
 
 	pvec = &per_cpu(lru_pvecs.lru_lazyfree_movetail, cpu);
 	if (pagevec_count(pvec))
-		pagevec_lru_move_fn(pvec, lru_lazyfree_movetail_fn, NULL);
+		pagevec_lru_move_fn(pvec, lru_lazyfree_movetail_fn);
 
 	activate_page_drain(cpu);
 	invalidate_bh_lrus_cpu(cpu);
@@ -808,7 +807,7 @@ void mark_page_lazyfree_movetail(struct page *page, bool tail)
 		get_page(page);
 		if (pagevec_add_and_need_flush(pvec, page))
 			pagevec_lru_move_fn(pvec,
-					lru_lazyfree_movetail_fn, &tail);
+					lru_lazyfree_movetail_fn);
 		local_unlock(&lru_pvecs.lock);
 	}
 }
