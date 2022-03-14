@@ -1196,8 +1196,6 @@
   nr_irqs
   nsec_to_clock_t
   ns_to_timespec64
-  ntf_camera_started
-  ntf_camera_stopped
   __num_online_cpus
   nvmem_device_put
   nvmem_device_read
@@ -2315,6 +2313,8 @@
   lru_cache_enable
   mktime64
   napi_gro_flush
+  ntf_camera_started
+  ntf_camera_stopped
   param_ops_short
   regmap_irq_get_virq
   sched_set_fifo
