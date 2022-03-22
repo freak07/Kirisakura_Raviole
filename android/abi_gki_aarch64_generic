@@ -43,7 +43,6 @@
   atomic_notifier_chain_unregister
   autoremove_wake_function
   available_idle_cpu
-  backlight_device_set_brightness
   bcmp
   bdget_disk
   bdput
@@ -504,9 +503,7 @@
   down_trylock
   down_write
   drain_workqueue
-  driver_create_file
   driver_register
-  driver_remove_file
   driver_unregister
   drm_add_modes_noedid
   drm_atomic_add_affected_connectors
@@ -576,7 +573,6 @@
   drm_connector_list_iter_end
   drm_connector_list_iter_next
   drm_connector_register
-  drm_connector_set_panel_orientation
   drm_connector_unregister
   drm_crtc_arm_vblank_event
   drm_crtc_cleanup
@@ -658,7 +654,6 @@
   drm_plane_create_alpha_property
   drm_plane_create_blend_mode_property
   drm_plane_create_rotation_property
-  drm_plane_create_zpos_immutable_property
   drm_plane_create_zpos_property
   drm_poll
   drm_prime_gem_destroy
@@ -673,9 +668,9 @@
   drm_property_create_bool
   drm_property_create_enum
   drm_property_create_range
-  drm_property_create_signed_range
   drm_property_lookup_blob
   drm_property_replace_blob
+  drm_puts
   __drm_puts_seq_file
   drm_read
   drm_rect_clip_scaled
@@ -1012,7 +1007,6 @@
   kimage_voffset
   __kmalloc
   kmalloc_caches
-  kmalloc_order
   kmalloc_order_trace
   kmem_cache_alloc
   kmem_cache_alloc_trace
@@ -1196,6 +1190,8 @@
   nr_irqs
   nsec_to_clock_t
   ns_to_timespec64
+  ntf_camera_started
+  ntf_camera_stopped
   __num_online_cpus
   nvmem_device_put
   nvmem_device_read
@@ -1216,7 +1212,6 @@
   of_dma_controller_register
   of_drm_find_bridge
   of_drm_find_panel
-  of_find_backlight_by_node
   of_find_compatible_node
   of_find_device_by_node
   of_find_i2c_adapter_by_node
@@ -2285,6 +2280,7 @@
   xhci_vendor_get_ops
 
 # preserved by --additions-only
+  backlight_device_set_brightness
   __bitmap_andnot
   __bitmap_equal
   __bitmap_or
@@ -2299,9 +2295,14 @@
   do_wait_intr_irq
   down_read_trylock
   down_timeout
+  driver_create_file
+  driver_remove_file
   drm_atomic_helper_disable_all
   drm_atomic_set_mode_for_crtc
+  drm_connector_set_panel_orientation
   drm_mode_copy
+  drm_plane_create_zpos_immutable_property
+  drm_property_create_signed_range
   get_user_pages_remote
   hid_add_device
   hid_allocate_device
@@ -2309,12 +2310,12 @@
   hid_destroy_device
   hid_input_report
   hid_parse_report
+  kmalloc_order
   lru_cache_disable
   lru_cache_enable
   mktime64
   napi_gro_flush
-  ntf_camera_started
-  ntf_camera_stopped
+  of_find_backlight_by_node
   param_ops_short
   regmap_irq_get_virq
   sched_set_fifo
