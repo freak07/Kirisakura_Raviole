@@ -1250,7 +1250,6 @@
   kthread_stop
   ktime_get_ts64
   mutex_trylock
-  __page_pinner_migration_failed
   param_ops_ullong
   pid_task
   platform_bus_type

@@ -229,7 +229,6 @@
   of_find_property
   of_get_property
   of_property_read_variable_u32_array
-  __page_pinner_migration_failed
   param_ops_bint
   param_ops_bool
   param_ops_charp

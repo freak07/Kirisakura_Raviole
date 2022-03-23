@@ -991,7 +991,6 @@
   __mmdrop
   module_put
   of_machine_is_compatible
-  __page_pinner_migration_failed
   param_array_ops
   param_ops_byte
   __put_page

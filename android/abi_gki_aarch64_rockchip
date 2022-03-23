@@ -79,7 +79,6 @@
   __netif_napi_del
   __num_online_cpus
   __of_reset_control_get
-  __page_pinner_migration_failed
   __pci_register_driver
   __per_cpu_offset
   __platform_driver_register
