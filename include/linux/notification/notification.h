@@ -58,6 +58,8 @@ extern int smart_get_notification_level(int notif_type);
 extern bool ntf_is_screen_on(void);
 extern bool ntf_is_screen_early_on(void);
 extern bool ntf_is_screen_early_off(void);
+// query camera state
+extern bool ntf_is_camera_on(void);
 
 // charge callbacks to notify ntf - call it from battery/policy drivers
 extern void ntf_set_charge_state(bool on);
