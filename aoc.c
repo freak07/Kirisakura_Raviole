@@ -115,6 +115,9 @@ struct aoc_prvdata {
 	aoc_map_handler map_handler;
 	void *map_handler_ctx;
 
+	struct delayed_work monitor_work;
+	bool aoc_process_active;
+
 	struct device *dev;
 	struct iommu_domain *domain;
 	void *ipc_base;
@@ -343,7 +346,7 @@ static inline aoc_service *service_at_index(struct aoc_prvdata *prvdata,
 
 static inline struct aoc_service_dev *service_dev_at_index(struct aoc_prvdata *prvdata, unsigned index)
 {
-	if (!aoc_fw_ready() || index > aoc_num_services())
+	if (!aoc_fw_ready() || index > aoc_num_services() || aoc_state != AOC_STATE_ONLINE)
 		return NULL;
 
 	return prvdata->services[index];
@@ -516,6 +519,7 @@ static void aoc_mbox_rx_callback(struct mbox_client *cl, void *mssg)
 	case AOC_STATE_FIRMWARE_LOADED:
 		if (aoc_fw_ready()) {
 			aoc_state = AOC_STATE_STARTING;
+			cancel_delayed_work_sync(&prvdata->monitor_work);
 			schedule_work(&prvdata->online_work);
 		}
 		break;
@@ -827,6 +831,11 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 		aoc_a32_reset();
 		enable_irq(prvdata->watchdog_irq);
 
+		/* Monitor if there is callback from aoc after 5sec */
+		cancel_delayed_work_sync(&prvdata->monitor_work);
+		schedule_delayed_work(&prvdata->monitor_work,
+			msecs_to_jiffies(5 * 1000));
+
 		msleep(2000);
 		dev_info(dev, "re-enabling SICD\n");
 		enable_power_mode(0, POWERMODE_TYPE_SYSTEM);
@@ -863,6 +872,11 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 
 		enable_irq(prvdata->watchdog_irq);
 		aoc_state = AOC_STATE_FIRMWARE_LOADED;
+
+		/* Monitor if there is callback from aoc after 5sec */
+		cancel_delayed_work_sync(&prvdata->monitor_work);
+		schedule_delayed_work(&prvdata->monitor_work,
+			msecs_to_jiffies(5 * 1000));
 
 		msleep(2000);
 		dev_info(dev, "re-enabling SICD\n");
@@ -2012,6 +2026,28 @@ static void aoc_clear_sysmmu(struct aoc_prvdata *p)
 #endif
 }
 
+static void aoc_monitor_online(struct work_struct *work)
+{
+	struct aoc_prvdata *prvdata =
+		container_of(work, struct aoc_prvdata, monitor_work.work);
+	int restart_rc;
+
+	mutex_lock(&aoc_service_lock);
+	if (aoc_state == AOC_STATE_FIRMWARE_LOADED) {
+		dev_err(prvdata->dev, "aoc init no respond, try restart\n");
+
+		aoc_take_offline(prvdata);
+		restart_rc = aoc_watchdog_restart(prvdata);
+		if (restart_rc)
+			dev_info(prvdata->dev,
+				"aoc restart failed: rc = %d\n", restart_rc);
+		else
+			dev_info(prvdata->dev,
+				"aoc restart succeeded\n");
+	}
+	mutex_unlock(&aoc_service_lock);
+}
+
 static void aoc_did_become_online(struct work_struct *work)
 {
 	struct aoc_prvdata *prvdata =
@@ -2155,6 +2191,9 @@ static void aoc_take_offline(struct aoc_prvdata *prvdata)
 		pr_notice("taking aoc offline\n");
 		aoc_state = AOC_STATE_OFFLINE;
 
+		/* wait until aoc_process_services finish */
+		while (prvdata->aoc_process_active);
+
 		bus_for_each_dev(&aoc_bus_type, NULL, NULL, aoc_remove_device);
 
 		if (aoc_control)
@@ -2189,8 +2228,10 @@ static void aoc_process_services(struct aoc_prvdata *prvdata, int offset)
 	int services;
 	int i;
 
-	if (aoc_state != AOC_STATE_ONLINE)
-		return;
+	if (aoc_state != AOC_STATE_ONLINE || work_busy(&prvdata->watchdog_work))
+		goto exit;
+
+	prvdata->aoc_process_active = true;
 
 	services = aoc_num_services();
 	for (i = 0; i < services; i++) {
@@ -2211,6 +2252,8 @@ static void aoc_process_services(struct aoc_prvdata *prvdata, int offset)
 				wake_up(&service_dev->write_queue);
 		}
 	}
+exit:
+	prvdata->aoc_process_active = false;
 }
 
 void aoc_set_map_handler(struct aoc_service_dev *dev, aoc_map_handler handler,
@@ -3066,6 +3109,8 @@ static int aoc_platform_probe(struct platform_device *pdev)
 	aoc_control = aoc_dram_translate(prvdata, 6 * SZ_1M);
 
 	INIT_WORK(&prvdata->online_work, aoc_did_become_online);
+
+	INIT_DELAYED_WORK(&prvdata->monitor_work, aoc_monitor_online);
 
 	aoc_configure_interrupt();
 

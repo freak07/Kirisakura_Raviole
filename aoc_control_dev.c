@@ -227,6 +227,95 @@ static ssize_t memory_votes_show(struct device *dev,
 
 static DEVICE_ATTR_RO(memory_votes);
 
+/* Driver methods */
+
+/*
+ * Convenience method to send a write to the AoC.
+ * Returns negative codes for errors.
+ */
+static ssize_t write_attribute(struct stats_prvdata *prvdata, void *in_cmd,
+			      size_t in_size)
+{
+	struct aoc_service_dev *service = prvdata->service;
+	ssize_t ret;
+
+	ret = mutex_lock_interruptible(&prvdata->lock);
+	if (ret != 0)
+		return ret;
+
+	if (aoc_service_flush_read_data(service))
+		pr_err("Previous response left in channel\n");
+
+	ret = aoc_service_write_timeout(service, in_cmd, in_size, prvdata->service_timeout);
+
+	mutex_unlock(&prvdata->lock);
+	return ret;
+}
+
+static ssize_t udfps_set_clock_source_store(struct device *dev,
+				     struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct stats_prvdata *prvdata = dev_get_drvdata(dev);
+	struct CMD_UDFPS_SET_CLOCK_SOURCE clock_src = { 0 };
+	uint8_t type;
+	int ret;
+
+	AocCmdHdrSet(&clock_src.parent, CMD_UDFPS_SET_CLOCK_SOURCE_ID,
+		     sizeof(clock_src));
+	ret = kstrtou8(buf, 10, &type);
+	if (ret < 0)
+		return ret;
+	if (type < SOURCE_TOT)
+		clock_src.clock_source = type;
+        else
+		dev_err(dev, "Invalid input parameter = %d\n", type);
+
+	ret = write_attribute(prvdata, &clock_src, sizeof(clock_src));
+
+	if (ret < 0) {
+		dev_err(dev, "udfps freq start ret = %d\n", ret);
+        }
+
+	return ret;
+}
+
+static DEVICE_ATTR_WO(udfps_set_clock_source);
+
+static ssize_t udfps_get_clock_frequency(uint8_t clk_src, struct device *dev, char *buf)
+{
+	struct stats_prvdata *prvdata = dev_get_drvdata(dev);
+	struct CMD_UDFPS_GET_CLOCK_FREQUENCY get_freq_cmd = { 0 };
+	int ret;
+
+	AocCmdHdrSet(&get_freq_cmd.parent, CMD_UDFPS_GET_CLOCK_FREQUENCY_ID,
+		     sizeof(get_freq_cmd));
+
+	get_freq_cmd.clock_source = clk_src;
+	ret = read_attribute(prvdata, &get_freq_cmd, sizeof(get_freq_cmd),
+			     &get_freq_cmd, sizeof(get_freq_cmd));
+
+	if (ret < 0)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n", get_freq_cmd.clock_freq_in_u32);
+}
+
+static ssize_t udfps_get_osc_freq_show(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	return udfps_get_clock_frequency(0, dev, buf);
+}
+
+static DEVICE_ATTR_RO(udfps_get_osc_freq);
+
+static ssize_t udfps_get_disp_freq_show(struct device *dev,
+					struct device_attribute *attr, char *buf)
+{
+	return udfps_get_clock_frequency(1, dev, buf);
+}
+
+static DEVICE_ATTR_RO(udfps_get_disp_freq);
+
 static ssize_t read_timed_stat(struct device *dev, char *buf, int index)
 {
 	struct stats_prvdata *prvdata = dev_get_drvdata(dev);
@@ -412,6 +501,9 @@ static struct attribute *aoc_stats_attrs[] = {
 	&dev_attr_hotword_wakeup.attr,
 	&dev_attr_memory_exception.attr,
 	&dev_attr_memory_votes.attr,
+	&dev_attr_udfps_set_clock_source.attr,
+	&dev_attr_udfps_get_osc_freq.attr,
+	&dev_attr_udfps_get_disp_freq.attr,
 	NULL
 };
 

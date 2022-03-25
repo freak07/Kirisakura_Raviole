@@ -293,6 +293,31 @@ static int aoc_usb_set_isoc_tr_info(struct aoc_usb_drvdata *drvdata, void *args)
 	return 0;
 }
 
+static int aoc_usb_set_offload_state(struct aoc_usb_drvdata *drvdata, bool *enabled)
+{
+	int ret = 0;
+	struct CMD_USB_CONTROL_SET_OFFLOAD_STATE *cmd;
+
+	cmd = kzalloc(sizeof(struct CMD_USB_CONTROL_SET_OFFLOAD_STATE), GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	AocCmdHdrSet(&cmd->parent,
+		     CMD_USB_CONTROL_SET_OFFLOAD_STATE_ID,
+		     sizeof(*cmd));
+
+	cmd->offloading = *enabled;
+	ret = aoc_usb_send_command(drvdata, cmd, sizeof(*cmd), cmd, sizeof(*cmd));
+	if (ret < 0) {
+		kfree(cmd);
+		return ret;
+	}
+
+	kfree(cmd);
+
+	return 0;
+}
+
 static int aoc_usb_notify(struct notifier_block *this,
 			  unsigned long code, void *data)
 {
@@ -326,11 +351,17 @@ static int aoc_usb_notify(struct notifier_block *this,
 	case SYNC_CONN_STAT:
 		ret = aoc_usb_notify_conn_stat(drvdata, data);
 		break;
+	case SET_OFFLOAD_STATE:
+		ret = aoc_usb_set_offload_state(drvdata, data);
+		break;
 	default:
 		dev_warn(&drvdata->adev->dev, "Code %lu is not supported\n", code);
 		ret = -EINVAL;
 		break;
 	}
+
+	if (ret < 0)
+		dev_err(&drvdata->adev->dev, "Fail to handle code %lu, ret = %d", code, ret);
 
 	return ret;
 }
@@ -487,6 +518,8 @@ static int __init aoc_usb_init(void)
 {
 	xhci_vendor_helper_init();
 	usb_vendor_helper_init();
+	snd_usb_audio_vendor_helper_init();
+
 	INIT_WORK(&usb_recovery_ws, usb_recovery_work);
 	INIT_WORK(&usb_host_mode_checking_ws, usb_host_mode_checking_work);
 

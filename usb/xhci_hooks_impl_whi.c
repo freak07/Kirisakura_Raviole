@@ -8,7 +8,6 @@
 
 #include <linux/dmapool.h>
 #include <linux/dma-mapping.h>
-#include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/pm_wakeup.h>
@@ -16,7 +15,6 @@
 #include <linux/usb.h>
 #include <linux/workqueue.h>
 #include <linux/usb/hcd.h>
-#include <linux/usb/phy.h>
 
 #include "xhci.h"
 #include "xhci-plat.h"
@@ -37,6 +35,27 @@ int register_aoc_usb_notifier(struct notifier_block *nb)
 int unregister_aoc_usb_notifier(struct notifier_block *nb)
 {
 	return blocking_notifier_chain_unregister(&aoc_usb_notifier_list, nb);
+}
+
+int xhci_set_offload_state(struct xhci_hcd *xhci, bool enabled)
+{
+	struct xhci_vendor_data *vendor_data;
+
+	if (!xhci)
+		return -EINVAL;
+
+	vendor_data = xhci_to_priv(xhci)->vendor_data;
+
+	if (!vendor_data->dt_direct_usb_access)
+		return -EPERM;
+
+	xhci_info(xhci, "Set offloading state %s\n", enabled ? "true" : "false");
+
+	blocking_notifier_call_chain(&aoc_usb_notifier_list, SET_OFFLOAD_STATE,
+				     &enabled);
+	vendor_data->offload_state = enabled;
+
+	return 0;
 }
 
 static int xhci_sync_dev_ctx(struct xhci_hcd *xhci, unsigned int slot_id)
@@ -248,7 +267,7 @@ out:
 	return is_video;
 }
 
-static struct xhci_hcd *get_xhci_hcd_by_udev(struct usb_device *udev)
+struct xhci_hcd *get_xhci_hcd_by_udev(struct usb_device *udev)
 {
 	struct usb_hcd *uhcd = container_of(udev->bus, struct usb_hcd, self);
 
@@ -267,84 +286,6 @@ static int sync_dev_ctx(struct xhci_hcd *xhci, unsigned int slot_id)
 	return ret;
 }
 
-static void xhci_reset_work(struct work_struct *ws)
-{
-	int rc;
-	struct xhci_vendor_data *vendor_data =
-		container_of(ws, struct xhci_vendor_data, xhci_vendor_reset_ws);
-	struct xhci_hcd *xhci = vendor_data->xhci;
-
-	if (mutex_lock_interruptible(&vendor_data->lock)) {
-		pr_err("xhci reset interrupted while waiting for lock\n");
-		return;
-	}
-
-	/*
-	 * After get the mutex, check the xhci->xhc_state before start to remove
-	 * and re-add hcd. If the xhci has gone, just give up this work.
-	 * NOTE: The headset might be removed during this work, so xhci->xhc_state
-	 * might become REMOVING before we finish this work in fact. However, we
-	 * just keep going this work, because later the cleanup will also remove
-	 * hcd again.
-	 */
-	if (IS_ERR_OR_NULL(xhci)) {
-		pr_err("xHCI null, drop offload reset work\n");
-		goto fail;
-	}
-
-	if (xhci->xhc_state & XHCI_STATE_DYING ||
-	    xhci->xhc_state & XHCI_STATE_REMOVING) {
-		xhci_err(xhci, "xHCI dying, drop offload reset work\n");
-		goto fail;
-	}
-
-	usb_remove_hcd(xhci->shared_hcd);
-	usb_remove_hcd(xhci->main_hcd);
-
-	vendor_data->op_mode = USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY;
-
-	rc = usb_add_hcd(xhci->main_hcd, xhci->main_hcd->irq, IRQF_SHARED);
-	if (rc) {
-		xhci_err(xhci, "add main hcd error: %d\n", rc);
-		goto fail;
-	}
-
-	rc = usb_add_hcd(xhci->shared_hcd, xhci->shared_hcd->irq, IRQF_SHARED);
-	if (rc) {
-		xhci_err(xhci, "add shared hcd error: %d\n", rc);
-		goto fail;
-	}
-
-	/* Setup USB root hub as a wakeup source */
-	device_set_wakeup_enable(&xhci->main_hcd->self.root_hub->dev, 1);
-	device_set_wakeup_enable(&xhci->shared_hcd->self.root_hub->dev, 1);
-
-	xhci_dbg(xhci, "xhci reset for usb audio offload was done\n");
-
-fail:
-	mutex_unlock(&vendor_data->lock);
-	return;
-}
-
-static void xhci_reset_for_usb_audio_offload(struct usb_device *udev)
-{
-	struct usb_device *rhdev = udev->parent;
-	struct xhci_vendor_data *vendor_data;
-	struct xhci_hcd *xhci;
-
-	if (!rhdev || rhdev->parent)
-		return;
-
-	xhci = get_xhci_hcd_by_udev(udev);
-	vendor_data = xhci_to_priv(xhci)->vendor_data;
-
-	if (!vendor_data->usb_audio_offload
-	    || vendor_data->op_mode != USB_OFFLOAD_STOP)
-		return;
-
-	schedule_work(&vendor_data->xhci_vendor_reset_ws);
-}
-
 static int xhci_udev_notify(struct notifier_block *self, unsigned long action,
 			    void *dev)
 {
@@ -360,7 +301,6 @@ static int xhci_udev_notify(struct notifier_block *self, unsigned long action,
 		if (is_compatible_with_usb_audio_offload(udev)) {
 			dev_dbg(&udev->dev,
 				 "Compatible with usb audio offload\n");
-			xhci_reset_for_usb_audio_offload(udev);
 			if (vendor_data->op_mode ==
 			    USB_OFFLOAD_SIMPLE_AUDIO_ACCESSORY ||
 				vendor_data->op_mode ==
@@ -556,8 +496,13 @@ static int usb_audio_offload_init(struct xhci_hcd *xhci)
 		return ret;
 	}
 
-	mutex_init(&vendor_data->lock);
-	INIT_WORK(&vendor_data->xhci_vendor_reset_ws, xhci_reset_work);
+	vendor_data->dt_direct_usb_access =
+		of_property_read_bool(dev->of_node, "direct-usb-access") ? true : false;
+	if (!vendor_data->dt_direct_usb_access)
+		dev_warn(dev, "Direct USB access is not supported\n");
+
+	vendor_data->offload_state = true;
+
 	usb_register_notify(&xhci_udev_nb);
 	vendor_data->op_mode = USB_OFFLOAD_DRAM;
 	vendor_data->xhci = xhci;
@@ -567,28 +512,9 @@ static int usb_audio_offload_init(struct xhci_hcd *xhci)
 	return 0;
 }
 
-static void usb_audio_offload_remove_hcd(struct xhci_hcd *xhci)
-{
-	struct xhci_vendor_data *vendor_data = xhci_to_priv(xhci)->vendor_data;
-
-	if (mutex_lock_interruptible(&vendor_data->lock)) {
-		xhci_err(xhci, "remove hcd interrupted while waiting for lock\n");
-		return;
-	}
-
-	usb_remove_hcd(xhci->shared_hcd);
-	xhci->shared_hcd = NULL;
-	usb_phy_shutdown(xhci->main_hcd->usb_phy);
-	usb_remove_hcd(xhci->main_hcd);
-
-	mutex_unlock(&vendor_data->lock);
-}
-
 static void usb_audio_offload_cleanup(struct xhci_hcd *xhci)
 {
 	struct xhci_vendor_data *vendor_data = xhci_to_priv(xhci)->vendor_data;
-
-	usb_audio_offload_remove_hcd(xhci);
 
 	vendor_data->usb_audio_offload = false;
 	vendor_data->op_mode = USB_OFFLOAD_STOP;
@@ -601,8 +527,6 @@ static void usb_audio_offload_cleanup(struct xhci_hcd *xhci)
 
 	/* Notification for xhci driver removing */
 	usb_host_mode_state_notify(USB_DISCONNECTED);
-
-	mutex_destroy(&vendor_data->lock);
 
 	kfree(vendor_data);
 	xhci_to_priv(xhci)->vendor_data = NULL;
@@ -643,7 +567,7 @@ static bool is_usb_offload_enabled(struct xhci_hcd *xhci,
 			if (is_usb_video_device(udev))
 				return false;
 			else if (ep_ring->type == TYPE_ISOC)
-				return true;
+				return vendor_data->offload_state;
 		}
 	}
 
