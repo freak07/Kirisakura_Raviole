@@ -28,6 +28,8 @@
 
 //#define UCI_LOG_DEBUG
 
+//#define UCI_PARSE_ON_INIT
+
 // comment these when callbacks implemented in drivers
 #define EMPTY_CALLBACKS_TORCH
 #define EMPTY_CALLBACKS_VIB
@@ -112,7 +114,7 @@ struct file* uci_fopen(const char* path, int flags, int rights) {
 
     if(IS_ERR(filp)) {
         err = PTR_ERR(filp);
-	if (err_count%10==0) { // throttle log
+	if (err_count%30==0) { // throttle log
 		pr_err("[uci]File Open Error:%s %d\n",path, err);
 	} else {
 		pr_debug("[uci]File Open Error:%s %d\n",path, err);
@@ -596,7 +598,9 @@ int uci_get_sys_property_int_mm(const char* property, int default_value, int min
 }
 EXPORT_SYMBOL(uci_get_sys_property_int_mm);
 
+#ifdef UCI_PARSE_ON_INIT
 static bool first_parse_done = 0;
+#endif
 
 static void do_reschedule(void);
 
@@ -613,6 +617,7 @@ static void parse_work_func(struct work_struct * parse_work_func_work)
 #endif
 	if (should_parse_user) parse_uci_user_cfg_file();
 	if (should_parse_sys) parse_uci_sys_cfg_file();
+#ifdef UCI_PARSE_ON_INIT
 	if (!first_parse_done) {
 		if (user_cfg_parsed) {
 			first_parse_done = true;
@@ -621,10 +626,13 @@ static void parse_work_func(struct work_struct * parse_work_func_work)
 			schedule_work(&reschedule_work);
 		}
 	}
+#endif
 }
+static int parse_reschedule_time = 10;
 static DECLARE_DELAYED_WORK(parse_work_func_work, parse_work_func);
 static void do_reschedule(void) {
-	schedule_delayed_work(&parse_work_func_work, 3 * 100);
+	schedule_delayed_work(&parse_work_func_work, ms_to_ktime(parse_reschedule_time * 1000));
+	parse_reschedule_time+=10;
 }
 // alarm timer
 static struct alarm parse_user_cfg_rtc;
@@ -712,7 +720,9 @@ static int fb_notifier_callback(
 	case MSM_DRM_BLANK_UNBLANK:
 		pr_info("uci screen on\n");
 		if (first_unblank) {
+#ifdef UCI_PARSE_ON_INIT
 			start_alarm_parse(20); // start in 40 sec, user cfg parse...
+#endif
 			first_unblank = 0;
 		}
 	    break;
