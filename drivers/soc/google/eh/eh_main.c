@@ -110,7 +110,7 @@ static DEFINE_SPINLOCK(eh_dev_list_lock);
 static DECLARE_WAIT_QUEUE_HEAD(eh_compress_wait);
 static unsigned int eh_default_fifo_size = 256;
 
-#define EH_SW_FIFO_SIZE	(1 << 14)
+#define EH_SW_FIFO_SIZE	(1 << 15)
 
 #define first_to_eh_request(head) (list_entry((head)->prev, \
 					      struct eh_request, list))
