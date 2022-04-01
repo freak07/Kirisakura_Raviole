@@ -41,6 +41,7 @@ per-file trace/events/edgetpu.h=*
 per-file trace/events/mfc.h=*
 per-file trace/events/thermal_exynos_gpu.h=*
 per-file trace/events/thermal_exynos.h=*
+per-file trace/events/power_meter.h=*
 per-file trace/events/ufs_exynos_perf.h=*
 per-file trace/events/ufs_pixel.h=*
 per-file trace/events/zram.h=*
