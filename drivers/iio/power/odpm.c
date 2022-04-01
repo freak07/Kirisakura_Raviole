@@ -32,6 +32,9 @@
 #include <linux/mfd/samsung/s2mpg10.h>
 #include <linux/mfd/samsung/s2mpg11.h>
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/power_meter.h>
+
 #define ODPM_PRINT_ESTIMATED_CLOCK_SKEW 0
 
 /* Cache accumulated values to prevent too frequent updates, allow a refresh
@@ -1306,6 +1309,18 @@ static ssize_t energy_value_show(struct device *dev,
 		pr_err("odpm: cannot retrieve energy values\n");
 		goto energy_value_show_exit;
 	}
+
+	/* Normally we start counter onces, thus use 't=X' info */
+	trace_power_meter(info->chip.id, info->chip.acc_timestamp_ms,
+			info->channels[0].acc_power_uW_sec,
+			info->channels[1].acc_power_uW_sec,
+			info->channels[2].acc_power_uW_sec,
+			info->channels[3].acc_power_uW_sec,
+			info->channels[4].acc_power_uW_sec,
+			info->channels[5].acc_power_uW_sec,
+			info->channels[6].acc_power_uW_sec,
+			info->channels[7].acc_power_uW_sec);
+
 
 	/**
 	 * Output format:
