@@ -195,6 +195,11 @@ struct odpm_info {
 
 	u64 last_poll_ktime_boot_ns;
 	bool sleeping;
+
+	struct workqueue_struct *tracing_wq;
+	struct delayed_work work;
+	unsigned int polling_ms;
+	bool tracing_on;
 };
 
 /**
@@ -1371,6 +1376,111 @@ static ssize_t available_rails_show(struct device *dev,
 	return count;
 }
 
+static void power_monitor_trace_dump(struct odpm_info *info)
+{
+	trace_power_meter(info->chip.id, info->chip.acc_timestamp_ms,
+			info->channels[0].acc_power_uW_sec,
+			info->channels[1].acc_power_uW_sec,
+			info->channels[2].acc_power_uW_sec,
+			info->channels[3].acc_power_uW_sec,
+			info->channels[4].acc_power_uW_sec,
+			info->channels[5].acc_power_uW_sec,
+			info->channels[6].acc_power_uW_sec,
+			info->channels[7].acc_power_uW_sec);
+}
+
+static void power_monitor(struct work_struct *work)
+{
+	struct odpm_info *info = container_of(work,
+					struct odpm_info, work.work);
+
+	mutex_lock(&info->lock);
+	if (odpm_take_snapshot_locked(info) < 0)
+		goto try_again_later;
+
+	power_monitor_trace_dump(info);
+
+try_again_later:
+	if (info->tracing_on)
+		queue_delayed_work(info->tracing_wq, &info->work,
+				msecs_to_jiffies(info->polling_ms));
+
+	mutex_unlock(&info->lock);
+}
+
+static ssize_t trace_trigger_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
+	struct odpm_info *info = iio_priv(indio_dev);
+	int ret;
+
+	mutex_lock(&info->lock);
+
+	ret = scnprintf(buf, PAGE_SIZE, "polling_ms=%d tracing_on=%d\n",
+			info->polling_ms, info->tracing_on);
+
+	mutex_unlock(&info->lock);
+
+	return ret;
+}
+
+static ssize_t trace_trigger_store(struct device *dev,
+				   struct device_attribute *attr,
+				   const char *buf, size_t count)
+{
+	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
+	struct odpm_info *info = iio_priv(indio_dev);
+	const int polling_min = 10;
+	int ret, polling_ms;
+
+	if (!info->tracing_wq)
+		return -EINVAL;
+
+	ret = sscanf(buf, "%d", &polling_ms);
+	if (ret < 0)
+		return -EINVAL;
+
+
+	mutex_lock(&info->lock);
+
+	/* If tracing is working, we cannot change the polling, only stop */
+	if (info->tracing_on) {
+		if (polling_ms == 0) {
+			cancel_delayed_work_sync(&info->work);
+			info->tracing_on = false;
+			ret = count;
+		} else {
+			ret = -EINVAL;
+		}
+
+		goto finish_and_unlock;
+	}
+
+	if (polling_ms < polling_min) {
+		dev_warn(dev, "Polling ms set too low, min=%d\n", polling_min);
+		ret = -EINVAL;
+		goto finish_and_unlock;
+	}
+
+	INIT_DELAYED_WORK(&info->work, power_monitor);
+
+	info->polling_ms = polling_ms;
+	info->tracing_on = true;
+
+	power_monitor_trace_dump(info);
+
+	queue_delayed_work(info->tracing_wq, &info->work,
+				msecs_to_jiffies(info->polling_ms));
+
+	ret = count;
+
+finish_and_unlock:
+	mutex_unlock(&info->lock);
+
+	return ret;
+}
+
 static ssize_t enabled_rails_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
@@ -1631,6 +1741,7 @@ static IIO_DEVICE_ATTR_RW(enabled_rails, 0);
 static IIO_DEVICE_ATTR_RO(measurement_start, 0);
 static IIO_DEVICE_ATTR_RO(measurement_stop, 0);
 static IIO_DEVICE_ATTR_RW(power_lpf, 0);
+static IIO_DEVICE_ATTR_RW(trace_trigger, 0);
 
 /**
  * TODO(stayfan): b/156109194
@@ -1649,7 +1760,7 @@ static struct attribute *odpm_custom_attributes[] = {
 	ODPM_DEV_ATTR(energy_value),	 ODPM_DEV_ATTR(available_rails),
 	ODPM_DEV_ATTR(enabled_rails),	 ODPM_DEV_ATTR(measurement_start),
 	ODPM_DEV_ATTR(measurement_stop), ODPM_DEV_ATTR(power_lpf),
-	NULL
+	ODPM_DEV_ATTR(trace_trigger), NULL
 };
 
 static const struct attribute_group odpm_group = {
@@ -1714,6 +1825,16 @@ static int odpm_remove(struct platform_device *pdev)
 		cancel_work_sync(&info->work_refresh);
 		flush_workqueue(info->work_queue);
 		destroy_workqueue(info->work_queue);
+	}
+
+	if (info->tracing_wq) {
+		mutex_lock(&info->lock);
+		cancel_delayed_work_sync(&info->work);
+		info->tracing_on = false;
+		mutex_unlock(&info->lock);
+
+		flush_workqueue(info->tracing_wq);
+		destroy_workqueue(info->tracing_wq);
 	}
 
 	/* free the channel attributes memory */
@@ -1857,6 +1978,11 @@ static int odpm_probe(struct platform_device *pdev)
 	device_enable_async_suspend(&pdev->dev);
 
 	mutex_init(&odpm_info->lock);
+
+	odpm_info->tracing_wq = create_freezable_workqueue("power_meter_wq");
+	if (!odpm_info->tracing_wq) {
+		pr_warn("odpm: Couldn't create tracing workqueue\n");
+	}
 
 	pr_info("odpm: %s: init completed\n", pdev->name);
 
