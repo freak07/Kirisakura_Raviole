@@ -1192,6 +1192,9 @@
   ns_to_timespec64
   ntf_camera_started
   ntf_camera_stopped
+  ntf_is_camera_on
+  ntf_is_screen_on
+  ntf_wake_by_user
   __num_online_cpus
   nvmem_device_put
   nvmem_device_read
