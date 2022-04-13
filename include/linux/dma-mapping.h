@@ -62,6 +62,7 @@
 #define DMA_ATTR_PRIVILEGED		(1UL << 9)
 
 /*
+
  * DMA_ATTR_SYS_CACHE_ONLY: used to indicate that the buffer should be mapped
  * with the correct memory attributes so that it can be cached in the system
  * or last level cache. This is useful for buffers that are being mapped for
@@ -77,6 +78,14 @@
  * but can use the system cache.
  */
 #define DMA_ATTR_SYS_CACHE_ONLY_NWA	(1UL << 11)
+
+/*
+ * This is a hint to the DMA-mapping subsystem that the device is expected
+ * to overwrite the entire mapped size, thus the caller does not require any
+ * of the previous buffer contents to be preserved. This allows
+ * bounce-buffering implementations to optimise DMA_FROM_DEVICE transfers.
+ */
+#define DMA_ATTR_OVERWRITE		(1UL << 12)
 
 /*
  * A dma_addr_t can hold any valid DMA or bus address for the platform.  It can
