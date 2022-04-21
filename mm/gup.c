@@ -1644,7 +1644,7 @@ check_again:
 
 		ret = migrate_pages(&cma_page_list, alloc_migration_target,
 				    NULL, (unsigned long)&mtc, MIGRATE_SYNC,
-				    MR_CONTIG_RANGE, NULL);
+				    MR_CONTIG_RANGE);
 		if (ret) {
 			if (!list_empty(&cma_page_list))
 				putback_movable_pages(&cma_page_list);
