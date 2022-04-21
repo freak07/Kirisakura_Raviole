@@ -86,8 +86,9 @@ static void __page_cache_release(struct page *page)
 
 		lruvec = lock_page_lruvec_irqsave(page, &flags);
 		VM_BUG_ON_PAGE(!PageLRU(page), page);
+		__ClearPageLRU(page);
 		del_page_from_lru_list(page, lruvec);
-		__clear_page_lru_flags(page);
+		page_off_lru(page);
 		unlock_page_lruvec_irqrestore(lruvec, flags);
 	}
 	__ClearPageWaiters(page);
@@ -1036,8 +1037,9 @@ void release_pages(struct page **pages, int nr)
 				lock_batch = 0;
 
 			VM_BUG_ON_PAGE(!PageLRU(page), page);
+			__ClearPageLRU(page);
 			del_page_from_lru_list(page, lruvec);
-			__clear_page_lru_flags(page);
+			page_off_lru(page);
 		}
 
 		__ClearPageWaiters(page);
