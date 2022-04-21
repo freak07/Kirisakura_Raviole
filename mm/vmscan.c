@@ -2725,21 +2725,6 @@ out:
 	}
 }
 
-/*
- * Anonymous LRU management is a waste if there is
- * ultimately no way to reclaim the memory.
- */
-static bool can_age_anon_pages(struct pglist_data *pgdat,
-			       struct scan_control *sc)
-{
-	/* Aging the anon LRU is valuable if swap is present: */
-	if (total_swap_pages > 0)
-		return true;
-
-	/* Also valuable if anon pages can be demoted: */
-	return can_demote(pgdat->node_id, sc);
-}
-
 #ifdef CONFIG_LRU_GEN
 
 #ifdef CONFIG_LRU_GEN_ENABLED
@@ -5447,8 +5432,7 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	 * Even if we did not try to evict anon pages at all, we want to
 	 * rebalance the anon lru active/inactive ratio.
 	 */
-	if (can_age_anon_pages(lruvec_pgdat(lruvec), sc) &&
-	    inactive_is_low(lruvec, LRU_INACTIVE_ANON))
+	if (total_swap_pages && inactive_is_low(lruvec, LRU_INACTIVE_ANON))
 		shrink_active_list(SWAP_CLUSTER_MAX, lruvec,
 				   sc, LRU_ACTIVE_ANON);
 }
@@ -6205,7 +6189,7 @@ static void age_active_anon(struct pglist_data *pgdat,
 		return;
 	}
 
-	if (!can_age_anon_pages(pgdat, sc))
+	if (!total_swap_pages)
 		return;
 
 	lruvec = mem_cgroup_lruvec(NULL, pgdat);
