@@ -331,8 +331,6 @@ static bool writeback_throttling_sane(struct scan_control *sc)
 
 static bool can_demote(int nid, struct scan_control *sc)
 {
-	if (!numa_demotion_enabled)
-		return false;
 	if (sc) {
 		if (sc->no_demotion)
 			return false;
@@ -343,7 +341,8 @@ static bool can_demote(int nid, struct scan_control *sc)
 	if (next_demotion_node(nid) == NUMA_NO_NODE)
 		return false;
 
-	return true;
+	// FIXME: actually enable this later in the series
+	return false;
 }
 
 static inline bool can_reclaim_anon_pages(struct mem_cgroup *memcg,
