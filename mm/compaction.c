@@ -923,7 +923,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * not falsely conclude that the block should be skipped.
 		 */
 		if (!valid_page && pageblock_aligned(low_pfn)) {
-			if (!cc->ignore_skip_hint && get_pageblock_skip(page)) {
+			if (!isolation_suitable(cc, page)) {
 				low_pfn = end_pfn;
 				page = NULL;
 				goto isolate_abort;
