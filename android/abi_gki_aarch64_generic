@@ -1638,6 +1638,7 @@
   set_page_dirty
   set_page_dirty_lock
   __SetPageMovable
+  set_user_nice
   sg_alloc_table
   sg_alloc_table_from_pages
   sg_free_table
