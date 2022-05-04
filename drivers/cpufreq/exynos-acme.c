@@ -1047,6 +1047,25 @@ init_fops(struct exynos_cpufreq_domain *domain, struct cpufreq_policy *policy)
 	return 0;
 }
 
+static int _init_opp_table_dt(struct device *cpu_dev, struct cpumask *cpumask)
+{
+	int ret;
+
+	ret = dev_pm_opp_of_cpumask_add_table(cpumask);
+	if (ret) {
+		dev_err(cpu_dev, "OPP table cannot be added\n");
+		return -EINVAL;
+	}
+
+	ret = dev_pm_opp_get_opp_count(cpu_dev);
+	if (ret <= 0) {
+		dev_err(cpu_dev, "OPP table can't be empty\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int init_domain(struct exynos_cpufreq_domain *domain,
 		       struct device_node *dn)
 {
@@ -1056,7 +1075,7 @@ static int init_domain(struct exynos_cpufreq_domain *domain,
 	unsigned int *volt_table;
 	const char *buf;
 	struct device *cpu_dev;
-	int ret;
+	int ret, init_ret;
 	unsigned int resume_freq = 0;
 
 	/* Get CAL ID */
@@ -1182,22 +1201,39 @@ static int init_domain(struct exynos_cpufreq_domain *domain,
 		return -ENODEV;
 	}
 
-	/*
-	 * Add OPP table for thermal.
-	 * Thermal CPU cooling is based on the OPP table.
-	 */
-	for (index = 0; index < orig_table_size; index++) {
-		int cpu;
+	cpu_dev = get_cpu_device(cpumask_first(&domain->cpus));
+	if (cpu_dev) {
+		init_ret = _init_opp_table_dt(cpu_dev, &domain->cpus);
 
-		if (freq_table[index] > domain->max_freq)
-			continue;
-		if (freq_table[index] < domain->min_freq)
-			continue;
+		for (index = 0; index < orig_table_size; index++) {
+			unsigned long freq_hz = freq_table[index] * 1000;
+			unsigned long volt = volt_table[index];
 
-		for_each_cpu_and(cpu, &domain->cpus, cpu_possible_mask)
-			dev_pm_opp_add(get_cpu_device(cpu),
-				       freq_table[index] * 1000,
-				       volt_table[index]);
+			if (freq_table[index] > domain->max_freq)
+				continue;
+			if (freq_table[index] < domain->min_freq)
+				continue;
+
+			/*
+			 * If there was no OPP table in DT or there was an
+			 * error in setup, add dynamic OPPs manually.
+			 */
+			if (!init_ret) {
+				ret = dev_pm_opp_adjust_voltage(cpu_dev,
+								freq_hz,
+								volt, volt,
+								volt);
+				if (ret)
+					dev_dbg(cpu_dev,
+						"Voltage update failed freq=%lu\n",
+						freq_hz);
+				else
+					dev_pm_opp_enable(cpu_dev, freq_hz);
+			} else {
+				dev_pm_opp_add(cpu_dev, freq_hz,
+						volt_table[index]);
+			}
+		}
 	}
 
 	kfree(freq_table);
@@ -1227,7 +1263,6 @@ static int init_domain(struct exynos_cpufreq_domain *domain,
 	 */
 	init_dm(domain, dn);
 
-	cpu_dev = get_cpu_device(cpumask_first(&domain->cpus));
 	dev_pm_opp_of_register_em(cpu_dev, &domain->cpus);
 
 	pr_info("Complete to initialize cpufreq-domain%d\n", domain->id);
