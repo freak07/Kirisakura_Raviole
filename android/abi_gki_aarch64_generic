@@ -783,7 +783,6 @@
   get_net_ns_by_pid
   get_pid_task
   get_random_bytes
-  get_random_bytes_arch
   get_random_u32
   get_sg_io_hdr
   __get_task_comm
@@ -1174,7 +1173,6 @@
   netlink_unregister_notifier
   net_ns_type_operations
   net_ratelimit
-  nla_append
   nla_find
   nla_memcpy
   __nla_parse
@@ -2258,7 +2256,6 @@
   wakeup_source_create
   wakeup_source_destroy
   wakeup_source_register
-  wakeup_source_remove
   wakeup_source_unregister
   __wake_up_sync
   __warn_printk
@@ -2312,6 +2309,7 @@
   drm_mode_copy
   drm_plane_create_zpos_immutable_property
   drm_property_create_signed_range
+  get_random_bytes_arch
   get_user_pages_remote
   hid_add_device
   hid_allocate_device
@@ -2324,6 +2322,7 @@
   lru_cache_enable
   mktime64
   napi_gro_flush
+  nla_append
   of_find_backlight_by_node
   param_ops_short
   regmap_irq_get_virq
@@ -2348,3 +2347,4 @@
   __tracepoint_android_vh_typec_tcpm_adj_current_limit
   __update_load_avg_blocked_se
   wait_for_completion_killable_timeout
+  wakeup_source_remove
