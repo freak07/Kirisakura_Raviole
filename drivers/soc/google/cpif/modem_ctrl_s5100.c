@@ -328,8 +328,8 @@ static irqreturn_t cp_active_handler(int irq, void *data)
 	if (ld->crash_reason.type == CRASH_REASON_NONE)
 		ld->crash_reason.type = CRASH_REASON_CP_ACT_CRASH;
 
-	mif_info("Set s5100_cp_reset_required to false\n");
 	mc->s5100_cp_reset_required = false;
+	mif_info("Set s5100_cp_reset_required to 0\n");
 
 	if (old_state != new_state) {
 		mif_err("new_state = %s\n", cp_state_str(new_state));
@@ -520,35 +520,80 @@ static int init_control_messages(struct modem_ctl *mc)
 	return 0;
 }
 
-static int request_pcie_msi_int(struct link_device *ld,
-				struct platform_device *pdev)
+static void set_pcie_msi_int(struct link_device *ld, bool enabled)
 {
+	struct mem_link_device *mld = to_mem_link_device(ld);
+	int irq;
+	bool *irq_wake;
+#if IS_ENABLED(CONFIG_CP_PKTPROC)
+	struct pktproc_adaptor *ppa = &mld->pktproc;
+	unsigned int q_idx = 0;
+#endif
+
+	if (!mld->msi_irq_base)
+		return;
+
+	irq = mld->msi_irq_base;
+	irq_wake = &mld->msi_irq_base_wake;
+
+	do {
+		if (enabled) {
+			int err;
+
+			if (!mld->msi_irq_enabled)
+				enable_irq(irq);
+
+			if (!*irq_wake) {
+				err = enable_irq_wake(irq);
+				*irq_wake = !err;
+			}
+		} else {
+			if (mld->msi_irq_enabled)
+				disable_irq(irq);
+
+			if (*irq_wake) {
+				disable_irq_wake(irq);
+				*irq_wake = false;
+			}
+		}
+
+		irq = 0;
+#if IS_ENABLED(CONFIG_CP_PKTPROC)
+		if (q_idx < ppa->num_queue) {
+			struct pktproc_queue *q = ppa->q[q_idx];
+
+			irq = q->irq;
+			irq_wake = &q->msi_irq_wake;
+			q_idx++;
+		}
+#endif
+	} while (irq);
+
+	mld->msi_irq_enabled = enabled;
+}
+
+static int request_pcie_int(struct link_device *ld, struct platform_device *pdev)
+{
+#define DOORBELL_INT_MASK(x)	((x) | 0x10000)
+
 	int ret, base_irq;
 	struct mem_link_device *mld = to_mem_link_device(ld);
 	struct device *dev = &pdev->dev;
 	struct modem_ctl *mc = ld->mc;
+	struct modem_data *modem = mc->mdm_data;
 	int irq_offset = 0;
-#if IS_ENABLED(CONFIG_CP_PKTPROC)
-	struct pktproc_adaptor *ppa = &mld->pktproc;
-	int i;
-#endif
 
-	mif_info("Request MSI interrupt.\n");
+	/* Doorbell */
+	mld->intval_ap2cp_msg = DOORBELL_INT_MASK(modem->mbx->int_ap2cp_msg);
+	mld->intval_ap2cp_pcie_link_ack = DOORBELL_INT_MASK(modem->mbx->int_ap2cp_pcie_link_ack);
 
-#if IS_ENABLED(CONFIG_CP_PKTPROC)
-	if (ppa->use_exclusive_irq)
-		base_irq = s51xx_pcie_request_msi_int(mc->s51xx_pdev, 5);
-	else
-#endif
-		base_irq = s51xx_pcie_request_msi_int(mc->s51xx_pdev, 4);
-
-	mif_info("Request MSI interrupt. : BASE_IRQ(%d)\n", base_irq);
-	mld->msi_irq_base = base_irq;
-
+	/* MSI */
+	base_irq = s51xx_pcie_request_msi_int(mc->s51xx_pdev, 4);
 	if (base_irq <= 0) {
 		mif_err("Can't get MSI IRQ!!!\n");
 		return -EFAULT;
 	}
+	mif_info("MSI base_irq(%d)\n", base_irq);
 
 	ret = devm_request_irq(dev, base_irq + irq_offset, shmem_irq_handler,
 			       IRQF_SHARED, "mif_cp2ap_msg", mld);
@@ -567,23 +612,28 @@ static int request_pcie_msi_int(struct link_device *ld,
 	irq_offset++;
 
 #if IS_ENABLED(CONFIG_CP_PKTPROC)
-	if (ppa->use_exclusive_irq) {
+	if (mld->pktproc.use_exclusive_irq) {
+		struct pktproc_adaptor *ppa = &mld->pktproc;
+		unsigned int i;
+
 		for (i = 0; i < ppa->num_queue; i++) {
 			struct pktproc_queue *q = ppa->q[i];
 
-			q->irq = mld->msi_irq_base + irq_offset + q->irq_idx;
-			ret = devm_request_irq(dev, q->irq, q->irq_handler,
-					       IRQF_SHARED, "pktproc", q);
-			if (ret) {
-				mif_err("devm_request_irq() for pktproc%d error %d\n", i, ret);
+			ret = register_separated_msi_vector(mc->pcie_ch_num, q->irq_handler, q,
+							    &q->irq);
+			if (ret < 0) {
+				mif_err("register_separated_msi_vector for pktproc q[%u] err:%d\n",
+					i, ret);
+				q->irq = 0;
 				return -EIO;
 			}
-			irq_offset++;
 		}
 	}
 #endif
 
-	mld->msi_irq_base_enabled = 1;
+	mld->msi_irq_base = base_irq;
+	mld->msi_irq_enabled = true;
+	set_pcie_msi_int(ld, true);
 
 	return base_irq;
 }
@@ -669,7 +719,7 @@ static int register_pcie(struct link_device *ld)
 		// debug: pci_read_config_dword(s51xx_pcie.s51xx_pdev, 0x50, &msi_val);
 		// debug: mif_err("MSI Control Reg : 0x%x\n", msi_val);
 
-		request_pcie_msi_int(ld, pdev);
+		request_pcie_int(ld, pdev);
 		first_save_s51xx_status(mc->s51xx_pdev);
 
 		is_registered = 1;
@@ -717,6 +767,16 @@ static void gpio_power_offon_cp(struct modem_ctl *mc)
 #endif
 }
 
+static void gpio_power_wreset_cp(struct modem_ctl *mc)
+{
+#if !IS_ENABLED(CONFIG_CP_WRESET_WA)
+	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_CP_WRST_N], 0, 50);
+	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_PM_WRST_N], 0, 50);
+	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_PM_WRST_N], 1, 50);
+	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_CP_WRST_N], 1, 50);
+#endif
+}
+
 static int power_on_cp(struct modem_ctl *mc)
 {
 	struct link_device *ld = get_current_link(mc->iod);
@@ -734,7 +794,12 @@ static int power_on_cp(struct modem_ctl *mc)
 	if (!cpif_wake_lock_active(mc->ws))
 		cpif_wake_lock(mc->ws);
 
-	mc->phone_state = STATE_OFFLINE;
+	if (mc->phone_state != STATE_OFFLINE) {
+		change_modem_state(mc, STATE_RESET);
+		msleep(STATE_RESET_INTERVAL_MS);
+	}
+	change_modem_state(mc, STATE_OFFLINE);
+
 	pcie_clean_dislink(mc);
 
 	mc->pcie_registered = false;
@@ -842,16 +907,10 @@ static int power_reset_dump_cp(struct modem_ctl *mc)
 #endif
 
 	mif_info("s5100_cp_reset_required:%d\n", mc->s5100_cp_reset_required);
-	if (mc->s5100_cp_reset_required) {
+	if (mc->s5100_cp_reset_required)
 		gpio_power_offon_cp(mc);
-	} else {
-#if !IS_ENABLED(CONFIG_CP_WRESET_WA)
-		mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_CP_WRST_N], 0, 50);
-		mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_PM_WRST_N], 0, 50);
-		mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_PM_WRST_N], 1, 50);
-		mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_CP_WRST_N], 1, 50);
-#endif
-	}
+	else
+		gpio_power_wreset_cp(mc);
 
 	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_AP_ACTIVE], 1, 0);
 	print_mc_state(mc);
@@ -1173,11 +1232,7 @@ static int trigger_cp_crash_internal(struct modem_ctl *mc)
 		mif_err("do not need to set dump_noti\n");
 	}
 
-	if (ld->protocol == PROTOCOL_SIT &&
-			crash_type == CRASH_REASON_RIL_TRIGGER_CP_CRASH)
-		ld->link_trigger_cp_crash(mld, crash_type, ld->crash_reason.string);
-	else
-		ld->link_trigger_cp_crash(mld, crash_type, "Forced crash is called");
+	ld->link_trigger_cp_crash(mld, crash_type, "Forced crash is called");
 
 exit:
 	mif_err("---\n");
@@ -1319,10 +1374,7 @@ static int s5100_poweroff_pcie(struct modem_ctl *mc, bool force_off)
 		}
 	}
 
-	if (mld->msi_irq_base_enabled == 1) {
-		disable_irq(mld->msi_irq_base);
-		mld->msi_irq_base_enabled = 0;
-	}
+	set_pcie_msi_int(ld, false);
 
 	if (mc->device_reboot) {
 		mif_err("skip pci power off : device is rebooting..!!!\n");
@@ -1446,15 +1498,13 @@ int s5100_poweron_pcie(struct modem_ctl *mc, bool boot_on)
 		mif_err("DBG: MSI sfr not set up, yet(s5100_pdev is NULL)");
 	}
 
-	if (mld->msi_irq_base_enabled == 0) {
-		enable_irq(mld->msi_irq_base);
-		mld->msi_irq_base_enabled = 1;
-	}
+	set_pcie_msi_int(ld, true);
 
 	if ((mc->s51xx_pdev != NULL) && mc->pcie_registered) {
 		/* DBG */
 		mif_info("DBG: doorbell: pcie_registered = %d\n", mc->pcie_registered);
-		if (s51xx_pcie_send_doorbell_int(mc->s51xx_pdev, mc->int_pcie_link_ack) != 0) {
+		if (s51xx_pcie_send_doorbell_int(mc->s51xx_pdev,
+						 mld->intval_ap2cp_pcie_link_ack) != 0) {
 			/* DBG */
 			mif_err("DBG: s5100pcie_send_doorbell_int() func. is failed !!!\n");
 			s5100_force_crash_exit_ext();
@@ -1489,6 +1539,30 @@ exit:
 		s5100_force_crash_exit_ext();
 
 	return 0;
+}
+
+void s5100_set_pcie_irq_affinity(struct modem_ctl *mc)
+{
+	struct link_device *ld = get_current_link(mc->iod);
+	struct mem_link_device *mld = to_mem_link_device(ld);
+#if IS_ENABLED(CONFIG_CP_PKTPROC)
+	struct pktproc_adaptor *ppa = &mld->pktproc;
+	unsigned int num_queue = 1;
+	unsigned int i;
+
+	if (ppa->use_exclusive_irq)
+		num_queue = ppa->num_queue;
+
+	for (i = 0; i < num_queue; i++) {
+		if (!ppa->q[i]->irq)
+			break;
+
+		irq_set_affinity_hint(ppa->q[i]->irq, cpumask_of(mld->msi_irq_q_cpu[i]));
+	}
+#endif
+
+	if (mld->msi_irq_base)
+		irq_set_affinity_hint(mld->msi_irq_base, cpumask_of(mld->msi_irq_base_cpu));
 }
 
 int s5100_set_outbound_atu(struct modem_ctl *mc, struct cp_btl *btl, loff_t *pos, u32 map_size)
@@ -1539,6 +1613,8 @@ static int resume_cp(struct modem_ctl *mc)
 	if (!mc)
 		return 0;
 
+	s5100_set_pcie_irq_affinity(mc);
+
 #if IS_ENABLED(CONFIG_GS_S2MPU)
 
 	if (!mc->s2mpu)
@@ -1556,6 +1632,7 @@ static int resume_cp(struct modem_ctl *mc)
 	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_AP_ACTIVE], 1, 0);
 	mif_gpio_get_value(&mc->cp_gpio[CP_GPIO_AP2CP_AP_ACTIVE], true);
 #endif
+
 	return 0;
 }
 
@@ -1706,9 +1783,6 @@ static int s5100_get_pdata(struct modem_ctl *mc, struct modem_data *pdata)
 			return -EINVAL;
 		}
 	}
-
-	mif_dt_read_u32(np, "mif,int_ap2cp_pcie_link_ack", mc->int_pcie_link_ack);
-	mc->int_pcie_link_ack += DOORBELL_INT_ADD;
 
 	/* Get PCIe Channel Number */
 	mif_dt_read_u32(np, "pci_ch_num", mc->pcie_ch_num);

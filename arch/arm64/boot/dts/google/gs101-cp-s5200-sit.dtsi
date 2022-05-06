@@ -156,7 +156,6 @@
 				pktproc_dl_desc_mode = <1>;
 				pktproc_dl_num_queue = <1>;
 				pktproc_dl_use_exclusive_irq = <0>;
-				pktproc_dl_use_napi = <1>;
 				/* H/W IO cache coherency */
 				pktproc_dl_use_hw_iocc = <1>;
 				pktproc_dl_max_packet_size = <2048>;
@@ -282,11 +281,11 @@
 					tpmon_irq_affinity_0 {
 						boost_name = "IRQ_0";
 						target = <TPMON_TARGET_IRQ_PCIE>;
-						extra_idx = <0>;
-						level = <0 5>;
+						extra_idx = <3>;
+						level = <0x04 0x20>;
 
 						boost0 {
-							enable = <0>;
+							enable = <1>;
 							measure = <TPMON_MEASURE_TP>;
 							proto = <TPMON_PROTO_ALL>;
 							boost_threshold = <500>;
@@ -298,7 +297,7 @@
 						boost_name = "IRQ_DIT";
 						target = <TPMON_TARGET_IRQ_DIT>;
 						extra_idx = <0>;
-						level = <2 5>;
+						level = <0x04 0x20>;
 
 						boost0 {
 							enable = <1>;
@@ -359,7 +358,7 @@
 						iod,format = <IPC_RAW>;
 						iod,io_type = <IODEV_IPC>;
 						iod,link_type = <LINKDEV_PCIE>;
-						iod,attrs = <(0x0)>;
+						iod,attrs = <(IO_ATTR_STATE_RESET_NOTI)>;
 					};
 					io_device_4 {
 						iod,name = "umts_loopback";

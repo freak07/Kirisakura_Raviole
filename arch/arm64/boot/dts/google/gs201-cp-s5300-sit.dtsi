@@ -146,17 +146,16 @@
 				 * by reserved mem size
 				 */
 
-				pktproc_dl_info_rgn_cached = <0>;
-				pktproc_dl_desc_rgn_cached = <0>;
+				pktproc_dl_info_rgn_cached = <1>;
+				pktproc_dl_desc_rgn_cached = <1>;
 				pktproc_dl_buff_rgn_cached = <1>;
 
 				/* 0:ringbuf mode, 1:sktbuf mode */
 				pktproc_dl_desc_mode = <1>;
-				pktproc_dl_num_queue = <1>;
-				pktproc_dl_use_exclusive_irq = <0>;
-				pktproc_dl_use_napi = <1>;
+				pktproc_dl_num_queue = <4>;
+				pktproc_dl_use_exclusive_irq = <1>;
 				/* H/W IO cache coherency */
-				pktproc_dl_use_hw_iocc = <0>;
+				pktproc_dl_use_hw_iocc = <1>;
 				pktproc_dl_max_packet_size = <1628>;
 				pktproc_dl_use_dedicated_baaw = <0>;
 
@@ -172,10 +171,10 @@
 				pktproc_ul_num_queue = <2>;
 				pktproc_ul_max_packet_size = <2048>;
 				pktproc_ul_hiprio_ack_only = <1>;
-				pktproc_ul_info_rgn_cached = <0>;
-				pktproc_ul_desc_rgn_cached = <0>;
-				pktproc_ul_buff_rgn_cached = <0>;
-				pktproc_ul_use_hw_iocc = <0>; /* H/W IO cache coherency */
+				pktproc_ul_info_rgn_cached = <1>;
+				pktproc_ul_desc_rgn_cached = <1>;
+				pktproc_ul_buff_rgn_cached = <1>;
+				pktproc_ul_use_hw_iocc = <1>; /* H/W IO cache coherency */
 
 				/* TPMON: CP throughput monitor */
 				cpif_tpmon {
@@ -207,14 +206,14 @@
 						boost_name = "GRO";
 						target = <TPMON_TARGET_GRO>;
 						extra_idx = <0>;
-						level = <2000000 2000000 2000000>;
+						level = <250000 2000000>;
 
 						boost0 {
 							enable = <1>;
 							measure = <TPMON_MEASURE_TP>;
 							proto = <TPMON_PROTO_ALL>;
-							boost_threshold = <100 200>;
-							unboost_threshold_mbps = <50 120>;
+							boost_threshold = <100>;
+							unboost_threshold_mbps = <50>;
 						};
 					};
 
@@ -281,11 +280,11 @@
 					tpmon_irq_affinity_0 {
 						boost_name = "IRQ_0";
 						target = <TPMON_TARGET_IRQ_PCIE>;
-						extra_idx = <0>;
-						level = <0 5>;
+						extra_idx = <3>;
+						level = <0x0C 0x30>;
 
 						boost0 {
-							enable = <0>;
+							enable = <1>;
 							measure = <TPMON_MEASURE_TP>;
 							proto = <TPMON_PROTO_ALL>;
 							boost_threshold = <500>;
@@ -297,7 +296,7 @@
 						boost_name = "IRQ_DIT";
 						target = <TPMON_TARGET_IRQ_DIT>;
 						extra_idx = <0>;
-						level = <2 5>;
+						level = <0x04 0x20>;
 
 						boost0 {
 							enable = <0>;
@@ -358,7 +357,7 @@
 						iod,format = <IPC_RAW>;
 						iod,io_type = <IODEV_IPC>;
 						iod,link_type = <LINKDEV_PCIE>;
-						iod,attrs = <(0x0)>;
+						iod,attrs = <(IO_ATTR_STATE_RESET_NOTI)>;
 					};
 					io_device_4 {
 						iod,name = "umts_loopback";
@@ -465,7 +464,7 @@
 						region,rmem = <0>;
 						region,offset = <0x00000000>;
 						region,size = <0x00800000>;
-						region,cached = <0>;
+						region,cached = <1>;
 					};
 					msi {
 						region,name = "MSI";

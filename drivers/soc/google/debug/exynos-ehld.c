@@ -23,6 +23,7 @@
 #include <soc/google/exynos-ehld.h>
 #include <soc/google/exynos-coresight.h>
 #include <soc/google/debug-snapshot.h>
+#include <soc/google/sjtag-driver.h>
 
 #include "core_regs.h"
 
@@ -249,8 +250,8 @@ static enum hrtimer_restart ehld_value_raw_hrtimer_fn(struct hrtimer *hrtimer)
 		return HRTIMER_NORESTART;
 	}
 
-	exynos_ehld_do_policy();
 	exynos_ehld_value_raw_update(cpu);
+	exynos_ehld_do_policy();
 
 	ehld_info(0, "@%s: cpu%u hrtimer is running\n", __func__, cpu);
 
@@ -287,11 +288,23 @@ void ehld_tick_sched_timer(void)
 	ehld_info(0, "@%s: cpu%u hrtimer is running\n", __func__, cpu);
 }
 
+static void exynos_ehld_start_cpu_hrtimer(void *data)
+{
+	struct hrtimer *hrtimer = (struct hrtimer *)data;
+	u64 interval = ehld_main.dbgc.interval * 1000 * 1000;
+
+	hrtimer_start(hrtimer, ns_to_ktime(interval), HRTIMER_MODE_REL_PINNED);
+}
+
 static int exynos_ehld_start_cpu(unsigned int cpu)
 {
 	struct exynos_ehld_ctrl *ctrl = per_cpu_ptr(&ehld_ctrl, cpu);
 	struct perf_event *event = ctrl->event;
 	struct hrtimer *hrtimer = &ctrl->hrtimer;
+
+	/* during resume, need to handle cpu 0 here from cpu 1 context */
+	if (ehld_main.suspending && cpu == 1)
+		exynos_ehld_start_cpu(0);
 
 	if (!event) {
 		event = perf_event_create_kernel_counter(&exynos_ehld_attr,
@@ -310,9 +323,6 @@ static int exynos_ehld_start_cpu(unsigned int cpu)
 		perf_event_enable(event);
 	}
 
-	if (ctrl->ehld_running)
-		return 0;
-
 	ctrl->ehld_running = 1;
 	ehld_info(1, "@%s: cpu%u ehld running\n", __func__, cpu);
 
@@ -325,7 +335,10 @@ static int exynos_ehld_start_cpu(unsigned int cpu)
 		ehld_info(1, "@%s: cpu%u ehld running with hrtimer\n", __func__, cpu);
 		hrtimer_init(hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 		hrtimer->function = ehld_value_raw_hrtimer_fn;
-		hrtimer_start(hrtimer, ns_to_ktime(interval), HRTIMER_MODE_REL_PINNED);
+		if (ehld_main.suspending && cpu == 0)
+			smp_call_function_single(0, exynos_ehld_start_cpu_hrtimer, hrtimer, 0);
+		else
+			hrtimer_start(hrtimer, ns_to_ktime(interval), HRTIMER_MODE_REL_PINNED);
 	} else {
 		ehld_info(1, "@%s: cpu%u ehld running with tick-timer\n", __func__, cpu);
 	}
@@ -338,6 +351,10 @@ static int exynos_ehld_stop_cpu(unsigned int cpu)
 	struct exynos_ehld_ctrl *ctrl = per_cpu_ptr(&ehld_ctrl, cpu);
 	struct perf_event *event;
 	struct hrtimer *hrtimer = &ctrl->hrtimer;
+
+	/* during suspend, need to handle cpu 0 here from cpu 1 context */
+	if (ehld_main.suspending && cpu == 1)
+		exynos_ehld_stop_cpu(0);
 
 	dbg_snapshot_set_core_pmu_val(EHLD_VAL_PM, cpu);
 
@@ -389,12 +406,17 @@ void exynos_ehld_event_raw_update(unsigned int cpu, bool update_val)
 	data = &ctrl->data;
 	count = ++data->data_ptr & (NUM_TRACE - 1);
 	data->time[count] = cpu_clock(cpu);
-	if (cpu_is_offline(cpu) || !ctrl->ehld_running) {
+	if (sjtag_is_locked() || cpu_is_offline(cpu) || !ctrl->ehld_running) {
 		val = EHLD_VAL_PM;
 		data->event[count] = val;
 		data->pmpcsr[count] = 0;
 	} else {
 		DBG_UNLOCK(ctrl->dbg_base + PMU_OFFSET);
+		/*
+		 * Workaround: Need to read PMUPCSR twice to get valid
+		 * PC values. The first read keeps returning 0xffffffff.
+		 */
+		val = __raw_readq(ctrl->dbg_base + PMU_OFFSET + PMUPCSR);
 		val = __raw_readq(ctrl->dbg_base + PMU_OFFSET + PMUPCSR);
 		if (MSB_MASKING == (MSB_MASKING & val))
 			val |= MSB_PADDING;
@@ -426,9 +448,9 @@ void exynos_ehld_event_raw_update_allcpu(void)
 
 static void print_ehld_header(void)
 {
-	ehld_info(1, "--------------------------------------------------------------------------\n");
-	ehld_info(1, "      Exynos Early Lockup Detector Information\n\n");
-	ehld_info(1, "      CPU    NUM     TIME                 Value                PC\n\n");
+	ehld_err(1, "--------------------------------------------------------------------------\n");
+	ehld_err(1, "      Exynos Early Lockup Detector Information\n\n");
+	ehld_err(1, "      CPU    NUM     TIME                 Value                PC\n\n");
 }
 
 void exynos_ehld_event_raw_dump(unsigned int cpu, bool header)
@@ -438,6 +460,11 @@ void exynos_ehld_event_raw_dump(unsigned int cpu, bool header)
 	unsigned long flags, count;
 	int i;
 
+	if (sjtag_is_locked()) {
+		ehld_err(1, "EHLD trace requires SJTAG authentication\n");
+		return;
+	}
+
 	if (header)
 		print_ehld_header();
 
@@ -446,24 +473,29 @@ void exynos_ehld_event_raw_dump(unsigned int cpu, bool header)
 	data = &ctrl->data;
 	for (i = 0; i < NUM_TRACE; i++) {
 		count = ++data->data_ptr % NUM_TRACE;
-		ehld_info(1, "      %03u    %03d     %015llu      %#015llx      %#016llx(%pS)\n",
+		ehld_err(1, "      %03u    %03d     %015llu      %#015llx      %#016llx(%pS)\n",
 					cpu, i + 1, data->time[count], data->event[count],
 					data->pmpcsr[count], (void *)data->pmpcsr[count]);
 	}
 	raw_spin_unlock_irqrestore(&ctrl->lock, flags);
-	ehld_info(1, "--------------------------------------------------------------------------\n");
+	ehld_err(1, "--------------------------------------------------------------------------\n");
 }
 
 void exynos_ehld_event_raw_dump_allcpu(void)
 {
 	unsigned int cpu;
 
+	if (sjtag_is_locked()) {
+		ehld_err(1, "EHLD trace requires SJTAG authentication\n");
+		return;
+	}
+
 	print_ehld_header();
 	for_each_possible_cpu(cpu)
 		exynos_ehld_event_raw_dump(cpu, false);
 }
 
-static int exynos_ehld_cpu_online(unsigned int cpu)
+static int exynos_ehld_cpu_pm_exit(unsigned int cpu)
 {
 	struct exynos_ehld_ctrl *ctrl;
 	unsigned long flags;
@@ -472,12 +504,16 @@ static int exynos_ehld_cpu_online(unsigned int cpu)
 
 	raw_spin_lock_irqsave(&ctrl->lock, flags);
 	ctrl->ehld_running = 1;
+	if (ehld_main.dbgc.support && !ehld_main.dbgc.use_tick_timer && !ehld_main.suspending)
+		hrtimer_start(&ctrl->hrtimer,
+			      ns_to_ktime(ehld_main.dbgc.interval * 1000 * 1000),
+			      HRTIMER_MODE_REL_PINNED);
 	raw_spin_unlock_irqrestore(&ctrl->lock, flags);
 
 	return 0;
 }
 
-static int exynos_ehld_cpu_predown(unsigned int cpu)
+static int exynos_ehld_cpu_pm_enter(unsigned int cpu)
 {
 	struct exynos_ehld_ctrl *ctrl;
 	unsigned long flags;
@@ -486,6 +522,8 @@ static int exynos_ehld_cpu_predown(unsigned int cpu)
 
 	raw_spin_lock_irqsave(&ctrl->lock, flags);
 	ctrl->ehld_running = 0;
+	if (ehld_main.dbgc.support && !ehld_main.dbgc.use_tick_timer && !ehld_main.suspending)
+		hrtimer_cancel(&ctrl->hrtimer);
 	raw_spin_unlock_irqrestore(&ctrl->lock, flags);
 
 	return 0;
@@ -595,14 +633,12 @@ static int exynos_ehld_c2_pm_enter_notifier(struct notifier_block *self,
 	switch (action) {
 	case CPU_PM_ENTER:
 		dbg_snapshot_set_core_pmu_val(EHLD_VAL_PM_PREPARE, cpu);
-		exynos_ehld_cpu_predown(cpu);
+		exynos_ehld_cpu_pm_enter(cpu);
 		break;
 	case CPU_PM_ENTER_FAILED:
 	case CPU_PM_EXIT:
 		break;
 	case CPU_CLUSTER_PM_ENTER:
-		if (cpu == 0 && ehld_main.suspending)
-			exynos_ehld_stop_cpu(cpu);
 		break;
 	case CPU_CLUSTER_PM_ENTER_FAILED:
 	case CPU_CLUSTER_PM_EXIT:
@@ -621,15 +657,27 @@ static int exynos_ehld_c2_pm_exit_notifier(struct notifier_block *self,
 		break;
 	case CPU_PM_ENTER_FAILED:
 	case CPU_PM_EXIT:
-		exynos_ehld_cpu_online(cpu);
-		dbg_snapshot_set_core_pmu_val(EHLD_VAL_PM_POST, cpu);
+		exynos_ehld_cpu_pm_exit(cpu);
+		/*
+		 * When a CPU core exits PM, we cannot use a constant value
+		 * (EHLD_VAL_PM_POST or zero) here as the wake-up value.
+		 * This is because CPU enters and exits PM frequently, and
+		 * debug core keeps observing the core PMU value frequently.
+		 * A single constant value will look like the core is stuck.
+		 *
+		 * Instead, need to show progress. In the optimal world, we
+		 * would just pull the PMU retired instruction counter here,
+		 * just like the hrtimer callback does. But experimentation
+		 * shows that PMU returns zero rather frequently here.
+		 *
+		 * Thus, we will need to use CPU clock as the initial value.
+		 */
+		dbg_snapshot_set_core_pmu_val(cpu_clock(cpu), cpu);
 		break;
 	case CPU_CLUSTER_PM_ENTER:
 		break;
 	case CPU_CLUSTER_PM_ENTER_FAILED:
 	case CPU_CLUSTER_PM_EXIT:
-		if (cpu == 0 && ehld_main.suspending)
-			exynos_ehld_start_cpu(cpu);
 		break;
 	}
 	return NOTIFY_OK;
@@ -848,11 +896,20 @@ static int exynos_ehld_setup(void)
 	return ret;
 }
 
+static unsigned long noehld = 0;
+module_param(noehld, ulong, 0664);
+MODULE_PARM_DESC(noehld, "disable EHLD by setting noehld=1");
+
 static int ehld_probe(struct platform_device *pdev)
 {
 	int err, val;
 	unsigned int cpu;
 	u32 online_mask = 0;
+
+	if (noehld == 1) {
+		ehld_info(1, "ehld: disabled by module parameter: noehld=1\n");
+		return 0;
+	}
 
 	err = exynos_ehld_init_dt(pdev->dev.of_node);
 	if (err) {

@@ -39,6 +39,7 @@ dw3000.ko
 dwc3-exynos-usb.ko
 ect_parser.ko
 eh.ko
+ehld.ko
 exynos-acme.ko
 exynos-adv-tracer-s2d.ko
 exynos-adv-tracer.ko
@@ -134,6 +135,7 @@ phy-exynos-usbdrd-super.ko
 pinctrl-samsung-core.ko
 pixel-boot-metrics.ko
 pixel-debug-test.ko
+pixel_em.ko
 pixel_stat_mm.ko
 pixel_stat_sysfs.ko
 pl330.ko
@@ -197,11 +199,13 @@ ufs-pixel-fips140.ko
 usb_f_dm.ko
 usb_f_dm1.ko
 usb_f_etr_miu.ko
+usb_f_rndis.ko
 usb_psy.ko
 usbc_cooling_dev.ko
 vh_cgroup.ko
 vh_fs.ko
 vh_i2c.ko
+vh_mm.ko
 vh_preemptirq_long.ko
 vh_sched.ko
 vh_thermal.ko

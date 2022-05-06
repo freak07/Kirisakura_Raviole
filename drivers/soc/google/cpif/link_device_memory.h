@@ -84,8 +84,6 @@ enum mem_iface_type {
 #define CMD_SILENT_NV_REBUILD	0x000E
 #define CMD_NORMAL_POWER_OFF	0x000F
 
-#define DATALLOC_PERIOD_MS		2	/* 2 ms */
-
 /*============================================================================*/
 #define MAX_SKB_TXQ_DEPTH		1024
 #define TX_PERIOD_MS			1	/* 1 ms */
@@ -225,17 +223,16 @@ struct mem_link_device {
 	/**
 	 * GPIO#, MBOX#, IRQ# for IPC
 	 */
-	unsigned int mbx_cp2ap_msg;	/* MBOX# for IPC RX */
-	unsigned int irq_cp2ap_msg;	/* IRQ# for IPC RX  */
+	unsigned int int_ap2cp_msg;		/* INTR# for IPC TX */
+	unsigned int irq_cp2ap_msg;		/* IRQ# for IPC RX  */
 
 	unsigned int sbi_cp2ap_wakelock_mask;
 	unsigned int sbi_cp2ap_wakelock_pos;
-
-	unsigned int mbx_ap2cp_msg;	/* MBOX# for IPC TX */
-	unsigned int int_ap2cp_msg;	/* INTR# for IPC TX */
+	unsigned int irq_cp2ap_wakelock;	/* IRQ# for wakelock */
 
 	unsigned int sbi_cp_status_mask;
 	unsigned int sbi_cp_status_pos;
+	unsigned int irq_cp2ap_status;		/* IRQ# for TX FLOWCTL */
 
 	unsigned int total_freq_table_count;
 
@@ -245,16 +242,10 @@ struct mem_link_device {
 	struct freq_table cp_em_table;
 	struct freq_table cp_mcw_table;
 
-	unsigned int irq_cp2ap_wakelock;	/* INTR# for wakelock */
+	unsigned int sbi_cp_rat_mode_mask;	/* MBOX# for pcie */
+	unsigned int sbi_cp_rat_mode_pos;	/* MBOX# for pcie */
+	unsigned int irq_cp2ap_rat_mode;	/* IRQ# for pcie */
 
-	unsigned int sbi_cp_rat_mode_mask;		/* MBOX# for pcie */
-	unsigned int sbi_cp_rat_mode_pos;		/* MBOX# for pcie */
-	unsigned int irq_cp2ap_rat_mode;		/* INTR# for pcie */
-
-	unsigned int irq_cp2ap_change_ul_path;
-
-	unsigned int mbx_cp2ap_status;	/* MBOX# for TX FLOWCTL */
-	unsigned int irq_cp2ap_status;	/* INTR# for TX FLOWCTL */
 	unsigned int tx_flowctrl_cmd;
 
 	struct wakeup_source *ws;
@@ -325,11 +316,6 @@ struct mem_link_device {
 	unsigned int rx_poll_count;
 	unsigned long long rx_int_disabled_time;
 
-	/* Doorbell interrupt value to separate interrupt */
-	unsigned int intval_ap2cp_msg;
-	unsigned int intval_ap2cp_status;
-	unsigned int intval_ap2cp_active;
-
 	/* Location for arguments in shared memory */
 	u32 __iomem *ap_version;
 	u32 __iomem *cp_version;
@@ -361,9 +347,17 @@ struct mem_link_device {
 	struct ctrl_msg ap2cp_handover_block_info;
 
 #if IS_ENABLED(CONFIG_LINK_DEVICE_PCIE)
+	/* Doorbell */
+	unsigned int intval_ap2cp_msg;
+	unsigned int intval_ap2cp_pcie_link_ack;
+
+	/* MSI */
 	u8 __iomem *msi_reg_base;
+	bool msi_irq_enabled;
 	int msi_irq_base;
-	int msi_irq_base_enabled;
+	bool msi_irq_base_wake;
+	u32 msi_irq_base_cpu;
+	u32 msi_irq_q_cpu[PKTPROC_MAX_QUEUE];
 #endif
 
 	u32 __iomem *srinfo_base;

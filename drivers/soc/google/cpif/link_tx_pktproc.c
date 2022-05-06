@@ -31,6 +31,9 @@ static int pktproc_send_pkt_to_cp(struct pktproc_queue_ul *q, struct sk_buff *sk
 		return -EACCES;
 	}
 
+	/* avoid race with the done_ptr disordering */
+	smp_rmb();
+
 	space = circ_get_space(q->num_desc, q->done_ptr, q_info->rear_ptr);
 	if (space < 1) {
 		mif_err_limited("NOSPC Queue[%d] num_desc:%d fore:%d done:%d rear:%d\n",
@@ -401,6 +404,7 @@ int pktproc_create_ul(struct platform_device *pdev, struct mem_link_device *mld,
 		return ret;
 	}
 
+#if !IS_ENABLED(CONFIG_LINK_DEVICE_PCIE_IOCC)
 	if (!ppa_ul->use_hw_iocc && ppa_ul->info_rgn_cached) {
 		mif_err("cannot support sw iocc based caching on info region\n");
 		return -EINVAL;
@@ -415,6 +419,7 @@ int pktproc_create_ul(struct platform_device *pdev, struct mem_link_device *mld,
 		mif_err("cannot support sw iocc based caching on buff region\n");
 		return -EINVAL;
 	}
+#endif
 
 	/* Get base addr */
 	mif_info("memaddr:0x%lx memsize:0x%08x\n", memaddr, memsize);

@@ -154,15 +154,14 @@ static void handle_no_cp_crash_ack(struct timer_list *t)
 	struct link_device *ld = &mld->link_dev;
 	struct modem_ctl *mc = ld->mc;
 
-#if IS_ENABLED(CONFIG_LINK_DEVICE_PCIE)
+#if IS_ENABLED(CONFIG_LINK_DEVICE_PCIE) && IS_ENABLED(CONFIG_CP_WRESET_WA)
 	if (ld->link_type == LINKDEV_PCIE) {
-		if (mif_gpio_get_value(&mc->cp_gpio[CP_GPIO_CP2AP_CP_ACTIVE], true) == 0) {
-			mif_info("Set s5100_cp_reset_required to FALSE\n");
+		if (mif_gpio_get_value(&mc->cp_gpio[CP_GPIO_CP2AP_CP_ACTIVE], true) == 0)
 			mc->s5100_cp_reset_required = false;
-		} else {
-			mif_info("Set s5100_cp_reset_required to TRUE\n");
+		else
 			mc->s5100_cp_reset_required = true;
-		}
+
+		mif_info("Set s5100_cp_reset_required to %u\n", mc->s5100_cp_reset_required);
 	}
 #endif
 
@@ -179,6 +178,7 @@ static void link_trigger_cp_crash(struct mem_link_device *mld, u32 crash_type,
 {
 	struct link_device *ld = &mld->link_dev;
 	struct modem_ctl *mc = ld->mc;
+	bool reason_done = false;
 
 	if (!cp_online(mc) && !cp_booting(mc)) {
 		mif_err("%s: %s.state %s != ONLINE <%ps>\n",
@@ -196,8 +196,6 @@ static void link_trigger_cp_crash(struct mem_link_device *mld, u32 crash_type,
 	iowrite32(0, mld->legacy_link_dev.mem_access);
 
 	mif_stop_logging();
-
-	memset(ld->crash_reason.string, 0, CP_CRASH_INFO_SIZE);
 
 	switch (ld->protocol) {
 	case PROTOCOL_SIPC:
@@ -222,15 +220,21 @@ static void link_trigger_cp_crash(struct mem_link_device *mld, u32 crash_type,
 	case CRASH_REASON_RIL_TRIGGER_CP_CRASH:
 		if (ld->protocol != PROTOCOL_SIT)
 			goto set_type;
+		reason_done = true;
 		break;
 	default:
 		goto set_type;
 	}
 
-	if (reason && reason[0] != '\0')
+	if (!reason_done && reason && reason[0] != '\0') {
 		strlcpy(ld->crash_reason.string, reason, CP_CRASH_INFO_SIZE);
+		reason_done = true;
+	}
 
 set_type:
+	if (!reason_done)
+		memset(ld->crash_reason.string, 0, CP_CRASH_INFO_SIZE);
+
 	ld->crash_reason.type = crash_type;
 
 	stop_net_ifaces(ld, 0);
@@ -678,15 +682,14 @@ static void cmd_crash_exit_handler(struct mem_link_device *mld)
 	else
 		mif_err("%s<-%s: ERR! CP_CRASH_EXIT\n", ld->name, mc->name);
 
-#if IS_ENABLED(CONFIG_LINK_DEVICE_PCIE)
+#if IS_ENABLED(CONFIG_LINK_DEVICE_PCIE) && IS_ENABLED(CONFIG_CP_WRESET_WA)
 	if (ld->link_type == LINKDEV_PCIE) {
-		if (mif_gpio_get_value(&mc->cp_gpio[CP_GPIO_CP2AP_CP_ACTIVE], true) == 0) {
-			mif_info("Set s5100_cp_reset_required to FALSE\n");
+		if (mif_gpio_get_value(&mc->cp_gpio[CP_GPIO_CP2AP_CP_ACTIVE], true) == 0)
 			mc->s5100_cp_reset_required = false;
-		} else {
-			mif_info("Set s5100_cp_reset_required to TRUE\n");
+		else
 			mc->s5100_cp_reset_required = true;
-		}
+
+		mif_info("Set s5100_cp_reset_required to %u\n", mc->s5100_cp_reset_required);
 	}
 #endif
 
@@ -993,28 +996,6 @@ static inline void shmem_stop_timers(struct mem_link_device *mld)
 	if (sbd_active(&mld->sbd_link_dev))
 		cancel_tx_timer(mld, &mld->sbd_tx_timer);
 	cancel_tx_timer(mld, &mld->tx_timer);
-}
-
-static inline void start_datalloc_timer(struct mem_link_device *mld,
-				  struct hrtimer *timer)
-{
-	struct link_device *ld = &mld->link_dev;
-	struct modem_ctl *mc = ld->mc;
-	unsigned long flags;
-
-	spin_lock_irqsave(&mc->lock, flags);
-
-	if (unlikely(cp_offline(mc)))
-		goto exit;
-
-	if (!hrtimer_is_queued(timer)) {
-		ktime_t ktime = ktime_set(0, ms2ns(DATALLOC_PERIOD_MS));
-
-		hrtimer_start(timer, ktime, HRTIMER_MODE_REL);
-	}
-
-exit:
-	spin_unlock_irqrestore(&mc->lock, flags);
 }
 
 static int tx_frames_to_rb(struct sbd_ring_buffer *rb)
@@ -2337,7 +2318,7 @@ static int mld_rx_int_poll(struct napi_struct *napi, int budget)
 	mld->rx_poll_count++;
 
 #if IS_ENABLED(CONFIG_CP_PKTPROC)
-	{
+	if (!mld->pktproc.use_exclusive_irq) {
 		int i = 0;
 		for (i = 0; i < mld->pktproc.num_queue; i++) {
 			ret = mld->pktproc.q[i]->clean_rx_ring(mld->pktproc.q[i], budget, &ps_rcvd);
@@ -2787,24 +2768,6 @@ irqreturn_t shmem_irq_handler(int irq, void *data)
 		ld->disable_rx_int(ld);
 		__napi_schedule(&mld->mld_napi);
 	}
-
-/* ToDo: irq might be disabled by disable_rx_int() */
-#if IS_ENABLED(CONFIG_CP_PKTPROC)
-	if (pktproc_check_support(&mld->pktproc) &&
-			!mld->pktproc.use_exclusive_irq &&
-			!mld->pktproc.use_napi) {
-		struct pktproc_adaptor *ppa = &mld->pktproc;
-		int i;
-		for (i = 0; i < ppa->num_queue; i++) {
-			struct pktproc_queue *q = ppa->q[i];
-
-			if (!pktproc_check_active(&mld->pktproc, i))
-				continue;
-
-			q->irq_handler(irq, q);
-		}
-	}
-#endif
 
 	return IRQ_HANDLED;
 }
@@ -3835,37 +3798,27 @@ static int init_info_region(struct modem_data *modem,
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_MCU_IPC)
 static int register_irq_handler(struct modem_data *modem,
 	struct mem_link_device *mld, struct link_device *ld)
 {
-	int err = 0;
+	unsigned int irq_num;
+	int err;
 
-#if IS_ENABLED(CONFIG_MCU_IPC)
-	if (ld->interrupt_types == INTERRUPT_MAILBOX) {
-		err = cp_mbox_register_handler(CP_MBOX_IRQ_IDX_0, mld->irq_cp2ap_msg,
-				shmem_irq_handler, mld);
-		if (err) {
-			mif_err("%s: ERR! cp_mbox_register_handler(MBOX_IRQ_IDX_0, %u) fail (%d)\n",
-				ld->name, mld->irq_cp2ap_msg, err);
-			goto error;
-		}
+	if (ld->interrupt_types != INTERRUPT_MAILBOX) {
+		err = -EPERM;
+		goto error;
 	}
-#endif
 
-#if IS_ENABLED(CONFIG_LINK_DEVICE_PCIE)
-	/* Set doorbell interrupt value for separating interrupts */
-	mld->intval_ap2cp_msg = modem->mbx->int_ap2cp_msg + DOORBELL_INT_ADD;
-	mld->intval_ap2cp_status = modem->mbx->int_ap2cp_status
-				+ DOORBELL_INT_ADD;
-	mld->intval_ap2cp_active = modem->mbx->int_ap2cp_active
-				+ DOORBELL_INT_ADD;
-#endif
+	irq_num = mld->irq_cp2ap_msg;
+	err = cp_mbox_register_handler(CP_MBOX_IRQ_IDX_0, irq_num,
+				       shmem_irq_handler, mld);
+	if (err)
+		goto irq_error;
 
 	/**
 	 * Retrieve SHMEM MBOX# and IRQ# for wakelock
 	 */
-	mld->irq_cp2ap_wakelock = modem->mbx->irq_cp2ap_wakelock;
-
 	mld->ws = cpif_wake_lock_register(ld->dev, ld->name);
 	if (mld->ws == NULL) {
 		mif_err("%s: wakeup_source_register fail\n", ld->name);
@@ -3873,63 +3826,49 @@ static int register_irq_handler(struct modem_data *modem,
 		goto error;
 	}
 
-#if IS_ENABLED(CONFIG_MCU_IPC)
-	if (ld->interrupt_types == INTERRUPT_MAILBOX) {
-		err = cp_mbox_register_handler(CP_MBOX_IRQ_IDX_0, mld->irq_cp2ap_wakelock,
-				shmem_cp2ap_wakelock_handler, mld);
-		if (err) {
-			mif_err("%s: ERR! cp_mbox_register_handler(MBOX_IRQ_IDX_0, %u) fail (%d)\n",
-				ld->name, mld->irq_cp2ap_wakelock, err);
-			goto error;
-		}
-	}
-#endif
+	irq_num = mld->irq_cp2ap_wakelock;
+	err = cp_mbox_register_handler(CP_MBOX_IRQ_IDX_0, irq_num,
+				       shmem_cp2ap_wakelock_handler, mld);
+	if (err)
+		goto irq_error;
 
 	/**
 	 * Retrieve SHMEM MBOX# and IRQ# for RAT_MODE
 	 */
-#if IS_ENABLED(CONFIG_MCU_IPC) && IS_ENABLED(CONFIG_LINK_DEVICE_PCIE)
-	mld->irq_cp2ap_rat_mode = modem->mbx->irq_cp2ap_rat_mode;
-
-	err = cp_mbox_register_handler(CP_MBOX_IRQ_IDX_0, mld->irq_cp2ap_rat_mode,
-			shmem_cp2ap_rat_mode_handler, mld);
-	if (err) {
-		mif_err("%s: ERR! cp_mbox_register_handler(CP_MBOX_IRQ_IDX_0, %u) fail (%d)\n",
-			ld->name, mld->irq_cp2ap_rat_mode, err);
-		goto error;
-	}
+#if IS_ENABLED(CONFIG_LINK_DEVICE_PCIE)
+	irq_num = mld->irq_cp2ap_rat_mode;
+	err = cp_mbox_register_handler(CP_MBOX_IRQ_IDX_0, irq_num,
+				       shmem_cp2ap_rat_mode_handler, mld);
+	if (err)
+		goto irq_error;
 #endif
 
-#if IS_ENABLED(CONFIG_MCU_IPC)
-	if (ld->interrupt_types == INTERRUPT_MAILBOX) {
-		err = cp_mbox_register_handler(CP_MBOX_IRQ_IDX_0, mld->irq_cp2ap_status,
-					shmem_tx_state_handler, mld);
-		if (err) {
-			mif_err("%s: ERR! cp_mbox_register_handler(MBOX_IRQ_IDX_0, %u) fail (%d)\n",
-				ld->name, mld->irq_cp2ap_status, err);
-			goto error;
-		}
-	}
-#endif
+	irq_num = mld->irq_cp2ap_status;
+	err = cp_mbox_register_handler(CP_MBOX_IRQ_IDX_0, irq_num,
+				       shmem_tx_state_handler, mld);
+	if (err)
+		goto irq_error;
 
 #if IS_ENABLED(CONFIG_CP_PKTPROC_CLAT)
-	if (ld->interrupt_types == INTERRUPT_MAILBOX) {
-		err = cp_mbox_register_handler(CP_MBOX_IRQ_IDX_0, mld->irq_cp2ap_clatinfo_ack,
-					shmem_cp2ap_clatinfo_ack, mld);
-		if (err) {
-			mif_err("%s: ERR! cp_mbox_register_handler(CP_MBOX_IRQ_IDX_0, %u) fail (%d)\n",
-				ld->name, mld->irq_cp2ap_clatinfo_ack, err);
-			goto error;
-		}
-	}
+	irq_num = mld->irq_cp2ap_clatinfo_ack;
+	err = cp_mbox_register_handler(CP_MBOX_IRQ_IDX_0, irq_num,
+				       shmem_cp2ap_clatinfo_ack, mld);
+	if (err)
+		goto irq_error;
 #endif
 
 	return 0;
 
+irq_error:
+	mif_err("%s: ERR! cp_mbox_register_handler(MBOX_IRQ_IDX_0, %u) fail (%d)\n",
+		ld->name, irq_num, err);
+
 error:
 	mif_err("xxx\n");
+
 	return err;
 }
+#endif
 
 static int parse_ect_tables(struct platform_device *pdev,
 	struct mem_link_device *mld)
@@ -4144,15 +4083,20 @@ struct link_device *create_link_device(struct platform_device *pdev, u32 link_ty
 	/*
 	 * Retrieve SHMEM MBOX#, IRQ#, etc.
 	 */
-	mld->irq_cp2ap_msg = modem->mbx->irq_cp2ap_msg;
 	mld->int_ap2cp_msg = modem->mbx->int_ap2cp_msg;
+	mld->irq_cp2ap_msg = modem->mbx->irq_cp2ap_msg;
 
 	mld->sbi_cp_status_mask = modem->sbi_cp_status_mask;
 	mld->sbi_cp_status_pos = modem->sbi_cp_status_pos;
+	mld->irq_cp2ap_status = modem->mbx->irq_cp2ap_status;
+
 	mld->sbi_cp2ap_wakelock_mask = modem->sbi_cp2ap_wakelock_mask;
 	mld->sbi_cp2ap_wakelock_pos = modem->sbi_cp2ap_wakelock_pos;
+	mld->irq_cp2ap_wakelock = modem->mbx->irq_cp2ap_wakelock;
+
 	mld->sbi_cp_rat_mode_mask = modem->sbi_cp2ap_rat_mode_mask;
 	mld->sbi_cp_rat_mode_pos = modem->sbi_cp2ap_rat_mode_pos;
+	mld->irq_cp2ap_rat_mode = modem->mbx->irq_cp2ap_rat_mode;
 
 	mld->pktproc_use_36bit_addr = modem->pktproc_use_36bit_addr;
 #if IS_ENABLED(CONFIG_CP_PKTPROC_CLAT)
@@ -4163,7 +4107,6 @@ struct link_device *create_link_device(struct platform_device *pdev, u32 link_ty
 	/**
 	 * For TX Flow-control command from CP
 	 */
-	mld->irq_cp2ap_status = modem->mbx->irq_cp2ap_status;
 	mld->tx_flowctrl_cmd = 0;
 
 	/* Link mem_link_device to modem_data */
@@ -4177,9 +4120,13 @@ struct link_device *create_link_device(struct platform_device *pdev, u32 link_ty
 	/*
 	 * Register interrupt handlers
 	 */
+#if IS_ENABLED(CONFIG_MCU_IPC)
 	err = register_irq_handler(modem, mld, ld);
-	if (err)
+	if (err) {
+		mif_err("register_irq_handler() error %d\n", err);
 		goto error;
+	}
+#endif
 
 	if (ld->link_type == LINKDEV_SHMEM) {
 		err = parse_ect_tables(pdev, mld);

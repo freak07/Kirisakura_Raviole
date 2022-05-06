@@ -106,7 +106,7 @@ static irqreturn_t cp_active_handler(int irq, void *arg)
 
 	if (!cp_active) {
 		if (cp_on > 0) {
-			new_state = STATE_INIT;
+			new_state = STATE_OFFLINE;
 			complete_all(&mc->off_cmpl);
 		} else {
 			mif_info("don't care!!!\n");
@@ -376,7 +376,7 @@ static int power_shutdown_cp(struct modem_ctl *mc)
 	reinit_completion(&mc->off_cmpl);
 	remain = wait_for_completion_timeout(&mc->off_cmpl, timeout);
 	if (remain == 0)
-		change_modem_state(mc, STATE_INIT);
+		change_modem_state(mc, STATE_OFFLINE);
 
 exit:
 	cp_mbox_set_interrupt(CP_MBOX_IRQ_IDX_0, mc->int_cp_wakeup);
@@ -404,7 +404,6 @@ static int power_reset_cp(struct modem_ctl *mc)
 	if (ld->sbd_ipc && hrtimer_active(&mld->sbd_print_timer))
 		hrtimer_cancel(&mld->sbd_print_timer);
 
-	/* mc->phone_state = STATE_OFFLINE; */
 	if (mc->phone_state == STATE_OFFLINE) {
 		mif_info("already offline\n");
 		return 0;
@@ -413,7 +412,8 @@ static int power_reset_cp(struct modem_ctl *mc)
 	if (mc->phone_state == STATE_ONLINE)
 		modem_notify_event(MODEM_EVENT_RESET, mc);
 
-	/* Change phone state to OFFLINE */
+	change_modem_state(mc, STATE_RESET);
+	msleep(STATE_RESET_INTERVAL_MS);
 	change_modem_state(mc, STATE_OFFLINE);
 
 	if (cal_cp_status()) {
@@ -624,11 +624,7 @@ static int trigger_cp_crash(struct modem_ctl *mc)
 
 	mif_info("+++\n");
 
-	if (ld->protocol == PROTOCOL_SIT &&
-			crash_type == CRASH_REASON_RIL_TRIGGER_CP_CRASH)
-		ld->link_trigger_cp_crash(mld, crash_type, ld->crash_reason.string);
-	else
-		ld->link_trigger_cp_crash(mld, crash_type, "Forced crash is called");
+	ld->link_trigger_cp_crash(mld, crash_type, "Forced crash is called");
 
 	mif_info("---\n");
 	return 0;
@@ -839,15 +835,9 @@ static void s5000ap_get_pdata(struct modem_ctl *mc, struct modem_data *modem)
 	struct modem_mbox *mbx = modem->mbx;
 
 	mc->int_pda_active = mbx->int_ap2cp_active;
-
 	mc->int_cp_wakeup = mbx->int_ap2cp_wakeup;
-
-	mc->irq_phone_active = mbx->irq_cp2ap_active;
-
-	mc->mbx_ap_status = mbx->mbx_ap2cp_status;
-	mc->mbx_cp_status = mbx->mbx_cp2ap_status;
-
 	mc->int_uart_noti = mbx->int_ap2cp_uart_noti;
+	mc->irq_phone_active = mbx->irq_cp2ap_active;
 
 	mc->sbi_lte_active_mask = modem->sbi_lte_active_mask;
 	mc->sbi_lte_active_pos = modem->sbi_lte_active_pos;

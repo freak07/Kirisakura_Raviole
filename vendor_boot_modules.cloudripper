@@ -119,6 +119,8 @@ phy-exynos-usbdrd-super.ko
 pinctrl-samsung-core.ko
 pixel-boot-metrics.ko
 pixel-debug-test.ko
+pixel-em.ko
+pkvm-s2mpu.ko
 pl330.ko
 pmic_class.ko
 power_stats.ko
@@ -152,6 +154,7 @@ snd-soc-cs35l41.ko
 snd-soc-cs35l45-spi.ko
 snd-soc-cs35l45.ko
 snd-soc-wm-adsp.ko
+softdog.ko
 spi-s3c64xx.ko
 spidev.ko
 sscoredump.ko
@@ -173,6 +176,7 @@ ufs-exynos-core.ko
 ufs-pixel-fips140.ko
 usb_f_dm.ko
 usb_f_dm1.ko
+usb_f_rndis.ko
 usb_psy.ko
 vh_cgroup.ko
 vh_fs.ko

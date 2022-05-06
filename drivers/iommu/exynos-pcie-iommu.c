@@ -50,6 +50,41 @@ static u32 wrong_pf_cnt;
 static struct history_buff pcie_map_history, pcie_unmap_history;
 #endif
 
+void pcie_iommu_tlb_invalidate_all(int hsi_block_num)
+{
+	int pcie_vid = g_sysmmu_drvdata[hsi_block_num]->pcie_vid;
+
+	if (g_sysmmu_drvdata[hsi_block_num] == NULL) {
+		pr_err("[%s] PCIe SysMMU feature is disabled!!!\n", __func__);
+		return ;
+	}
+
+	if (!is_sysmmu_active(g_sysmmu_drvdata[hsi_block_num])) /* SKIP invalidation */
+		return;
+
+	writel(0x1, g_sysmmu_drvdata[hsi_block_num]->sfrbase + REG_MMU_FLUSH_VID(pcie_vid));
+}
+EXPORT_SYMBOL_GPL(pcie_iommu_tlb_invalidate_all);
+
+void pcie_iommu_tlb_invalidate_range(dma_addr_t iova, size_t size, int hsi_block_num)
+{
+	void * __iomem sfrbase = g_sysmmu_drvdata[hsi_block_num]->sfrbase;
+	int pcie_vid = g_sysmmu_drvdata[hsi_block_num]->pcie_vid;
+	u32 start_addr, end_addr;
+
+	if (!is_sysmmu_active(g_sysmmu_drvdata[hsi_block_num])) /* SKIP invalidation */
+		return;
+
+	start_addr = (iova >> 4) & 0xffffff00;
+	writel_relaxed(start_addr, sfrbase + REG_FLUSH_RANGE_START_VID(pcie_vid));
+
+	end_addr = ((iova + size - 1) >> 4) & 0xffffff00;
+	writel_relaxed(end_addr, sfrbase + REG_FLUSH_RANGE_END_VID(pcie_vid));
+
+	writel(0x1, sfrbase + REG_MMU_FLUSH_RANGE_VID(pcie_vid));
+}
+EXPORT_SYMBOL_GPL(pcie_iommu_tlb_invalidate_range);
+
 static inline void pgtable_flush(void *vastart, void *vaend)
 {
 	/* __dma_flush_area(vastart, vaend - vastart); */
@@ -160,6 +195,7 @@ static void __sysmmu_enable_nocount(struct sysmmu_drvdata *drvdata, int pcie_vid
 		ctrl_val |= VID_CFG_SHAREABLE | VID_CFG_SHAREABLE_OVRD;
 		writel(ctrl_val, drvdata->sfrbase + REG_MMU_CFG_VID(pcie_vid));
 	}
+	__sysmmu_tlb_invalidate_all(drvdata->sfrbase, pcie_vid);
 }
 
 static void __sysmmu_disable_nocount(struct sysmmu_drvdata *drvdata, int pcie_vid)
@@ -560,13 +596,17 @@ static int lv1set_section(struct exynos_iommu_domain *domain,
 }
 
 static int lv2set_page(sysmmu_pte_t *pent, phys_addr_t paddr, size_t size,
-		       int prot, atomic_t *pgcnt)
+		       int prot, atomic_t *pgcnt, int hsi_block_num)
 {
 	bool shareable = !!(prot & IOMMU_CACHE);
 
 	if (size == SPAGE_SIZE) {
 		if (!lv2ent_fault(pent)) {
 			sysmmu_pte_t *refcnt_buf;
+
+			if(hsi_block_num == 1) {
+				pr_err("sysmmu(CP) lv2set_page: paddr: 0x%llx, size: 0x%lx, pent: 0x%x\n", paddr, size, *pent);
+			}
 
 			/* Duplicated IOMMU map 4KB */
 			refcnt_buf = pent + NUM_LV2ENTRIES;
@@ -665,7 +705,6 @@ static sysmmu_pte_t *alloc_lv2entry(struct exynos_iommu_domain *domain,
 
 		*sent = mk_lv1ent_page(virt_to_phys(pent));
 		pgtable_flush(sent, sent + 1);
-		pgtable_flush(pent, pent + NUM_LV2ENTRIES);
 		atomic_set(pgcounter, NUM_LV2ENTRIES);
 		kmemleak_ignore(pent);
 	}
@@ -708,7 +747,7 @@ static size_t iommu_pgsize(unsigned long addr_merge, size_t size,
 
 static int exynos_iommu_map(unsigned long l_iova, phys_addr_t paddr,
 			    size_t size, int prot,
-			    struct exynos_iommu_domain *domain)
+			    struct exynos_iommu_domain *domain, int hsi_block_num)
 {
 	sysmmu_pte_t *entry;
 	sysmmu_iova_t iova = (sysmmu_iova_t)l_iova;
@@ -733,7 +772,7 @@ static int exynos_iommu_map(unsigned long l_iova, phys_addr_t paddr,
 			ret = PTR_ERR(pent);
 		else
 			ret = lv2set_page(pent, paddr, size, prot,
-					  &domain->lv2entcnt[lv1ent_offset(iova)]);
+					  &domain->lv2entcnt[lv1ent_offset(iova)], hsi_block_num);
 	}
 
 	if (ret)
@@ -888,6 +927,56 @@ static inline int check_memory_validation(phys_addr_t paddr)
 	return 0;
 }
 
+static int exynos_iommu_map_once(unsigned long l_iova, phys_addr_t paddr,
+				size_t size, int prot, struct exynos_iommu_domain *domain)
+{
+	sysmmu_pte_t *entry, *pent;
+	sysmmu_iova_t iova = (sysmmu_iova_t)l_iova;
+	int i, cnt, ret = 0;
+	bool shareable = !!(prot & IOMMU_CACHE);
+	atomic_t *pgcnt = &domain->lv2entcnt[lv1ent_offset(iova)];
+
+	BUG_ON(domain->pgtable == NULL);
+
+	entry = section_entry(domain->pgtable, iova);
+
+	pent = alloc_lv2entry(domain, entry, iova,
+			&domain->lv2entcnt[lv1ent_offset(iova)],
+			GFP_ATOMIC);
+	if (IS_ERR(pent)) {
+		ret = PTR_ERR(pent);
+		pr_err("Can't alloc LV2 table!\n");
+		return ret;
+	}
+
+
+	cnt = size / SZ_4K;
+	for (i = 0; i < cnt; i++, pent++) {
+		if (!lv2ent_fault(pent)) {
+			sysmmu_pte_t *refcnt_buf;
+
+			pr_err("Duplicated Memory Allocation : PTE will be overwritten!\n");
+			/* Duplicated IOMMU map 4KB */
+			refcnt_buf = pent + NUM_LV2ENTRIES;
+			*refcnt_buf = *refcnt_buf + 1;
+		}
+
+		*pent = mk_lv2ent_spage(paddr);
+		if (shareable)
+			set_lv2ent_shareable(pent);
+		paddr += SZ_4K;
+	}
+	pgtable_flush(pent - cnt, pent);
+	atomic_sub(cnt, pgcnt);
+
+
+	if (ret)
+		pr_err("%s: Failed(%d) to map %#zx bytes @ %#llx\n",
+				__func__, ret, size, iova);
+
+	return ret;
+}
+
 int pcie_iommu_map(unsigned long iova, phys_addr_t paddr, size_t size,
 		   int prot, int hsi_block_num)
 {
@@ -921,6 +1010,15 @@ int pcie_iommu_map(unsigned long iova, phys_addr_t paddr, size_t size,
 		size += SZ_4K;
 	}
 
+	if (g_sysmmu_drvdata[hsi_block_num]->use_map_once) {
+		/* Check it is over section size at one request. */
+		if (size < SZ_1M && (iova & 0xfffff) + size > SZ_1M) {
+			pr_err("Don't allow : address + size over section size (0x%lx + 0x%lx)\n",
+					iova, size);
+			return -EINVAL;
+		}
+	}
+
 	/* Check for debugging */
 	changed_iova = iova;
 	changed_size = size;
@@ -940,6 +1038,15 @@ int pcie_iommu_map(unsigned long iova, phys_addr_t paddr, size_t size,
 	}
 
 	spin_lock_irqsave(&domain->pgtablelock, flags);
+
+	if (g_sysmmu_drvdata[hsi_block_num]->use_map_once) {
+		if (size < SZ_1M) { /* This code assume that there is no LARGE Pages(64KB) */
+			ret = exynos_iommu_map_once(iova, paddr, size, prot, domain);
+
+			goto end_map;
+		}
+	}
+
 	while (size) {
 		size_t pgsize = iommu_pgsize(iova | paddr, size, domain);
 
@@ -954,9 +1061,7 @@ int pcie_iommu_map(unsigned long iova, phys_addr_t paddr, size_t size,
 		alloc_counter++;
 		if (alloc_counter > max_req_cnt)
 			max_req_cnt = alloc_counter;
-		ret = exynos_iommu_map(iova, paddr, pgsize, prot, domain);
-		exynos_sysmmu_tlb_invalidate(iova, pgsize, pcie_vid,
-					     hsi_block_num);
+		ret = exynos_iommu_map(iova, paddr, pgsize, prot, domain, hsi_block_num);
 #if IS_ENABLED(CONFIG_PCIE_IOMMU_HISTORY_LOG)
 		add_history_buff(&pcie_map_history, paddr, orig_paddr,
 				 changed_size, orig_size);
@@ -967,6 +1072,11 @@ int pcie_iommu_map(unsigned long iova, phys_addr_t paddr, size_t size,
 		iova += pgsize;
 		paddr += pgsize;
 		size -= pgsize;
+	}
+end_map:
+	if (!g_sysmmu_drvdata[hsi_block_num]->ignore_tlb_inval) {
+		exynos_sysmmu_tlb_invalidate(orig_iova, orig_size, pcie_vid,
+				hsi_block_num);
 	}
 	spin_unlock_irqrestore(&domain->pgtablelock, flags);
 
@@ -982,6 +1092,56 @@ int pcie_iommu_map(unsigned long iova, phys_addr_t paddr, size_t size,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(pcie_iommu_map);
+
+static size_t exynos_iommu_unmap_once(unsigned long l_iova, size_t size,
+				struct exynos_iommu_domain *domain)
+{
+	sysmmu_iova_t iova = (sysmmu_iova_t)l_iova;
+	sysmmu_pte_t *sent, *pent;
+	atomic_t *lv2entcnt = &domain->lv2entcnt[lv1ent_offset(iova)];
+	int cnt, i;
+
+	BUG_ON(domain->pgtable == NULL);
+
+	sent = section_entry(domain->pgtable, iova);
+
+	if (unlikely(lv1ent_fault(sent))) {
+		pr_info("%s : LV1 entry fault!\n", __func__);
+		return -EINVAL;
+	}
+
+	/* lv1ent_page(sent) == true here */
+
+	pent = page_entry(sent, iova);
+
+	/* If it is large page, return err and try to do normal unmap!! */
+	if (lv2ent_large(pent)) {
+		return 0;
+	}
+
+	cnt = size / SZ_4K;
+
+	for (i = 0; i < cnt; i++, pent++) {
+		/* Check Duplicated IOMMU Unmp */
+		sysmmu_pte_t *refcnt_buf;
+
+		refcnt_buf = (pent + NUM_LV2ENTRIES);
+		if (*refcnt_buf != 0) {
+			pr_err("VA : 0x%lx's ref conunt is not 0! - SKIP unmap\n", l_iova);
+			*refcnt_buf = *refcnt_buf - 1;
+			atomic_inc(lv2entcnt);
+			continue;
+		}
+
+		*pent = 0;
+	}
+	pgtable_flush(pent - cnt, pent);
+	atomic_add(cnt, lv2entcnt);
+
+	/* Ignore Free LV2 table at here. */
+
+	return size;
+}
 
 size_t pcie_iommu_unmap(unsigned long iova, size_t size, int hsi_block_num)
 {
@@ -1025,6 +1185,15 @@ size_t pcie_iommu_unmap(unsigned long iova, size_t size, int hsi_block_num)
 	pr_debug("unmap this: iova 0x%lx size 0x%zx\n", iova, size);
 
 	spin_lock_irqsave(&domain->pgtablelock, flags);
+
+	if (g_sysmmu_drvdata[hsi_block_num]->use_map_once) {
+		if (size < SZ_1M) { /* This code assume that there is no LARGE Pages(64KB) */
+			unmapped = exynos_iommu_unmap_once(iova, size, domain);
+			if (unmapped == size)
+				goto end_unmap;
+		}
+	}
+
 	/*
 	 * Keep iterating until we either unmap 'size' bytes (or more)
 	 * or we hit an area that isn't mapped.
@@ -1040,8 +1209,6 @@ size_t pcie_iommu_unmap(unsigned long iova, size_t size, int hsi_block_num)
 
 		alloc_counter--;
 		unmapped_page = exynos_iommu_unmap(iova, pgsize, domain);
-		exynos_sysmmu_tlb_invalidate(iova, pgsize, pcie_vid,
-					     hsi_block_num);
 #if IS_ENABLED(CONFIG_PCIE_IOMMU_HISTORY_LOG)
 		add_history_buff(&pcie_unmap_history, iova, orig_iova,
 				 size, orig_size);
@@ -1055,7 +1222,11 @@ size_t pcie_iommu_unmap(unsigned long iova, size_t size, int hsi_block_num)
 		iova += unmapped_page;
 		unmapped += unmapped_page;
 	}
-
+end_unmap:
+	if (!g_sysmmu_drvdata[hsi_block_num]->ignore_tlb_inval) {
+		exynos_sysmmu_tlb_invalidate(orig_iova, orig_size, pcie_vid,
+				hsi_block_num);
+	}
 	spin_unlock_irqrestore(&domain->pgtablelock, flags);
 
 	pr_debug("UNMAPPED : req 0x%lx(0x%lx) size 0x%zx(0x%zx)\n",
@@ -1070,6 +1241,7 @@ static int __init sysmmu_parse_dt(struct device *sysmmu,
 {
 	unsigned int qos = DEFAULT_QOS_VALUE, val;
 	const char *use_tlb_pinning;
+	const char *use_map_once;
 	int ret = 0;
 
 	/* Parsing QoS */
@@ -1110,6 +1282,30 @@ static int __init sysmmu_parse_dt(struct device *sysmmu,
 		}
 	} else {
 		drvdata->use_tlb_pinning = false;
+	}
+
+	/* Set ignore tlb inval */
+	if (of_property_read_u32(sysmmu->of_node, "ignore-tlb-inval", &val)) {
+		dev_info(sysmmu, "There is NO ignore tlb inval, so set default value(0)\n");
+		drvdata->ignore_tlb_inval = 0;
+	}
+	else {
+		drvdata->ignore_tlb_inval = val;
+	}
+
+	if (!of_property_read_string(sysmmu->of_node,
+				"use-map-once", &use_map_once)) {
+		if (!strcmp(use_map_once, "true")) {
+			dev_err(sysmmu, "Enable map once.\n");
+			drvdata->use_map_once = true;
+		} else if (!strcmp(use_map_once, "false")) {
+			drvdata->use_map_once = false;
+		} else {
+			dev_err(sysmmu, "Invalid map once value (set to default -> false)\n");
+			drvdata->use_map_once = false;
+		}
+	} else {
+		drvdata->use_map_once = false;
 	}
 
 	return 0;

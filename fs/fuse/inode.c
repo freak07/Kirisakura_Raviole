@@ -27,6 +27,7 @@
 MODULE_AUTHOR("Miklos Szeredi <miklos@szeredi.hu>");
 MODULE_DESCRIPTION("Filesystem in Userspace");
 MODULE_LICENSE("GPL");
+MODULE_IMPORT_NS(ANDROID_GKI_VFS_EXPORT_ONLY);
 
 static struct kmem_cache *fuse_inode_cachep;
 struct list_head fuse_conn_list;
@@ -49,8 +50,6 @@ __MODULE_PARM_TYPE(max_user_congthresh, "uint");
 MODULE_PARM_DESC(max_user_congthresh,
  "Global limit for the maximum congestion threshold an "
  "unprivileged user can set");
-
-#define FUSE_SUPER_MAGIC 0x65735546
 
 #define FUSE_DEFAULT_BLKSIZE 512
 
@@ -315,8 +314,7 @@ static void fuse_init_inode(struct inode *inode, struct fuse_attr *attr)
 	else if (S_ISCHR(inode->i_mode) || S_ISBLK(inode->i_mode) ||
 		 S_ISFIFO(inode->i_mode) || S_ISSOCK(inode->i_mode)) {
 		fuse_init_common(inode);
-		init_special_inode(inode, inode->i_mode,
-				   new_decode_dev(attr->rdev));
+		init_special_inode(inode, inode->i_mode, attr->rdev);
 	} else
 		BUG();
 }
@@ -549,20 +547,6 @@ static void fuse_put_super(struct super_block *sb)
 	fuse_mount_put(fm);
 }
 
-static void convert_fuse_statfs(struct kstatfs *stbuf, struct fuse_kstatfs *attr)
-{
-	stbuf->f_type    = FUSE_SUPER_MAGIC;
-	stbuf->f_bsize   = attr->bsize;
-	stbuf->f_frsize  = attr->frsize;
-	stbuf->f_blocks  = attr->blocks;
-	stbuf->f_bfree   = attr->bfree;
-	stbuf->f_bavail  = attr->bavail;
-	stbuf->f_files   = attr->files;
-	stbuf->f_ffree   = attr->ffree;
-	stbuf->f_namelen = attr->namelen;
-	/* fsid is left zero */
-}
-
 static int fuse_statfs(struct dentry *dentry, struct kstatfs *buf)
 {
 	struct super_block *sb = dentry->d_sb;
@@ -570,11 +554,23 @@ static int fuse_statfs(struct dentry *dentry, struct kstatfs *buf)
 	FUSE_ARGS(args);
 	struct fuse_statfs_out outarg;
 	int err;
+#ifdef CONFIG_FUSE_BPF
+	struct fuse_err_ret fer;
+#endif
 
 	if (!fuse_allow_current_process(fm->fc)) {
 		buf->f_type = FUSE_SUPER_MAGIC;
 		return 0;
 	}
+
+#ifdef CONFIG_FUSE_BPF
+	fer = fuse_bpf_backing(dentry->d_inode, struct fuse_statfs_out,
+			       fuse_statfs_initialize, fuse_statfs_backing,
+			       fuse_statfs_finalize,
+			       dentry, buf);
+	if (fer.ret)
+		return PTR_ERR(fer.result);
+#endif
 
 	memset(&outarg, 0, sizeof(outarg));
 	args.in_numargs = 0;
@@ -602,6 +598,7 @@ enum {
 	OPT_BLKSIZE,
 	OPT_ROOT_BPF,
 	OPT_ROOT_DIR,
+	OPT_NO_DAEMON,
 	OPT_ERR
 };
 
@@ -618,6 +615,7 @@ static const struct fs_parameter_spec fuse_fs_parameters[] = {
 	fsparam_string	("subtype",		OPT_SUBTYPE),
 	fsparam_u32	("root_bpf",		OPT_ROOT_BPF),
 	fsparam_u32	("root_dir",		OPT_ROOT_DIR),
+	fsparam_flag	("no_daemon",		OPT_NO_DAEMON),
 	{}
 };
 
@@ -714,6 +712,11 @@ static int fuse_parse_param(struct fs_context *fc, struct fs_parameter *param)
 		ctx->root_dir = fget(result.uint_32);
 		if (!ctx->root_dir)
 			return invalfc(fc, "Unable to open root directory");
+		break;
+
+	case OPT_NO_DAEMON:
+		ctx->no_daemon = true;
+		ctx->fd_present = true;
 		break;
 
 	default:
@@ -920,14 +923,13 @@ static struct dentry *fuse_get_dentry(struct super_block *sb,
 	inode = ilookup5(sb, handle->nodeid, fuse_inode_eq, &fii);
 	if (!inode) {
 		struct fuse_entry_out outarg;
-		struct fuse_entry_bpf_out bpf_outarg;
 		const struct qstr name = QSTR_INIT(".", 1);
 
 		if (!fc->export_support)
 			goto out_err;
 
 		err = fuse_lookup_name(sb, handle->nodeid, &name, &outarg,
-				       &bpf_outarg, NULL, &inode);
+				       NULL, &inode);
 		if (err && err != -ENOENT)
 			goto out_err;
 		if (err || !inode) {
@@ -1021,7 +1023,6 @@ static struct dentry *fuse_get_parent(struct dentry *child)
 	struct inode *inode;
 	struct dentry *parent;
 	struct fuse_entry_out outarg;
-	struct fuse_entry_bpf_out bpf_outarg;
 	const struct qstr name = QSTR_INIT("..", 2);
 	int err;
 
@@ -1029,7 +1030,7 @@ static struct dentry *fuse_get_parent(struct dentry *child)
 		return ERR_PTR(-ESTALE);
 
 	err = fuse_lookup_name(child_inode->i_sb, get_node_id(child_inode),
-			       &name, &outarg, &bpf_outarg, NULL, &inode);
+			       &name, &outarg, NULL, &inode);
 	if (err) {
 		if (err == -ENOENT)
 			return ERR_PTR(-ESTALE);
@@ -1215,7 +1216,6 @@ static void process_init_reply(struct fuse_mount *fm, struct fuse_args *args,
 		fc->minor = arg->minor;
 		fc->max_write = arg->minor < 5 ? 4096 : arg->max_write;
 		fc->max_write = max_t(unsigned, 4096, fc->max_write);
-		fc->task = get_task_struct(current);
 		fc->conn_init = 1;
 	}
 	kfree(ia);
@@ -1271,7 +1271,7 @@ void fuse_send_init(struct fuse_mount *fm)
 	ia->args.nocreds = true;
 	ia->args.end = process_init_reply;
 
-	if (fuse_simple_background(fm, &ia->args, GFP_KERNEL) != 0)
+	if (unlikely(fm->fc->no_daemon) || fuse_simple_background(fm, &ia->args, GFP_KERNEL) != 0)
 		process_init_reply(fm, &ia->args, -ENOTCONN);
 }
 EXPORT_SYMBOL_GPL(fuse_send_init);
@@ -1292,8 +1292,6 @@ void fuse_free_conn(struct fuse_conn *fc)
 	idr_for_each(&fc->passthrough_req, free_fuse_passthrough, NULL);
 	idr_destroy(&fc->passthrough_req);
 	kfree_rcu(fc, rcu);
-	if (fc->task)
-		put_task_struct(fc->task);
 }
 EXPORT_SYMBOL_GPL(fuse_free_conn);
 
@@ -1517,6 +1515,7 @@ int fuse_fill_super_common(struct super_block *sb, struct fuse_fs_context *ctx)
 	fc->destroy = ctx->destroy;
 	fc->no_control = ctx->no_control;
 	fc->no_force_umount = ctx->no_force_umount;
+	fc->no_daemon = ctx->no_daemon;
 
 	err = -ENOMEM;
 	root = fuse_get_root_inode(sb, ctx->rootmode, ctx->root_bpf,
@@ -1568,18 +1567,20 @@ static int fuse_fill_super(struct super_block *sb, struct fs_context *fsc)
 	struct fuse_mount *fm;
 
 	err = -EINVAL;
-	file = fget(ctx->fd);
-	if (!file)
-		goto err;
+	if (!ctx->no_daemon) {
+		file = fget(ctx->fd);
+		if (!file)
+			goto err;
 
-	/*
-	 * Require mount to happen from the same user namespace which
-	 * opened /dev/fuse to prevent potential attacks.
-	 */
-	if ((file->f_op != &fuse_dev_operations) ||
-	    (file->f_cred->user_ns != sb->s_user_ns))
-		goto err_fput;
-	ctx->fudptr = &file->private_data;
+		/*
+		 * Require mount to happen from the same user namespace which
+		 * opened /dev/fuse to prevent potential attacks.
+		 */
+		if ((file->f_op != &fuse_dev_operations) ||
+		    (file->f_cred->user_ns != sb->s_user_ns))
+			goto err_fput;
+		ctx->fudptr = &file->private_data;
+	}
 
 	fc = kmalloc(sizeof(*fc), GFP_KERNEL);
 	err = -ENOMEM;
@@ -1605,7 +1606,8 @@ static int fuse_fill_super(struct super_block *sb, struct fs_context *fsc)
 	 * memory barrier for file->private_data to be visible on all
 	 * CPUs after this
 	 */
-	fput(file);
+	if (!ctx->no_daemon)
+		fput(file);
 	fuse_send_init(get_fuse_mount_super(sb));
 	return 0;
 
@@ -1613,7 +1615,8 @@ static int fuse_fill_super(struct super_block *sb, struct fs_context *fsc)
 	fuse_mount_put(fm);
 	sb->s_fs_info = NULL;
  err_fput:
-	fput(file);
+	if (!ctx->no_daemon)
+		fput(file);
  err:
 	return err;
 }
@@ -1900,11 +1903,21 @@ static int __init fuse_init(void)
 	if (res)
 		goto err_sysfs_cleanup;
 
+#ifdef CONFIG_FUSE_BPF
+	res = fuse_bpf_init();
+	if (res)
+		goto err_ctl_cleanup;
+#endif
+
 	sanitize_global_limit(&max_user_bgreq);
 	sanitize_global_limit(&max_user_congthresh);
 
 	return 0;
 
+#ifdef CONFIG_FUSE_BPF
+ err_ctl_cleanup:
+	fuse_ctl_cleanup();
+#endif
  err_sysfs_cleanup:
 	fuse_sysfs_cleanup();
  err_dev_cleanup:
@@ -1922,6 +1935,9 @@ static void __exit fuse_exit(void)
 	fuse_ctl_cleanup();
 	fuse_sysfs_cleanup();
 	fuse_fs_cleanup();
+#ifdef CONFIG_FUSE_BPF
+	fuse_bpf_cleanup();
+#endif
 	fuse_dev_cleanup();
 }
 

@@ -207,21 +207,21 @@ enum modem_state {
 	STATE_ONLINE,
 	STATE_NV_REBUILDING,	/* <= rebuilding start */
 	STATE_LOADER_DONE,
-	STATE_SIM_ATTACH,
-	STATE_SIM_DETACH,
+	STATE_SIM_ATTACH,	/* Deprecated */
+	STATE_SIM_DETACH,	/* Deprecated */
 	STATE_CRASH_WATCHDOG,	/* cp watchdog crash */
-	STATE_INIT,		/* cp booting has not been tried yet */
+
+	/* Internal states */
+	STATE_RESET,		/* normal reset */
 };
+
+/* Intervals in ms for the reset noti via poll */
+#define STATE_RESET_INTERVAL_MS	(200)
 
 enum link_state {
 	LINK_STATE_OFFLINE = 0,
 	LINK_STATE_IPC,
 	LINK_STATE_CP_CRASH
-};
-
-struct sim_state {
-	bool online;	/* SIM is online? */
-	bool changed;	/* online is changed? */
 };
 
 struct cp_power_stats {
@@ -258,12 +258,6 @@ struct __packed sipc_fmt_hdr {
 #define sipc5_is_not_reserved_channel(ch) \
 	((ch) != 0 && (ch) != 5 && (ch) != 6 && (ch) != 27 && (ch) != 255)
 
-#if IS_ENABLED(CONFIG_MODEM_IF_QOS)
-#define MAX_NDEV_TX_Q 2
-#else
-#define MAX_NDEV_TX_Q 1
-#endif
-#define MAX_NDEV_RX_Q 1
 /* mark value for high priority packet, hex QOSH */
 #define RAW_HPRIO	0x514F5348
 
@@ -365,9 +359,6 @@ struct io_device {
 
 	int (*recv_net_skb)(struct io_device *iod, struct link_device *ld,
 			    struct sk_buff *skb);
-
-	/* inform the IO device that the SIM is not inserting or removing */
-	void (*sim_state_changed)(struct io_device *iod, bool sim_online);
 
 	struct modem_ctl *mc;
 	struct modem_shared *msd;
@@ -595,7 +586,6 @@ struct modem_ctl {
 	struct modem_shared *msd;
 
 	enum modem_state phone_state;
-	struct sim_state sim_state;
 
 	/* spin lock for each modem_ctl instance */
 	spinlock_t lock;
@@ -627,15 +617,7 @@ struct modem_ctl {
 #endif
 
 #if IS_ENABLED(CONFIG_LINK_DEVICE_SHMEM)
-	unsigned int mbx_pda_active;
-	unsigned int mbx_phone_active;
-	unsigned int mbx_ap_wakeup;
-	unsigned int mbx_ap_status;
-	unsigned int mbx_cp_wakeup;
-	unsigned int mbx_cp_status;
-
 	/* for notify uart connection with direction*/
-	unsigned int mbx_uart_noti;
 	unsigned int int_uart_noti;
 
 	/* for checking aliveness of CP */
@@ -687,7 +669,6 @@ struct modem_ctl {
 	spinlock_t pcie_pm_lock;
 	struct pci_driver pci_driver;
 
-	int int_pcie_link_ack;
 	int pcie_ch_num;
 	int pcie_cto_retry_cnt;
 	int pcie_cto_retry_cnt_all;
@@ -796,7 +777,7 @@ void sipc5_build_header(struct io_device *iod, u8 *buff, u8 cfg,
 void vnet_setup(struct net_device *ndev);
 const struct file_operations *get_bootdump_io_fops(void);
 const struct file_operations *get_ipc_io_fops(void);
-int sipc5_init_io_device(struct io_device *iod);
+int sipc5_init_io_device(struct io_device *iod, struct mem_link_device *mld);
 void sipc5_deinit_io_device(struct io_device *iod);
 
 #if IS_ENABLED(CONFIG_CPIF_VENDOR_HOOK)

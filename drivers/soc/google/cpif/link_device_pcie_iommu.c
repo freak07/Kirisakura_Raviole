@@ -6,6 +6,9 @@
 
 #include "link_device_pcie_iommu.h"
 
+#define PCIE_CH2HSI(ch)	((ch) + 1)
+
+extern void pcie_iommu_tlb_invalidate_all(int hsi_block_num);
 extern int pcie_iommu_map(unsigned long iova, phys_addr_t paddr, size_t size,
 			  int prot, int hsi_block_num);
 extern size_t pcie_iommu_unmap(unsigned long iova, size_t size, int hsi_block_num);
@@ -16,6 +19,7 @@ void cpif_pcie_iommu_enable_regions(struct mem_link_device *mld)
 
 	struct pktproc_adaptor *ppa = &mld->pktproc;
 	struct link_device *ld = &mld->link_dev;
+	struct modem_ctl *mc = ld->mc;
 
 	u32 cp_num = ld->mdm_data->cp_num;
 	u32 shmem_idx;
@@ -35,10 +39,9 @@ void cpif_pcie_iommu_enable_regions(struct mem_link_device *mld)
 			size = cp_shmem_get_size(cp_num, shmem_idx);
 
 		if (cp_shmem_get_base(cp_num, shmem_idx)) {
-			/* ToDo: Set hsi_block_num by variable */
 			ret = pcie_iommu_map(cp_shmem_get_base(cp_num, shmem_idx),
 					     cp_shmem_get_base(cp_num, shmem_idx),
-					     size, 0, 1);
+					     size, 0, PCIE_CH2HSI(mc->pcie_ch_num));
 			mif_info("pcie iommu idx:%d addr:0x%08lx size:0x%08x ret:%d\n",
 				 shmem_idx, cp_shmem_get_base(cp_num, shmem_idx), size, ret);
 		}
@@ -67,6 +70,7 @@ int cpif_pcie_iommu_init(struct pktproc_queue *q)
 
 void cpif_pcie_iommu_reset(struct pktproc_queue *q)
 {
+	struct modem_ctl *mc = dev_get_drvdata(q->ppa->dev);
 	struct pktproc_desc_sktbuf *desc = q->desc_sktbuf;
 	struct cpif_pcie_iommu_ctrl *ioc = &q->ioc;
 	unsigned int usage, idx;
@@ -99,6 +103,7 @@ void cpif_pcie_iommu_reset(struct pktproc_queue *q)
 	}
 
 	/* Initialize */
+	pcie_iommu_tlb_invalidate_all(PCIE_CH2HSI(mc->pcie_ch_num));
 	if (ioc->pf_cache.va) {
 		__page_frag_cache_drain(virt_to_page(ioc->pf_cache.va),
 					ioc->pf_cache.pagecnt_bias);
@@ -109,6 +114,7 @@ void cpif_pcie_iommu_reset(struct pktproc_queue *q)
 void *cpif_pcie_iommu_map_va(struct pktproc_queue *q, unsigned long src_pa,
 			     u32 idx, u32 *map_cnt)
 {
+	struct modem_ctl *mc = dev_get_drvdata(q->ppa->dev);
 	struct cpif_pcie_iommu_ctrl *ioc = &q->ioc;
 	const size_t pf_size = q->ppa->true_packet_size;
 	void *addr_des, *addr_asc;
@@ -137,12 +143,13 @@ void *cpif_pcie_iommu_map_va(struct pktproc_queue *q, unsigned long src_pa,
 		if (map_size > tailroom)
 			map_size = tailroom;
 
+#ifdef LINK_DEVICE_PCIE_IOMMU_DEBUG
 		mif_debug("map idx:%u src_pa:0x%lX va:0x%p size:0x%lX\n",
 			  ioc->map_idx, ioc->map_src_pa, ioc->map_page_va, map_size);
+#endif
 
-		/* ToDo: Set hsi_block_num by variable */
 		ret = pcie_iommu_map(ioc->map_src_pa, virt_to_phys(ioc->map_page_va),
-				     map_size, 0, 1);
+				     map_size, 0, PCIE_CH2HSI(mc->pcie_ch_num));
 		if (ret) {
 			mif_err("map failure idx:%u src_pa:0x%lX va:0x%p size:0x%lX\n",
 				ioc->map_idx, ioc->map_src_pa, ioc->map_page_va, map_size);
@@ -187,31 +194,24 @@ set_map:
 void cpif_pcie_iommu_try_ummap_va(struct pktproc_queue *q, unsigned long src_pa,
 				  void *addr, u32 idx)
 {
+	struct modem_ctl *mc = dev_get_drvdata(q->ppa->dev);
 	struct cpif_pcie_iommu_ctrl *ioc = &q->ioc;
-	struct page *p = virt_to_head_page(addr);
 	u32 unmap_size;
 	size_t ret;
-
-	if (ioc->unmap_page == p)
-		return;
 
 	if (!ioc->unmap_src_pa)
 		goto set_unmap;
 
-	/*
-	 * Cannot not ensure that ioc->unmap_page has a valid page addr.
-	 * Use the variable to keep an addr only.
-	 */
+	unmap_size = !idx ? ioc->end_map_size : ioc->unmap_page_size;
 
-	if (!idx)
-		unmap_size = ioc->end_map_size;
-	else
-		unmap_size = (u32)(src_pa - ioc->unmap_src_pa);
+	if (src_pa >= ioc->unmap_src_pa && src_pa < ioc->unmap_src_pa + unmap_size)
+		return;
 
+#ifdef LINK_DEVICE_PCIE_IOMMU_DEBUG
 	mif_debug("unmap src_pa:0x%lX size:0x%X\n", ioc->unmap_src_pa, unmap_size);
+#endif
 
-	/* ToDo: Set hsi_block_num by variable */
-	ret = pcie_iommu_unmap(ioc->unmap_src_pa, unmap_size, 1);
+	ret = pcie_iommu_unmap(ioc->unmap_src_pa, unmap_size, PCIE_CH2HSI(mc->pcie_ch_num));
 	if (ret != unmap_size) {
 		mif_err("invalid unmap size:0x%zX expected:0x%X src_pa:0x%lX\n",
 			ret, unmap_size, ioc->unmap_src_pa);
@@ -221,5 +221,5 @@ void cpif_pcie_iommu_try_ummap_va(struct pktproc_queue *q, unsigned long src_pa,
 
 set_unmap:
 	ioc->unmap_src_pa = src_pa;
-	ioc->unmap_page = p;
+	ioc->unmap_page_size = page_size(virt_to_head_page(addr));
 }

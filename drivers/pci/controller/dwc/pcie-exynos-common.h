@@ -233,6 +233,10 @@ struct exynos_pcie {
 	u32			elbi_base_physical_addr;
 	u32			phy_base_physical_addr;
 	u32			ia_base_physical_addr;
+	u32			ep_l1ss_cap_off;
+	u32			ep_link_ctrl_off;
+	u32			ep_l1ss_ctrl1_off;
+	u32			ep_l1ss_ctrl2_off;
 	unsigned int		pci_cap[48];
 	unsigned int		pci_ext_cap[48];
 	struct regmap		*pmureg;
@@ -248,6 +252,7 @@ struct exynos_pcie {
 	int			l1ss_enable;
 	int			linkdown_cnt;
 	int			idle_ip_index;
+	int			separated_msi;
 	bool			use_msi;
 	bool			use_cache_coherency;
 	bool			use_sicd;
@@ -257,6 +262,8 @@ struct exynos_pcie {
 	bool			use_ia;
 	bool			use_l1ss;
 	bool			use_nclkoff_en;
+	bool                    cpl_timeout_recovery;
+	bool			sudden_linkdown;
 	spinlock_t		conf_lock;		/* pcie config - link status change */
 	spinlock_t		reg_lock;		/* pcie config - reg_lock(reserved) */
 	spinlock_t		pcie_l1_exit_lock;	/* pcie l1.2 exit - ctrl_id_state */
@@ -308,6 +315,20 @@ struct exynos_pcie {
 
 	bool use_phy_isol_con;
 	int phy_control;
+	struct logbuffer *log;
+};
+
+#define PCIE_MAX_SEPA_IRQ_NUM	(5)
+#define PCIE_START_SEP_MSI_VEC	(1)
+#define PCIE_MSI_MAX_VEC_NUM	(32)
+#define PCIE_DOMAIN_MAX_IRQ	(256)
+
+struct separated_msi_vector {
+	int is_used;
+	int irq;
+	void *context;
+	irq_handler_t msi_irq_handler;
+	int flags;
 };
 
 #define PCIE_EXYNOS_OP_READ(base, type)						\

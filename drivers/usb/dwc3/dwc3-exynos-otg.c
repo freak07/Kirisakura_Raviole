@@ -174,6 +174,11 @@ static void dwc3_otg_set_host_mode(struct dwc3_otg *dotg)
 		reg &= ~DWC3_OTG_OCTL_PERIMODE;
 		dwc3_writel(dotg->regs, DWC3_OCTL, reg);
 	} else {
+		/* Disable undefined length burst mode */
+		reg = dwc3_readl(dwc->regs, DWC3_GSBUSCFG0);
+		reg &= ~(DWC3_GSBUSCFG0_INCRBRSTEN);
+		dwc3_writel(dwc->regs, DWC3_GSBUSCFG0, reg);
+
 		dwc3_otg_set_mode(dwc, DWC3_GCTL_PRTCAP_HOST);
 	}
 }
@@ -384,6 +389,9 @@ static int dwc3_otg_start_host(struct otg_fsm *fsm, int on)
 	__pm_stay_awake(dotg->wakelock);
 
 	if (on) {
+		if (!dwc3_otg_check_usb_suspend(exynos))
+			dev_err(dev, "too long to wait for dwc3 suspended\n");
+
 		dotg->otg_connection = 1;
 		exynos->need_dr_role = 1;
 		while (dwc->gadget_driver == NULL) {

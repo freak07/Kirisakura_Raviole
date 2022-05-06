@@ -555,22 +555,6 @@ static int io_dev_recv_net_skb_from_link_dev(struct io_device *iod,
 	return rx_multi_pdp(skb);
 }
 
-static void io_dev_sim_state_changed(struct io_device *iod, bool sim_online)
-{
-	if (atomic_read(&iod->opened) == 0) {
-		mif_info("%s: ERR! not opened\n", iod->name);
-	} else if (iod->mc->sim_state.online == sim_online) {
-		mif_info("%s: SIM state not changed\n", iod->name);
-	} else {
-		iod->mc->sim_state.online = sim_online;
-		iod->mc->sim_state.changed = true;
-		mif_info("%s: SIM state changed {online %d, changed %d}\n",
-			iod->name, iod->mc->sim_state.online,
-			iod->mc->sim_state.changed);
-		wake_up(&iod->wq);
-	}
-}
-
 u16 exynos_build_fr_config(struct io_device *iod, struct link_device *ld,
 				unsigned int count)
 {
@@ -708,11 +692,12 @@ static int cpif_cdev_create_device(struct io_device *iod, const struct file_oper
 	return ret;
 }
 
-int sipc5_init_io_device(struct io_device *iod)
+int sipc5_init_io_device(struct io_device *iod, struct mem_link_device *mld)
 {
 	int ret = 0;
 	int i;
 	struct vnet *vnet;
+	unsigned int txqs = 1, rxqs = 1;
 
 	if (iod->attrs & IO_ATTR_SBD_IPC)
 		iod->sbd_ipc = true;
@@ -721,8 +706,6 @@ int sipc5_init_io_device(struct io_device *iod)
 		iod->link_header = false;
 	else
 		iod->link_header = true;
-
-	iod->sim_state_changed = io_dev_sim_state_changed;
 
 	/* Get data from link device */
 	iod->recv_skb_single = io_dev_recv_skb_single_from_link_dev;
@@ -769,12 +752,18 @@ int sipc5_init_io_device(struct io_device *iod)
 		break;
 
 	case IODEV_NET:
+#if IS_ENABLED(CONFIG_MODEM_IF_QOS)
+		txqs = 2;
+#endif
+#if IS_ENABLED(CONFIG_CP_PKTPROC)
+		rxqs = mld->pktproc.num_queue;
+#endif
 		skb_queue_head_init(&iod->sk_rx_q);
 		INIT_LIST_HEAD(&iod->node_ndev);
 
 		iod->ndev = alloc_netdev_mqs(sizeof(struct vnet),
 					iod->name, NET_NAME_UNKNOWN, vnet_setup,
-					MAX_NDEV_TX_Q, MAX_NDEV_RX_Q);
+					txqs, rxqs);
 		if (!iod->ndev) {
 			mif_info("%s: ERR! alloc_netdev fail\n", iod->name);
 			return -ENOMEM;

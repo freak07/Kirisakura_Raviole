@@ -8,6 +8,7 @@
 #include <linux/ipv6.h>
 #include "modem_prj.h"
 #include "modem_utils.h"
+#include "modem_ctrl.h"
 #include "link_device_memory.h"
 #include "cpif_tp_monitor.h"
 #if IS_ENABLED(CONFIG_LINK_DEVICE_PCIE)
@@ -331,34 +332,51 @@ static bool tpmon_check_to_unboost(struct tpmon_data *data)
 	return true;
 }
 
+static void tpmon_get_cpu_per_queue(u32 mask, u32 *q, unsigned int q_num,
+				    bool get_mask)
+{
+	u32 cur_mask = mask, bit_pos = 0;
+	bool masks_lt_qnum = false;
+	unsigned int idx = 0;
+
+	if (!mask)
+		return;
+
+	while (cur_mask || idx < q_num) {
+		u32 bit_mask;
+
+		if (!cur_mask) {
+			cur_mask = mask;
+			bit_pos = 0;
+
+			if (idx < q_num)
+				masks_lt_qnum = true;
+		}
+
+		bit_mask = (u32)BIT(bit_pos);
+
+		if (bit_mask & cur_mask) {
+			cur_mask &= ~bit_mask;
+			if (get_mask)
+				q[idx % q_num] |= bit_mask;
+			else
+				q[idx % q_num] = bit_pos;
+			idx++;
+		}
+
+		if (masks_lt_qnum && idx == q_num)
+			cur_mask = 0;
+
+		bit_pos++;
+	}
+}
+
 /*
  * Target
  */
 /* RPS */
 #if IS_ENABLED(CONFIG_RPS)
 /* From net/core/net-sysfs.c */
-static ssize_t tpmon_show_rps_map(struct netdev_rx_queue *queue, char *buf)
-{
-	struct rps_map *map;
-	cpumask_var_t mask;
-	int i, len;
-
-	if (!zalloc_cpumask_var(&mask, GFP_KERNEL))
-		return -ENOMEM;
-
-	rcu_read_lock();
-	map = rcu_dereference(queue->rps_map);
-	if (map)
-		for (i = 0; i < map->len; i++)
-			cpumask_set_cpu(map->cpus[i], mask);
-
-	len = snprintf(buf, MAX_RPS_STRING, "%*pb", cpumask_pr_args(mask));
-	rcu_read_unlock();
-	free_cpumask_var(mask);
-
-	return len < MAX_RPS_STRING ? len : -EINVAL;
-}
-
 static ssize_t tpmon_store_rps_map(struct netdev_rx_queue *queue,
 						const char *buf, ssize_t len)
 {
@@ -416,20 +434,35 @@ static ssize_t tpmon_store_rps_map(struct netdev_rx_queue *queue,
 
 static void tpmon_set_rps(struct tpmon_data *data)
 {
+#if IS_ENABLED(CONFIG_CP_PKTPROC)
+	struct mem_link_device *mld = container_of(data->tpmon->ld,
+						   struct mem_link_device, link_dev);
+	struct pktproc_adaptor *ppa = &mld->pktproc;
+#endif
 	struct io_device *iod;
-	unsigned long flags;
-	int ret = 0;
-	char mask[MAX_RPS_STRING] = {};
-	u32 val;
+	unsigned int num_queue = 1;
+	unsigned int i;
+	u32 val, *rxq_mask;
 
 	if (!data->enable)
 		return;
 
+#if IS_ENABLED(CONFIG_CP_PKTPROC)
+	if (ppa->use_exclusive_irq)
+		num_queue = ppa->num_queue;
+#endif
+
+	rxq_mask = kzalloc(sizeof(u32) * num_queue, GFP_KERNEL);
+	if (!rxq_mask)
+		return;
+
 	val = tpmon_get_curr_level(data);
-	snprintf(mask, MAX_RPS_STRING, "%x", val);
+	tpmon_get_cpu_per_queue(val, rxq_mask, num_queue, true);
 
 	list_for_each_entry(iod, &data->tpmon->net_node_list, node_all_ndev) {
-		char org_mask[MAX_RPS_STRING] = {};
+		char mask[MAX_RPS_STRING] = {};
+		unsigned long flags;
+		int ret;
 
 		if (!iod->name)
 			continue;
@@ -437,18 +470,14 @@ static void tpmon_set_rps(struct tpmon_data *data)
 		if (!iod->ndev)
 			continue;
 
-		tpmon_show_rps_map(&(iod->ndev->_rx[0]), org_mask);
-		if (!strncmp(mask, org_mask, MAX_RPS_STRING)) {
-			mif_info("skip to set same level for %s(0x%x)\n",
-				iod->ndev->name, val);
-			continue;
-		}
+		for (i = 0; i < num_queue; i++) {
+			snprintf(mask, MAX_RPS_STRING, "%x", rxq_mask[i]);
 
-		ret = (int)tpmon_store_rps_map(&(iod->ndev->_rx[0]),
-			mask, strlen(mask));
-		if (ret < 0) {
-			mif_err("tpmon_store_rps_map() error:%d\n", ret);
-			break;
+			ret = (int)tpmon_store_rps_map(&iod->ndev->_rx[i], mask, strlen(mask));
+			if (ret < 0) {
+				mif_err("tpmon_store_rps_map() error:%d\n", ret);
+				goto out;
+			}
 		}
 
 		spin_lock_irqsave(&iod->clat_lock, flags);
@@ -460,6 +489,7 @@ static void tpmon_set_rps(struct tpmon_data *data)
 		dev_hold(iod->clat_ndev);
 		spin_unlock_irqrestore(&iod->clat_lock, flags);
 
+		snprintf(mask, MAX_RPS_STRING, "%x", val);
 		ret = (int)tpmon_store_rps_map(&(iod->clat_ndev->_rx[0]),
 			mask, strlen(mask));
 		dev_put(iod->clat_ndev);
@@ -470,7 +500,11 @@ static void tpmon_set_rps(struct tpmon_data *data)
 		}
 	}
 
-	mif_info("%s (mask:0x%s)\n", data->name, mask);
+	for (i = 0; i < num_queue; i++)
+		mif_info("%s (rxq[%u] mask:0x%02x)\n", data->name, i, rxq_mask[i]);
+
+out:
+	kfree(rxq_mask);
 }
 #endif
 
@@ -491,12 +525,8 @@ static void tpmon_set_gro(struct tpmon_data *data)
 
 	timeout = tpmon_get_curr_level(data);
 
-#if !IS_ENABLED(CONFIG_CP_PKTPROC) && !IS_ENABLED(CONFIG_EXYNOS_DIT)
-	mld->dummy_net.gro_flush_timeout = timeout;
-#endif
-
 #if IS_ENABLED(CONFIG_CP_PKTPROC)
-	if (ppa->use_napi && ppa->use_exclusive_irq) {
+	if (ppa->use_exclusive_irq) {
 		for (i = 0; i < ppa->num_queue; i++) {
 			struct pktproc_queue *q = ppa->q[i];
 
@@ -505,6 +535,8 @@ static void tpmon_set_gro(struct tpmon_data *data)
 	} else {
 		mld->dummy_net.gro_flush_timeout = timeout;
 	}
+#else
+	mld->dummy_net.gro_flush_timeout = timeout;
 #endif
 
 #if IS_ENABLED(CONFIG_EXYNOS_DIT)
@@ -521,78 +553,121 @@ static void tpmon_set_gro(struct tpmon_data *data)
 #if IS_ENABLED(CONFIG_MCU_IPC)
 static void tpmon_set_irq_affinity_mbox(struct tpmon_data *data)
 {
-	u32 val;
 #if IS_ENABLED(CONFIG_CP_PKTPROC)
 	struct mem_link_device *mld = ld_to_mem_link_device(data->tpmon->ld);
 	struct pktproc_adaptor *ppa = &mld->pktproc;
-	int i;
 #endif
+	unsigned int num_queue = 1;
+	unsigned int i;
+	u32 val, *q_cpu;
 
 	if (!data->enable)
 		return;
 
-	val = tpmon_get_curr_level(data);
+#if IS_ENABLED(CONFIG_CP_PKTPROC)
+	if (ppa->use_exclusive_irq)
+		num_queue = ppa->num_queue;
+#endif
 
-	if (cp_mbox_get_affinity(data->extra_idx) == val) {
-		mif_info("skip to set same cpu_num for %s (CPU:%d)\n",
-			data->name, val);
+	q_cpu = kzalloc(sizeof(u32) * num_queue, GFP_KERNEL);
+	if (!q_cpu)
 		return;
 	}
 
-	mif_info("%s (CPU:%d)\n", data->name, val);
+	val = tpmon_get_curr_level(data);
+	tpmon_get_cpu_per_queue(val, q_cpu, num_queue, false);
+
+	for (i = 0; i < num_queue; i++) {
+		int irq_idx = data->extra_idx;
 
 #if IS_ENABLED(CONFIG_CP_PKTPROC)
-	if (ppa->use_exclusive_irq) {
-		for (i = 0; i < ppa->num_queue; i++) {
-			if (ppa->use_napi)
-				pktproc_stop_napi_poll(ppa, i);
-		}
-	}
+		pktproc_stop_napi_poll(ppa, i);
+
+		if (ppa->use_exclusive_irq)
+			irq_idx = ppa->q[i]->irq_idx;
 #endif
 
-	cp_mbox_set_affinity(data->extra_idx, val);
+		if (cp_mbox_get_affinity(irq_idx) == q_cpu[i]) {
+			mif_info("skip to set same cpu_num for %s (CPU:%u)\n",
+				 data->name, q_cpu[i]);
+			continue;
+		}
+
+		mif_info("%s (CPU:%u)\n", data->name, val);
+		cp_mbox_set_affinity(irq_idx, q_cpu[i]);
+	}
+
+	kfree(q_cpu);
 }
 #endif
 
 #if IS_ENABLED(CONFIG_LINK_DEVICE_PCIE)
 static void tpmon_set_irq_affinity_pcie(struct tpmon_data *data)
 {
+	struct mem_link_device *mld = ld_to_mem_link_device(data->tpmon->ld);
 	struct modem_ctl *mc = data->tpmon->ld->mc;
-	u32 val;
-
-	if (!mc)
-		return;
+#if IS_ENABLED(CONFIG_CP_PKTPROC)
+	struct pktproc_adaptor *ppa = &mld->pktproc;
+	unsigned int num_queue = 1;
+	unsigned int i;
+	u32 val, *q_cpu;
+#endif
 
 	if (!data->enable)
 		return;
 
+#if IS_ENABLED(CONFIG_CP_PKTPROC)
+	if (ppa->use_exclusive_irq)
+		num_queue = ppa->num_queue;
+
+	q_cpu = kzalloc(sizeof(u32) * num_queue, GFP_KERNEL);
+	if (!q_cpu)
+		return;
+
 	val = tpmon_get_curr_level(data);
+	tpmon_get_cpu_per_queue(val, q_cpu, num_queue, false);
 
-	mif_info("%s (CPU:%d)\n", data->name, val);
+	for (i = 0; i < num_queue; i++) {
+		pktproc_stop_napi_poll(ppa, i);
 
-	exynos_pcie_rc_set_affinity(mc->pcie_ch_num, val);
+		if (!ppa->q[i]->irq)
+			break;
+
+		if (!ppa->use_exclusive_irq)
+			q_cpu[i] = data->extra_idx;
+
+		mif_info("%s (q[%u] cpu:%u)\n", data->name, i, q_cpu[i]);
+		mld->msi_irq_q_cpu[i] = q_cpu[i];
+	}
+
+	kfree(q_cpu);
+#endif
+
+	/* The affinity of msi_irq_base is fixed, use the extra_idx */
+	mld->msi_irq_base_cpu = data->extra_idx;
+	s5100_set_pcie_irq_affinity(mc);
 }
 #endif
 
 #if IS_ENABLED(CONFIG_EXYNOS_DIT)
 static void tpmon_set_irq_affinity_dit(struct tpmon_data *data)
 {
-	u32 val;
+	u32 val, cpu[1];
 
 	if (!data->enable)
 		return;
 
 	val = tpmon_get_curr_level(data);
+	tpmon_get_cpu_per_queue(val, cpu, 1, false);
 
-	if (dit_get_irq_affinity() == val) {
-		mif_info("skip to set same cpu_num for %s (CPU:%d)\n",
-			data->name, val);
+	if (dit_get_irq_affinity() == cpu[0]) {
+		mif_info("skip to set same cpu_num for %s (CPU:%u)\n",
+			 data->name, cpu[0]);
 		return;
 	}
 
-	mif_info("%s (CPU:%d)\n", data->name, val);
-
-	dit_set_irq_affinity(val);
+	mif_info("%s (CPU:%u)\n", data->name, cpu[0]);
+	dit_set_irq_affinity(cpu[0]);
 }
 #endif
 
@@ -693,14 +768,16 @@ static void tpmon_set_pci_low_power(struct tpmon_data *data)
 	if (!data->enable)
 		return;
 
-	if (!mc || !mc->pcie_powered_on)
-		return;
+	mutex_lock(&mc->pcie_check_lock);
+	if (!mc->pcie_powered_on || s51xx_check_pcie_link_status(mc->pcie_ch_num) == 0)
+		goto out;
 
 	val = tpmon_get_curr_level(data);
-
+	mif_info("%s (enable:%u)\n", data->name, val);
 	s51xx_pcie_l1ss_ctrl((int)val, mc->pcie_ch_num);
 
-	mif_info("%s (enable:%u)\n", data->name, val);
+out:
+	mutex_unlock(&mc->pcie_check_lock);
 }
 #endif
 
@@ -833,7 +910,7 @@ void tpmon_add_rx_bytes(struct sk_buff *skb)
 	default:
 		mif_err_limited("Non IPv4/IPv6 packet:0x%x\n",
 			ip_hdr(skb)->version);
-		return;
+		break;
 	}
 
 	spin_lock_irqsave(&tpmon->lock, flags);

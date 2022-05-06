@@ -54,6 +54,8 @@
 				google,bd-trickle-recharge-soc = <80>;
 				/* Enable TRICKLE-DEFEND */
 				google,bd-trickle-enable;
+				/* Battery virtual sensor */
+				google,batt-vs-tz-name = "batt_vs";
 
 				/* record over temperature time */
 				google,temp-record-thr = <300 350 400>;
@@ -97,7 +99,9 @@
 
 &hsi2c13_bus {
 	samsung,pins = "gpp25-0", "gpp25-1";
-	samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
+	samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+	samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
+	samsung,pin-pud-pdn = <EXYNOS_PIN_PULL_NONE>;
 };
 
 &hsi2c_15 {

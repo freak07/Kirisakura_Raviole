@@ -21,6 +21,7 @@
 #define INCALL_TX		0xC0000010
 #define HAPTIC_RX		0x80000011
 #define ERASER_TX	        0xC0000012
+#define INTERNAL_MIC_US_TX	0xC0000013
 
 #define IDX_EP1_RX		0x0
 #define IDX_EP2_RX		0x1
@@ -39,6 +40,7 @@
 #define IDX_HAPTIC_NoHOST_RX	0x20000011
 #define IDX_US_RX		0x13
 #define IDX_INCALL_PB2_RX       0x14
+#define IDX_IMS_RX              0x15
 
 #define IDX_EP1_TX		0x40000000
 #define IDX_EP2_TX		0x40000001

@@ -156,12 +156,22 @@ function update_aosp_abi {
 
     # Create the git ABI xml commit for aosp/android13-5.10 if needed
     if [ -f "${out_dir}/dist/abi.report.short" ]; then
+      if [ "${commit_ret}" = "0" ]; then
+        # The ACK team requires the symbol list and xml changes to be committed
+        # in a single patch. So reset the git repo to drop the symbol list
+        # commit we made above.
+        git -C aosp reset HEAD~1
+      fi
+
       COMMIT_TEXT=$(mktemp -t abi_xml_commit_text.XXXXX)
       echo "ANDROID: Update the ABI representation" > ${COMMIT_TEXT}
       echo >> ${COMMIT_TEXT}
       cat ${out_dir}/dist/abi.report.short >> ${COMMIT_TEXT}
       echo >> ${COMMIT_TEXT}
       echo "Bug: ${BUG}" >> ${COMMIT_TEXT}
+      if [ -n "${CHANGE_ID}" ]; then
+        echo "Change-Id: ${CHANGE_ID}" >> ${COMMIT_TEXT}
+      fi
       git -C aosp commit -s -F ${COMMIT_TEXT} -- android/
       commit_ret=$?
       rm -f ${COMMIT_TEXT}
@@ -249,11 +259,6 @@ function extract_pixel_symbols {
 # $1 The symbol list to verify
 function verify_new_symbols_require_abi_update {
   local pixel_symbol_list=$1
-
-  # Note: The KMI won't be frozen on android13-5.10 until Feb 23
-  # (go/gki-schedule). So disable the ABI xml update until then.
-  ABI_XML_UPDATE_REQUIRED=0
-  return
 
   pushd aosp/ >/dev/null
     git diff --name-only aosp/android13-5.10..HEAD | grep -v "\<${pixel_symbol_list}\>"

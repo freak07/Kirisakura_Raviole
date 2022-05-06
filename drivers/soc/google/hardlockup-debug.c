@@ -17,10 +17,14 @@
 #include <linux/slab.h>
 #include <linux/atomic.h>
 #include <linux/android_debug_symbols.h>
+#include <linux/device.h>
+#include <linux/interval_tree.h>
+#include <linux/pm.h>
 
 #include <linux/suspend.h>
 #include <linux/sched/task.h>
 #include <trace/hooks/cpuidle.h>
+#include <trace/events/power.h>
 
 #include <asm/debug-monitors.h>
 #include <asm/ptrace.h>
@@ -33,8 +37,12 @@
 #if IS_ENABLED(CONFIG_GS_ACPM)
 #include <soc/google/acpm_ipc_ctrl.h>
 #endif
+#include <soc/google/exynos-debug.h>
 
-#define HARDLOCKUP_DEBUG_MAGIC		(0xDEADBEEF)
+#define HARDLOCKUP_DEBUG_EL1_FIQ_MAGIC		(0xDEADBEEF)
+#define HARDLOCKUP_DEBUG_EL1_SGI_MAGIC		(HARDLOCKUP_DEBUG_EL1_FIQ_MAGIC + 1)
+#define HARDLOCKUP_DEBUG_EL2_FIQ_MAGIC		(HARDLOCKUP_DEBUG_EL1_FIQ_MAGIC - 4)
+#define HARDLOCKUP_DEBUG_EL2_SGI_MAGIC		(HARDLOCKUP_DEBUG_EL1_FIQ_MAGIC - 3)
 #define BUG_BRK_IMM_HARDLOCKUP		(0x801)
 #define FIQ_PENDING_INST_INDEX		(ARRAY_SIZE(hardlockup_debug_cpu_resume_insts) - 1)
 
@@ -44,6 +52,8 @@
 #define FIQINFO_CPU_ID_MASK		(0xff)
 
 #define CLUSTER_0_CORE_NR		(6)
+
+#define MAX_PRINT_DELAY_MS		(1800U)
 
 unsigned int hardlockup_debug_cpu_resume_insts[] = {
 	0x100000a2, //    adr     x2, 14 <__fiq_pending>
@@ -60,6 +70,15 @@ struct hardlockup_param_type {
 	unsigned int spin_func[FIQ_PENDING_INST_INDEX + 1];
 };
 
+static struct rb_root_cached pm_dev_rbroot = RB_ROOT_CACHED;
+
+#define foreach_pm_dev(node, next, priv) \
+	for (node = interval_tree_iter_first(&pm_dev_rbroot, 0, -1UL); \
+			({priv = container_of(node, struct pm_dev_priv, node); \
+			 next = node ? interval_tree_iter_next(node, 0, -1UL) : NULL; \
+			 node;}); \
+			node = next)
+
 static struct hardlockup_param_type *hardlockup_param;
 static dma_addr_t hardlockup_param_paddr;
 
@@ -71,7 +90,7 @@ static unsigned long hardlockup_core_mask;
 static unsigned long hardlockup_core_handled_mask;
 
 static struct task_struct *pm_suspend_task;
-static DEFINE_SPINLOCK(pm_suspend_task_lock);
+static DEFINE_SPINLOCK(pm_trace_lock);
 
 static void hardlockup_debug_bug_func(void)
 {
@@ -96,10 +115,65 @@ static int get_pending_fiq_cpu_id(void)
 	return fiq_info ? (cluster_id * CLUSTER_0_CORE_NR + cpu_id) : -1;
 }
 
-static void vh_bug_on_wdt_fiq_pending(void *data, int state, struct cpuidle_device *dev)
+struct pm_dev_priv {
+	struct interval_tree_node node;
+	struct device *dev;
+	struct device *parent;
+	char pm_ops[64];
+	int event;
+};
+
+static const char *pm_event_str(int event)
 {
-	if (get_pending_fiq_cpu_id() == raw_smp_processor_id())
-		hardlockup_debug_bug_func();
+	switch (event) {
+	case PM_EVENT_SUSPEND: return "suspend";
+	case PM_EVENT_RESUME: return "resume";
+	case PM_EVENT_FREEZE: return "freeze";
+	case PM_EVENT_QUIESCE: return "quiesce";
+	case PM_EVENT_HIBERNATE: return "hibernate";
+	case PM_EVENT_THAW: return "thaw";
+	case PM_EVENT_RESTORE: return "restore";
+	case PM_EVENT_RECOVER: return "recover";
+	default: return "unknown";
+	}
+}
+
+
+static void pm_dev_start(void *data, struct device *dev, const char *pm_ops, int event)
+{
+	unsigned long flags;
+	struct pm_dev_priv *priv;
+
+	spin_lock_irqsave(&pm_trace_lock, flags);
+	priv = kzalloc(sizeof(struct pm_dev_priv), GFP_ATOMIC);
+	if (!priv) {
+		pr_err("Failed to alloc pm_dev_priv buffer\n");
+		goto exit;
+	}
+	priv->dev = dev;
+	priv->parent = dev->parent;
+	priv->event = event;
+	strlcpy(priv->pm_ops, pm_ops, sizeof(priv->pm_ops));
+	interval_tree_insert(&priv->node, &pm_dev_rbroot);
+exit:
+	spin_unlock_irqrestore(&pm_trace_lock, flags);
+}
+
+static void pm_dev_end(void *data, struct device *dev, int error)
+{
+	unsigned long flags;
+	struct pm_dev_priv *priv;
+	struct interval_tree_node *node, *next;
+
+	spin_lock_irqsave(&pm_trace_lock, flags);
+	foreach_pm_dev(node, next, priv) {
+		if (priv->dev == dev) {
+			interval_tree_remove(node, &pm_dev_rbroot);
+			kfree(priv);
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&pm_trace_lock, flags);
 }
 
 static void hardlockup_debug_disable_fiq(void)
@@ -128,6 +202,23 @@ static inline int hardlockup_debug_try_lock_timeout(raw_spinlock_t *lock,
 	return ret;
 }
 
+static bool is_valid_hardlockup_magic(int val)
+{
+	return val == HARDLOCKUP_DEBUG_EL1_FIQ_MAGIC ||
+			val == HARDLOCKUP_DEBUG_EL1_SGI_MAGIC ||
+			val == HARDLOCKUP_DEBUG_EL2_FIQ_MAGIC ||
+			val == HARDLOCKUP_DEBUG_EL2_SGI_MAGIC;
+}
+
+static void vh_bug_on_wdt_fiq_pending(void *data, int state, struct cpuidle_device *dev)
+{
+	int cpu = raw_smp_processor_id();
+
+	if (get_pending_fiq_cpu_id() == cpu ||
+			is_valid_hardlockup_magic(dbg_snapshot_get_hardlockup_magic(cpu)))
+		hardlockup_debug_bug_func();
+}
+
 static unsigned long hardlockup_debug_get_locked_cpu_mask(void)
 {
 	unsigned long mask = 0;
@@ -136,8 +227,7 @@ static unsigned long hardlockup_debug_get_locked_cpu_mask(void)
 
 	for_each_online_cpu(cpu) {
 		val = dbg_snapshot_get_hardlockup_magic(cpu);
-		if (val == HARDLOCKUP_DEBUG_MAGIC ||
-			val == (HARDLOCKUP_DEBUG_MAGIC + 1))
+		if (is_valid_hardlockup_magic(val))
 			mask |= (1 << cpu);
 	}
 
@@ -147,6 +237,7 @@ static unsigned long hardlockup_debug_get_locked_cpu_mask(void)
 static int hardlockup_debug_bug_handler(struct pt_regs *regs, unsigned int esr)
 {
 	static atomic_t show_mem_once = ATOMIC_INIT(1);
+	static atomic_t print_schedstat_once = ATOMIC_INIT(1);
 
 	int cpu = raw_smp_processor_id();
 	unsigned int val;
@@ -161,15 +252,20 @@ static int hardlockup_debug_bug_handler(struct pt_regs *regs, unsigned int esr)
 		if (watchdog_fiq && !allcorelockup_detected) {
 			/* 1st WDT FIQ trigger */
 			val = dbg_snapshot_get_hardlockup_magic(cpu);
-			if (val == HARDLOCKUP_DEBUG_MAGIC ||
-				val == (HARDLOCKUP_DEBUG_MAGIC + 1)) {
+			if (is_valid_hardlockup_magic(val)) {
 				allcorelockup_detected = 1;
 				hardlockup_core_mask =
 					hardlockup_debug_get_locked_cpu_mask();
 			} else {
 				pr_emerg("%s: invalid magic from "
-					"el3 fiq handler\n", __func__);
+					"el3 fiq handler: 0x%08x\n", __func__,
+					val);
 				raw_spin_unlock(&hardlockup_seq_lock);
+				/* To avoid log interleaves with log from other
+				 * cores, delay 200 ms for each core to finish
+				 * this call back function.
+				 */
+				mdelay(min(200 * num_online_cpus(), MAX_PRINT_DELAY_MS));
 				return DBG_HOOK_ERROR;
 			}
 		}
@@ -206,6 +302,41 @@ static int hardlockup_debug_bug_handler(struct pt_regs *regs, unsigned int esr)
 				android_debug_symbol(ADS_SHOW_MEM);
 			show_mem(0, NULL);
 		}
+
+		if (atomic_cmpxchg(&print_schedstat_once, 1, 0)) {
+			s3c2410wdt_print_schedstat(KERN_EMERG);
+		}
+
+		spin_lock_irqsave(&pm_trace_lock, flags);
+		if (pm_suspend_task) {
+			static char pm_dev_namebuf[512] = {0};
+			struct pm_dev_priv *priv;
+			struct interval_tree_node *node, *next;
+
+			pr_emerg("pm_suspend_task '%s' %d hung (state=%ld)",
+					pm_suspend_task->comm, pm_suspend_task->pid,
+					pm_suspend_task->state);
+			sched_show_task(pm_suspend_task);
+
+			if (!interval_tree_iter_first(&pm_dev_rbroot, 0, -1UL))
+				panic("PM suspend timeout");
+
+			pr_emerg("PM suspend timeout at following devices:\n");
+			foreach_pm_dev(node, next, priv) {
+				if (pm_dev_namebuf[0])
+					strlcat(pm_dev_namebuf, ",", sizeof(pm_dev_namebuf));
+				strlcat(pm_dev_namebuf, dev_driver_string(priv->dev),
+						sizeof(pm_dev_namebuf));
+				pr_emerg("  - %s %s, parent: %s, %s[%s]\n",
+						dev_name(priv->dev),
+						dev_driver_string(priv->dev),
+						priv->parent ? dev_name(priv->parent) : "none",
+						priv->pm_ops, pm_event_str(priv->event));
+			}
+			panic("PM suspend timeout at %s", pm_dev_namebuf);
+		}
+		spin_unlock_irqrestore(&pm_trace_lock, flags);
+
 		if (ret)
 			raw_spin_unlock(&hardlockup_log_lock);
 
@@ -216,16 +347,6 @@ static int hardlockup_debug_bug_handler(struct pt_regs *regs, unsigned int esr)
 			exynos_acpm_reboot();
 #endif
 		}
-
-		spin_lock_irqsave(&pm_suspend_task_lock, flags);
-		if (pm_suspend_task) {
-			pr_emerg("pm_suspend_task '%s' %d hung (state=%ld)",
-					pm_suspend_task->comm, pm_suspend_task->pid,
-					pm_suspend_task->state);
-			sched_show_task(pm_suspend_task);
-			panic("PM suspend timeout");
-		}
-		spin_unlock_irqrestore(&pm_suspend_task_lock, flags);
 
 		/* If cpu is locked, wait for WDT reset without executing
 		 * code anymore.
@@ -299,18 +420,25 @@ static int hardlockup_debugger_pm_notifier(struct notifier_block *notifier,
 				  unsigned long pm_event, void *v)
 {
 	unsigned long flags;
+	struct pm_dev_priv *priv;
+	struct interval_tree_node *node, *next;
 
 	switch (pm_event) {
 	case PM_SUSPEND_PREPARE:
-		spin_lock_irqsave(&pm_suspend_task_lock, flags);
+		spin_lock_irqsave(&pm_trace_lock, flags);
 		pm_suspend_task = get_task_struct(current);
-		spin_unlock_irqrestore(&pm_suspend_task_lock, flags);
+		spin_unlock_irqrestore(&pm_trace_lock, flags);
 		break;
 	case PM_POST_SUSPEND:
-		spin_lock_irqsave(&pm_suspend_task_lock, flags);
+		spin_lock_irqsave(&pm_trace_lock, flags);
 		put_task_struct(pm_suspend_task);
 		pm_suspend_task = NULL;
-		spin_unlock_irqrestore(&pm_suspend_task_lock, flags);
+		foreach_pm_dev(node, next, priv) {
+			WARN_ONCE(1, "pm_dev_rbroot is not empty when PM_POST_SUSPEND");
+			interval_tree_remove(node, &pm_dev_rbroot);
+			kfree(priv);
+		}
+		spin_unlock_irqrestore(&pm_trace_lock, flags);
 		break;
 	}
 
@@ -391,6 +519,9 @@ static int hardlockup_debugger_probe(struct platform_device *pdev)
 
 	WARN_ON(register_trace_android_vh_cpu_idle_exit(
 				vh_bug_on_wdt_fiq_pending, NULL));
+
+	WARN_ON(register_trace_device_pm_callback_start(pm_dev_start, NULL));
+	WARN_ON(register_trace_device_pm_callback_end(pm_dev_end, NULL));
 
 	dev_info(&pdev->dev,
 			"Initialized hardlockup debug dump successfully.\n");

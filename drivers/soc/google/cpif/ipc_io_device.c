@@ -100,32 +100,24 @@ static unsigned int ipc_poll(struct file *filp, struct poll_table_struct *wait)
 	switch (mc->phone_state) {
 	case STATE_BOOTING:
 	case STATE_ONLINE:
-		if (!mc->sim_state.changed) {
-			if (!skb_queue_empty(rxq))
-				return POLLIN | POLLRDNORM;
-			else /* wq is waken up without rx, return for wait */
-				return 0;
-		}
-		/* fall through, if sim_state has been changed */
+		if (!skb_queue_empty(rxq))
+			return POLLIN | POLLRDNORM;
+		break;
 	case STATE_CRASH_EXIT:
 	case STATE_CRASH_RESET:
 	case STATE_NV_REBUILDING:
 	case STATE_CRASH_WATCHDOG:
 		mif_err_limited("%s: %s.state == %s\n", iod->name, mc->name, mc_state(mc));
+
 		if (iod->format == IPC_FMT)
 			return POLLHUP;
-
-		/* give delay to prevent infinite sys_poll call from
-		 * select() in APP layer without 'sleep' user call takes
-		 * almost 100% cpu usage when it is looked up by 'top'
-		 * command.
-		 */
-		msleep(20);
 		break;
+	case STATE_RESET:
+		mif_err_limited("%s: %s.state == %s\n", iod->name, mc->name, mc_state(mc));
 
-	case STATE_OFFLINE:
-		if (iod->ch == EXYNOS_CH_ID_CPLOG && ld->protocol == PROTOCOL_SIT)
+		if (iod->attrs & IO_ATTR_STATE_RESET_NOTI)
 			return POLLHUP;
+		break;
 	default:
 		break;
 	}
@@ -151,15 +143,17 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				iod->name, cp_state_str(p_state));
 		}
 
-		if (mc->sim_state.changed) {
-			enum modem_state s_state = mc->sim_state.online ?
-					STATE_SIM_ATTACH : STATE_SIM_DETACH;
-			mc->sim_state.changed = false;
-			return s_state;
-		}
-
-		if (p_state == STATE_NV_REBUILDING)
+		switch (p_state) {
+		case STATE_NV_REBUILDING:
 			mc->phone_state = STATE_ONLINE;
+			break;
+		/* Do not return an internal state */
+		case STATE_RESET:
+			p_state = STATE_OFFLINE;
+			break;
+		default:
+			break;
+		}
 
 		return p_state;
 
@@ -282,6 +276,11 @@ static ssize_t ipc_write(struct file *filp, const char __user *data,
 		atomic_dec(&mld->init_end_busy);
 	}
 
+	if (unlikely(!mld->last_init_end_cnt)) {
+		mif_err_limited("%s: INIT_END is not done\n", iod->name);
+		return -EAGAIN;
+	}
+
 	while (copied < cnt) {
 		struct sk_buff *skb;
 		char *buff;
@@ -291,13 +290,17 @@ static ssize_t ipc_write(struct file *filp, const char __user *data,
 		unsigned int alloc_size;
 		int ret;
 
+		if (check_add_overflow(remains, headroom, &alloc_size))
+			alloc_size = SZ_2K;
+
 		switch (ld->protocol) {
 		case PROTOCOL_SIPC:
-			alloc_size = min_t(unsigned int, remains + headroom,
-				iod->max_tx_size ?: remains + headroom);
+			if (iod->max_tx_size)
+				alloc_size = min_t(unsigned int, alloc_size,
+					iod->max_tx_size);
 			break;
 		case PROTOCOL_SIT:
-			alloc_size = min_t(unsigned int, remains + headroom, SZ_2K);
+			alloc_size = min_t(unsigned int, alloc_size, SZ_2K);
 			break;
 		default:
 			mif_err("protocol error %d\n", ld->protocol);

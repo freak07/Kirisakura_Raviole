@@ -112,7 +112,7 @@ static struct modem_ctl *create_modemctl_device(struct platform_device *pdev,
 
 	modemctl->msd = msd;
 
-	modemctl->phone_state = STATE_INIT;
+	modemctl->phone_state = STATE_OFFLINE;
 
 	INIT_LIST_HEAD(&modemctl->modem_state_notify_list);
 	spin_lock_init(&modemctl->lock);
@@ -207,7 +207,7 @@ static struct io_device *create_io_device(struct platform_device *pdev,
 	}
 
 	/* register misc device or net device */
-	ret = sipc5_init_io_device(iod);
+	ret = sipc5_init_io_device(iod, pdata->mld);
 	if (ret) {
 		devm_kfree(dev, iod);
 		mif_err("sipc5_init_io_device fail (%d)\n", ret);
@@ -344,6 +344,9 @@ static int parse_dt_mbox_pdata(struct device *dev, struct device_node *np,
 #endif
 #if IS_ENABLED(CONFIG_CP_PKTPROC_CLAT)
 	mif_dt_read_u32(np, "mif,int_ap2cp_clatinfo_send", mbox->int_ap2cp_clatinfo_send);
+#endif
+#if IS_ENABLED(CONFIG_LINK_DEVICE_PCIE)
+	mif_dt_read_u32(np, "mif,int_ap2cp_pcie_link_ack", mbox->int_ap2cp_pcie_link_ack);
 #endif
 	mif_dt_read_u32(np, "mif,int_ap2cp_uart_noti", mbox->int_ap2cp_uart_noti);
 
@@ -825,9 +828,10 @@ static int cpif_probe(struct platform_device *pdev)
 			goto free_iod;
 		}
 
-		if (iod[i]->format == IPC_FMT || iod[i]->format == IPC_BOOT)
-			list_add_tail(&iod[i]->list,
-					&modemctl->modem_state_notify_list);
+		/* Basically, iods of IPC_FMT and IPC_BOOT will receive the state */
+		if (iod[i]->format == IPC_FMT || iod[i]->format == IPC_BOOT ||
+		    iod[i]->attrs & IO_ATTR_STATE_RESET_NOTI)
+			list_add_tail(&iod[i]->list, &modemctl->modem_state_notify_list);
 
 		attach_devices(iod[i], dev);
 	}

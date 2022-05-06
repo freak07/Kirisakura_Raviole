@@ -204,6 +204,13 @@ config BOARD_GS201_HYBRID
 	help
 	GS201 Hybrid Zebu Emulator System, it is support for Android Platform
 
+config PIXEL_EM
+	tristate "Enable Pixel Energy Model driver"
+	depends on VH_KERNEL
+	default n
+	help
+	Support Pixel Energy Model.
+
 config PIXEL_STAT
 	tristate "Enable Pixel statistics"
 	default n
@@ -257,5 +264,11 @@ config SYSRQ_HOOK
 	default n
 	help
 	Modules for sysrq hooks.
+
+config PKVM_S2MPU
+	tristate "S2MPU driver compatible with pKVM"
+	default n
+	help
+	This module is a driver for the stage-2 IOMMU controlled by hypervisor.
 
 endmenu

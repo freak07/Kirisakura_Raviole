@@ -782,7 +782,7 @@ int gvotable_get_current_vote(struct gvotable_election *el, const void **vote)
 	ret = gvotable_get_current_result_unlocked(el, vote);
 	gvotable_unlock_result(el);
 
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL_GPL(gvotable_get_current_vote);
 
@@ -814,7 +814,7 @@ int gvotable_copy_current_result(struct gvotable_election *el, void *vote,
 		memcpy(vote, tmp, vote_size);
 	gvotable_unlock_result(el);
 
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL_GPL(gvotable_copy_current_result);
 
@@ -875,6 +875,16 @@ int gvotable_get_vote(struct gvotable_election *el, const char *reason,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(gvotable_get_vote);
+
+int gvotable_get_int_vote(struct gvotable_election *el, const char *reason)
+{
+	void *ptr;
+	int ret;
+
+	ret = gvotable_get_vote(el, reason, &ptr);
+	return ret ? ret : (uintptr_t)ptr;
+}
+EXPORT_SYMBOL_GPL(gvotable_get_int_vote);
 
 /* Determine the reason is enabled */
 int gvotable_is_enabled(struct gvotable_election *el, const char *reason,
@@ -958,9 +968,8 @@ static void gvotable_add_ballot(struct gvotable_election *el,
 	el->num_votes++;
 }
 
-static int gvotable_recast_ballot(struct gvotable_election *el,
-				  const char *reason,
-				  bool enabled)
+int gvotable_recast_ballot(struct gvotable_election *el, const char *reason,
+			   bool enabled)
 {
 	struct ballot *ballot;
 	int ret;
@@ -993,6 +1002,7 @@ static int gvotable_recast_ballot(struct gvotable_election *el,
 	gvotable_unlock_callback(el);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(gvotable_recast_ballot);
 
 #define gvotable_ballot_size_ok(size) ((size) <= sizeof(void *))
 
@@ -1340,8 +1350,22 @@ DEFINE_SIMPLE_ATTRIBUTE(debugfs_cast_int_vote_fops, NULL,
 static int debugfs_force_int_value(void *data, u64 val)
 {
 	struct election_slot *slot = data;
+	u64 pre_val = (u64)slot->el->force_result;
+
+	gvotable_lock_election(slot->el);
 
 	slot->el->force_result = (void *)val;
+	gvotable_unlock_result(slot->el);
+
+	if (!slot->el->callback)
+		goto exit_done;
+
+	if (slot->el->force_result_is_enabled && (pre_val != val))
+		slot->el->callback(slot->el, DEBUGFS_FORCE_VOTE_REASON,
+				   slot->el->force_result);
+
+exit_done:
+	gvotable_unlock_callback(slot->el);
 	return 0;
 }
 

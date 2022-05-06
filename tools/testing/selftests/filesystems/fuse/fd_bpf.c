@@ -74,7 +74,7 @@ SEC("maps") struct fuse_bpf_map test_map2 = {
 
 SEC("test_daemon")
 
-int trace_daemon(struct fuse_args *fa)
+int trace_daemon(struct fuse_bpf_args *fa)
 {
 	uint64_t uid_gid = bpf_get_current_uid_gid();
 	uint32_t uid = uid_gid & 0xffffffff;
@@ -281,6 +281,18 @@ int trace_daemon(struct fuse_args *fa)
 		const char *name = fa->in_args[1].value;
 
 		bpf_printk("Setxattr %d %s", fa->nodeid, name);
+		return FUSE_BPF_BACKING;
+	}
+
+	case FUSE_STATFS | FUSE_PREFILTER: {
+		bpf_printk("statfs %d", fa->nodeid);
+		return FUSE_BPF_BACKING;
+	}
+
+	case FUSE_LSEEK | FUSE_PREFILTER: {
+		const struct fuse_lseek_in *fli = fa->in_args[0].value;
+
+		bpf_printk("lseek type:%d, offset:%lld", fli->whence, fli->offset);
 		return FUSE_BPF_BACKING;
 	}
 

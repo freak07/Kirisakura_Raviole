@@ -67,32 +67,32 @@
 		b2_ocp_warn_cnt = <0>;	/* 0 : 2 clock, 1 : 32 clock */
 		/* ocp warn mask when dvs */
 		b2_ocp_warn_dvs_mask = <0>;	/* 0 : not masked, 1 : masked */
-		b2_ocp_warn_lvl = <8>;		/* 12.0A */
+		b2_ocp_warn_lvl = <0>;		/* 12.0A */
 
 		b3_ocp_warn_en = <1>;		/* 1 : enable, 0 : disable */
 		b3_ocp_warn_cnt = <0>;		/* 0 : 2 clock, 1 : 32 clock */
 		b3_ocp_warn_dvs_mask = <0>;	/* 0 : not masked, 1 : masked */
-		b3_ocp_warn_lvl = <13>;		/* 7.0A */
+		b3_ocp_warn_lvl = <0>;		/* 8.0A */
 
 		b10_ocp_warn_en = <1>;		/* 1 : enable, 0 : disable */
 		b10_ocp_warn_cnt = <0>;		/* 0 : 2 clock, 1 : 32 clock */
 		b10_ocp_warn_dvs_mask = <0>;/* 0 : not masked, 1 : masked */
-		b10_ocp_warn_lvl = <13>;	/* 10.5A */
+		b10_ocp_warn_lvl = <0>;	/* 12A */
 
-		b2_soft_ocp_warn_en = <1>;		/* 1 : enable, 0 : disable */
+		b2_soft_ocp_warn_en = <0>;		/* 1 : enable, 0 : disable */
 		b2_soft_ocp_warn_cnt = <0>;		/* 0 : 2 clock, 1 : 32 clock */
 		b2_soft_ocp_warn_dvs_mask = <0>;/* 0 : not masked, 1 : masked */
 		b2_soft_ocp_warn_lvl = <20>;		/* 9.0A */
 
-		b3_soft_ocp_warn_en = <1>; 		/* 1 : enable, 0 : disable */
+		b3_soft_ocp_warn_en = <0>; 		/* 1 : enable, 0 : disable */
 		b3_soft_ocp_warn_cnt = <0>; 	/* 0 : 2 clock, 1 : 32 clock */
 		b3_soft_ocp_warn_dvs_mask = <0>;/* 0 : not masked, 1 : masked */
-		b3_soft_ocp_warn_lvl = <13>; 		/* 7.0A */
+		b3_soft_ocp_warn_lvl = <0>; 		/* 7.0A */
 
-		b10_soft_ocp_warn_en = <1>;			/* 1 : enable, 0 : disable */
+		b10_soft_ocp_warn_en = <0>;			/* 1 : enable, 0 : disable */
 		b10_soft_ocp_warn_cnt = <0>; 		/* 0 : 2 clock, 1 : 32 clock */
 		b10_soft_ocp_warn_dvs_mask = <0>;	/* 0 : not masked, 1 : masked */
-		b10_soft_ocp_warn_lvl = <20>; 		/* 8.5A */
+		b10_soft_ocp_warn_lvl = <0>; 		/* 8.5A */
 
 		/* BUCK OCP Detection */
 		buck_ocp_ctrl1 = <0xBB>;
@@ -637,12 +637,12 @@
 				};
 
 				ch9: channel@8 {
-					rail-name = "BUCK6M";
+					rail-name = "BUCK8M";
 					channel_enabled;
 				};
 
 				ch10: channel@9 {
-					rail-name = "BUCK7M";
+					rail-name = "LDO15M";
 					channel_enabled;
 				};
 
@@ -652,7 +652,7 @@
 				};
 
 				ch12: channel@11 {
-					rail-name = "LDO1M";
+					rail-name = "LDO28M";
 					channel_enabled;
 				};
 			};
@@ -726,12 +726,12 @@
 		b2_ocp_warn_en = <1>;		/* 1 : enable, 0 : disable */
 		b2_ocp_warn_cnt = <0>;		/* 0 : 2 clock, 1 : 32 clock */
 		b2_ocp_warn_dvs_mask = <0>;	/* 0 : not masked, 1 : masked  */
-		b2_ocp_warn_lvl = <8>;		/* 12.0A */
+		b2_ocp_warn_lvl = <0>;		/* 12.0A */
 
-		b2_soft_ocp_warn_en = <1>; 		/* 1 : enable, 0 : disable */
+		b2_soft_ocp_warn_en = <0>; 		/* 1 : enable, 0 : disable */
 		b2_soft_ocp_warn_cnt = <0>; 	/* 0 : 2 clock, 1 : 32 clock */
 		b2_soft_ocp_warn_dvs_mask = <0>;/* 0 : not masked, 1 : masked */
-		b2_soft_ocp_warn_lvl = <18>; 	/* 12.0A */
+		b2_soft_ocp_warn_lvl = <0>; 	/* 12.0A */
 
 		/* BUCK OCP Detection */
 		buck_ocp_ctrl1 = <0xBB>;
@@ -923,7 +923,7 @@
 				regulator-min-microvolt = <450000>;
 				regulator-max-microvolt = <1350000>;
 				regulator-always-on;
-				regulator-initial-mode = <SEC_OPMODE_ON>;
+				regulator-initial-mode = <SEC_OPMODE_SUSPEND>;
 				channel-mux-selection = <0xD>;
 				schematic-name = "SC";
 				subsys-name = "IO";
@@ -937,7 +937,7 @@
 				regulator-min-microvolt = <2400000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-always-on;
-				regulator-initial-mode = <SEC_OPMODE_ON>;
+				regulator-initial-mode = <SEC_OPMODE_SUSPEND>;
 				channel-mux-selection = <0xB>;
 				schematic-name = "SD";
 				subsys-name = "IO";
@@ -1270,7 +1270,7 @@
 				};
 
 				ch15: channel@2 {
-					rail-name = "BUCK7S";
+					rail-name = "LDO9S";
 					channel_enabled;
 				};
 
@@ -1305,17 +1305,17 @@
 				};
 
 				ch22: channel@9 {
-					rail-name = "BUCK10S";
+					rail-name = "LDO7S";
 					channel_enabled;
 				};
 
 				ch23: channel@10 {
-					rail-name = "LDO9S";
+					rail-name = "LDO14S";
 					channel_enabled;
 				};
 
 				ch24: channel@11 {
-					rail-name = "LDO15S";
+					rail-name = "LDO2S";
 					channel_enabled;
 				};
 			};

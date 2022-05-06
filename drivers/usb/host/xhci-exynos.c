@@ -322,7 +322,10 @@ static int xhci_exynos_check_port(struct xhci_hcd_exynos *exynos, struct usb_dev
 				}
 
 				/* do_remote_wakeup may be also set in drivers/usb/core/driver.c */
-				if (udev->do_remote_wakeup == 1 && audio_detected) {
+				if ((udev->do_remote_wakeup == 1 && audio_detected) ||
+				    /* TODO: maintain a list of udev to force auto suspend */
+				    (udev->descriptor.idVendor == 0x18d1 &&
+				     udev->descriptor.idProduct == 0x9480)) {
 					device_init_wakeup(ddev, 1);
 					usb_enable_autosuspend(dev);
 					trace_android_vh_sound_usb_support_cpu_suspend(udev, 0,

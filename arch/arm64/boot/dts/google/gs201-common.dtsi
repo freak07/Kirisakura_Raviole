@@ -33,7 +33,7 @@
 	key_power: key-power {
 		samsung,pins = "gpa10-0";  /* PMIC_PWRON_OD_L */
 		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
-		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+		samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
 		samsung,pin-drv = <GS101_PIN_DRV_2_5_MA>;
 	};
 	key_voldown: key-voldown {
@@ -350,9 +350,15 @@
 	use-l1ss = "true";
 	phy-power-off = "false";
 	use-pcieon-sleep = "true";
+	use-sysmmu = "true";
 	ep-device-type = <EP_SAMSUNG_MODEM>;
 	vreg1-supply = <&m_ldo16_reg>;  /* PP0850_L16M_PCIE0: AVDD085_PCIE_GEN4_0 */
 	vreg2-supply = <&m_ldo18_reg>;  /* PP1800_L18M_PCIE0: AVDD18_PCIE_GEN4_0 */
+};
+
+&sysmmu_hsi1 {
+	use-map-once = "true";
+	status = "okay";
 };
 
 &pcie_1 {	/* pcie ch1 used for the connection with WiFi */

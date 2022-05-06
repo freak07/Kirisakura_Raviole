@@ -60,14 +60,13 @@ static inline bool vcpu_is_protected(struct kvm_vcpu *vcpu)
 	return vcpu->arch.pkvm.shadow_vm->arch.pkvm.enabled;
 }
 
-extern struct kvm_shadow_vm **shadow_table;
-
 extern phys_addr_t pvmfw_base;
 extern phys_addr_t pvmfw_size;
 
+void hyp_shadow_table_init(void *tbl);
 int __pkvm_init_shadow(struct kvm *kvm, void *shadow_va, size_t size, void *pgd);
-int __pkvm_teardown_shadow(struct kvm *kvm);
-struct kvm_vcpu *get_shadow_vcpu(int shadow_handle, int vcpu_idx);
+int __pkvm_teardown_shadow(int shadow_handle);
+struct kvm_vcpu *get_shadow_vcpu(int shadow_handle, unsigned int vcpu_idx);
 void put_shadow_vcpu(struct kvm_vcpu *vcpu);
 
 u64 pvm_read_id_reg(const struct kvm_vcpu *vcpu, u32 id);
@@ -99,5 +98,6 @@ static inline bool ipa_in_pvmfw_region(struct kvm_shadow_vm *vm, u64 ipa)
 
 int pkvm_load_pvmfw_pages(struct kvm_shadow_vm *vm, u64 ipa, phys_addr_t phys,
 			  u64 size);
+void pkvm_clear_pvmfw_pages(void);
 
 #endif /* __ARM64_KVM_NVHE_PKVM_H__ */

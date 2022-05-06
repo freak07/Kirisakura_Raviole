@@ -57,6 +57,7 @@ gs101-dpm-userdebug.dtbo-base := gs101-b0.dtb
 
 dtb-$(CONFIG_SOC_GS201) += \
         gs201-a0.dtb \
+        gs201-b0.dtb \
 
 soc-dtbo-$(CONFIG_SOC_GS201) += \
 	gs201-dpm-eng.dtbo \
@@ -78,6 +79,7 @@ dtbo-$(CONFIG_BOARD_CLOUDRIPPER) += \
         gs201-cheetah-evt1-wingboard.dtbo \
         gs201-cheetah-evt1-nfc.dtbo \
         gs201-cheetah-evt1_1.dtbo \
+        gs201-cheetah-evt1_1-wingboard.dtbo \
         gs201-cheetah-dvt1.dtbo \
         gs201-cheetah-pvt1.dtbo \
         gs201-cheetah-mp.dtbo \
@@ -87,6 +89,7 @@ dtbo-$(CONFIG_BOARD_CLOUDRIPPER) += \
         gs201-panther-evt1.dtbo \
         gs201-panther-evt1-wingboard.dtbo \
         gs201-panther-evt1_1.dtbo \
+        gs201-panther-evt1_1-wingboard.dtbo \
         gs201-panther-dvt1.dtbo \
         gs201-panther-pvt1.dtbo \
         gs201-panther-mp.dtbo
@@ -107,6 +110,7 @@ gs201-cheetah-evt1.dtbo-base := gs201-a0.dtb
 gs201-cheetah-evt1-wingboard.dtbo-base := gs201-a0.dtb
 gs201-cheetah-evt1-nfc.dtbo-base := gs201-a0.dtb
 gs201-cheetah-evt1_1.dtbo-base := gs201-a0.dtb
+gs201-cheetah-evt1_1-wingboard.dtbo-base := gs201-a0.dtb
 gs201-cheetah-dvt1.dtbo-base := gs201-a0.dtb
 gs201-cheetah-pvt1.dtbo-base := gs201-a0.dtb
 gs201-cheetah-mp.dtbo-base := gs201-a0.dtb
@@ -116,6 +120,7 @@ gs201-panther-proto1_1-wingboard.dtbo-base := gs201-a0.dtb
 gs201-panther-evt1.dtbo-base := gs201-a0.dtb
 gs201-panther-evt1-wingboard.dtbo-base := gs201-a0.dtb
 gs201-panther-evt1_1.dtbo-base := gs201-a0.dtb
+gs201-panther-evt1_1-wingboard.dtbo-base := gs201-a0.dtb
 gs201-panther-dvt1.dtbo-base := gs201-a0.dtb
 gs201-panther-pvt1.dtbo-base := gs201-a0.dtb
 gs201-panther-mp.dtbo-base := gs201-a0.dtb

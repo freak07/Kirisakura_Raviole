@@ -28,6 +28,12 @@
 
 #include <trace/events/power.h>
 #include <trace/events/thermal_exynos.h>
+
+#if IS_ENABLED(CONFIG_PIXEL_EM)
+struct em_perf_domain **exynos_cpu_cooling_cpu_to_em_pd;
+EXPORT_SYMBOL_GPL(exynos_cpu_cooling_cpu_to_em_pd);
+#endif
+
 /*
  * Cooling state <-> CPUFreq frequency
  *
@@ -105,6 +111,7 @@ struct exynos_cpu_cooling_device {
 
 	struct thermal_zone_device *tzd;
 	unsigned long sysfs_req;
+	bool sysfs_req_bypass;
 };
 
 static DEFINE_IDA(cpufreq_ida);
@@ -370,7 +377,25 @@ static u32 cpu_freq_to_power(struct exynos_cpu_cooling_device *cpufreq_cdev,
 			     u32 freq)
 {
 	int i;
-	struct freq_table *freq_table = cpufreq_cdev->freq_table;
+	struct freq_table *freq_table;
+
+#if IS_ENABLED(CONFIG_PIXEL_EM)
+	{
+		struct em_perf_domain **cpu_to_em_pd = READ_ONCE(exynos_cpu_cooling_cpu_to_em_pd);
+		if (cpu_to_em_pd) {
+			int first_cpu = cpumask_first(cpufreq_cdev->policy->related_cpus);
+			struct em_perf_domain *pd = cpu_to_em_pd[first_cpu];
+
+			for (i = 0; i < (pd->nr_perf_states - 1); i++)
+				if (freq <= pd->table[i].frequency)
+					break;
+
+			return pd->table[i].power;
+		}
+	}
+#endif
+
+	freq_table = cpufreq_cdev->freq_table;
 
 	for (i = 1; i <= cpufreq_cdev->max_level; i++)
 		if (freq > freq_table[i].frequency)
@@ -383,7 +408,25 @@ static u32 cpu_power_to_freq(struct exynos_cpu_cooling_device *cpufreq_cdev,
 			     u32 power)
 {
 	int i;
-	struct freq_table *freq_table = cpufreq_cdev->freq_table;
+	struct freq_table *freq_table;
+
+#if IS_ENABLED(CONFIG_PIXEL_EM)
+	{
+		struct em_perf_domain **cpu_to_em_pd = READ_ONCE(exynos_cpu_cooling_cpu_to_em_pd);
+		if (cpu_to_em_pd) {
+			int first_cpu = cpumask_first(cpufreq_cdev->policy->related_cpus);
+			struct em_perf_domain *pd = cpu_to_em_pd[first_cpu];
+
+			for (i = 0; i < (pd->nr_perf_states - 1); i++)
+				if (power <= pd->table[i].power)
+					break;
+
+			return pd->table[i].frequency;
+		}
+	}
+#endif
+
+	freq_table = cpufreq_cdev->freq_table;
 
 	for (i = 1; i <= cpufreq_cdev->max_level; i++)
 		if (power > freq_table[i].power)
@@ -565,7 +608,9 @@ static int cpufreq_set_cur_state(struct thermal_cooling_device *cdev,
 	if (WARN_ON(state > cpufreq_cdev->max_level))
 		return -EINVAL;
 
-	state = max(cpufreq_cdev->sysfs_req, state);
+	if (!cpufreq_cdev->sysfs_req_bypass)
+		state = max(cpufreq_cdev->sysfs_req, state);
+
 	/* Check if the old cooling action is same as new cooling action */
 	if (cpufreq_cdev->cpufreq_state == state)
 		return -EALREADY;
@@ -577,8 +622,8 @@ static int cpufreq_set_cur_state(struct thermal_cooling_device *cdev,
 
 	if (ret == 1) {
 		ret = 0;
-		trace_clock_set_rate(cdev->type, cpufreq_cdev->sysfs_req, raw_smp_processor_id());
-		trace_vendor_cdev_update(cdev->type, cpufreq_cdev->sysfs_req, state);
+		trace_clock_set_rate(cdev->type, state, raw_smp_processor_id());
+		trace_vendor_cdev_update(cdev->type, state, state);
 	}
 
 	return ret;
@@ -878,6 +923,8 @@ state2power_table_show(struct device *dev, struct device_attribute *attr, char *
 	return count;
 }
 
+static DEVICE_ATTR_RO(state2power_table);
+
 ssize_t
 user_vote_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -917,7 +964,44 @@ ssize_t user_vote_store(struct device *dev, struct device_attribute *attr,
 }
 
 static DEVICE_ATTR_RW(user_vote);
-static DEVICE_ATTR_RO(state2power_table);
+
+ssize_t
+user_vote_bypass_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct thermal_cooling_device *cdev = to_cooling_device(dev);
+	struct exynos_cpu_cooling_device *cpufreq_cdev = cdev->devdata;
+
+	if (!cpufreq_cdev)
+		return -ENODEV;
+
+	return sysfs_emit(buf, "%d\n", cpufreq_cdev->sysfs_req_bypass);
+}
+
+ssize_t user_vote_bypass_store(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	struct thermal_cooling_device *cdev = to_cooling_device(dev);
+	struct exynos_cpu_cooling_device *cpufreq_cdev = cdev->devdata;
+	int ret;
+	bool bypass;
+
+	if (!cpufreq_cdev)
+		return -ENODEV;
+
+	ret = kstrtobool(buf, &bypass);
+	if (ret)
+		return ret;
+
+
+	mutex_lock(&cdev->lock);
+	cpufreq_cdev->sysfs_req_bypass = bypass;
+	cdev->updated = false;
+	mutex_unlock(&cdev->lock);
+	thermal_cdev_update(cdev);
+	return count;
+}
+
+static DEVICE_ATTR_RW(user_vote_bypass);
 
 /**
  * __exynos_cpu_cooling_register - helper function to create cpufreq cooling device
@@ -1034,6 +1118,12 @@ __exynos_cpu_cooling_register(struct device_node *np,
 		goto remove_qos_req;
 
 	ret = device_create_file(&cdev->device, &dev_attr_user_vote);
+	if (ret) {
+		thermal_cooling_device_unregister(cdev);
+		goto remove_qos_req;
+	}
+
+	ret = device_create_file(&cdev->device, &dev_attr_user_vote_bypass);
 	if (ret) {
 		thermal_cooling_device_unregister(cdev);
 		goto remove_qos_req;

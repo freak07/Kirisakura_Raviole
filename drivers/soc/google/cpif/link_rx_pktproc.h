@@ -132,7 +132,7 @@ struct cpif_pcie_iommu_ctrl {
 	u32 map_idx;
 
 	unsigned long unmap_src_pa;
-	struct page *unmap_page;
+	u32 unmap_page_size;
 
 	/* Was */
 	u32 end_map_size;
@@ -203,7 +203,12 @@ struct pktproc_queue {
 
 	/* IRQ */
 	int irq;
+#if IS_ENABLED(CONFIG_MCU_IPC)
 	u32 irq_idx;
+#endif
+#if IS_ENABLED(CONFIG_LINK_DEVICE_PCIE)
+	bool msi_irq_wake;
+#endif
 
 	/* NAPI */
 	struct net_device netdev;
@@ -294,8 +299,13 @@ struct pktproc_adaptor {
 	enum pktproc_desc_mode desc_mode;	/* Descriptor structure mode */
 	u32 desc_num_ratio_percent;		/* Number of descriptors ratio as percent */
 	u32 num_queue;		/* Number of queue */
+#if IS_ENABLED(CONFIG_LINK_DEVICE_PCIE_IOMMU)
+	u32 space_margin;
+#endif
 	bool use_exclusive_irq;	/* Exclusive interrupt */
+#if IS_ENABLED(CONFIG_MCU_IPC)
 	u32 exclusive_irq_idx[PKTPROC_MAX_QUEUE];
+#endif
 	bool use_hw_iocc;	/* H/W IO cache coherency */
 	u32 max_packet_size;	/* Max packet size CP sees */
 	u32 true_packet_size;	/* True packet size AP allocated */
@@ -303,7 +313,6 @@ struct pktproc_adaptor {
 
 	struct device *dev;
 
-	bool use_napi;
 	bool use_netrx_mng;
 	u32 netrx_capacity;
 	u32 skb_padding_size;
@@ -341,9 +350,6 @@ static inline int pktproc_check_active(struct pktproc_adaptor *ppa, u32 q_idx)
 
 static inline int pktproc_stop_napi_poll(struct pktproc_adaptor *ppa, u32 q_idx)
 {
-	if (!ppa->use_napi)
-		return 0;
-
 	if (!ppa->q[q_idx])
 		return 0;
 

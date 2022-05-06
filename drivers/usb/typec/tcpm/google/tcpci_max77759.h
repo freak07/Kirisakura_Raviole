@@ -85,6 +85,7 @@ struct max77759_plat {
 	/* Runtime flags */
 	int frs;
 	bool in_frs;
+	bool vsafe0v;
 
 	/*
 	 * Current status of contaminant detection.
@@ -96,7 +97,7 @@ struct max77759_plat {
 	/* Userspace status */
 	bool contaminant_detection_userspace;
 	/* Consecutive floating cable instances */
-	unsigned int floating_cable_detected;
+	unsigned int floating_cable_or_sink_detected;
 	/* Timer to re-enable auto ultra lower mode for contaminant detection */
 	struct alarm reenable_auto_ultra_low_power_mode_alarm;
 	/* Bottom half for alarm */
@@ -119,6 +120,7 @@ struct max77759_plat {
 	struct kthread_worker *wq;
 	struct kthread_delayed_work icl_work;
 	struct kthread_delayed_work enable_vbus_work;
+	struct kthread_delayed_work vsafe0v_work;
 
 	/* Notifier for data role */
 	struct usb_role_switch *usb_sw;
@@ -165,7 +167,7 @@ bool process_contaminant_alert(struct max77759_contaminant *contaminant, bool de
 int enable_contaminant_detection(struct max77759_plat *chip, bool maxq);
 void disable_contaminant_detection(struct max77759_plat *chip);
 bool is_contaminant_detected(struct max77759_plat *chip);
-bool is_floating_cable_detected(struct max77759_plat *chip);
+bool is_floating_cable_or_sink_detected(struct max77759_plat *chip);
 void disable_auto_ultra_low_power_mode(struct max77759_plat *chip, bool disable);
 
 #define VBUS_VOLTAGE_MASK		0x3ff

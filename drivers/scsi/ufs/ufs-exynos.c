@@ -877,8 +877,12 @@ static int __exynos_ufs_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op,
 {
 	struct exynos_ufs *ufs = to_exynos_ufs(hba);
 
-	if (status == PRE_CHANGE)
+	if (status == PRE_CHANGE) {
+		/* TODO: should check enabling runtime PM later. */
+		if (pm_op == UFS_RUNTIME_PM)
+			return -EINVAL;
 		return 0;
+	}
 
 	if (!IS_C_STATE_ON(ufs) ||
 	    ufs->h_state != H_HIBERN8)
@@ -1092,6 +1096,7 @@ static int exynos_ufs_populate_dt(struct device *dev,
 	struct device_node *np = dev->of_node;
 	struct device_node *child_np;
 	int ret;
+	u32 soc_rev;
 
 	/* Regmap for external regions */
 	ret = exynos_ufs_populate_dt_extern(dev, ufs);
@@ -1102,8 +1107,8 @@ static int exynos_ufs_populate_dt(struct device *dev,
 	}
 
 	/* Get exynos-evt version for featuring */
-	if (of_property_read_u8(np, "evt-ver", &ufs->cal_param.evt_ver))
-		ufs->cal_param.evt_ver = 0;
+	soc_rev = gs_chipid_get_revision();
+	ufs->cal_param.evt_ver = (u8)(soc_rev >> 4);
 
 	/* PM QoS */
 	child_np = of_get_child_by_name(np, "ufs-pm-qos");

@@ -23,13 +23,16 @@
 				mpmm_settings = <0x1a>;
 				tpu_con_heavy = <0xf041c3>;
 				tpu_con_light = <0xf041c5>;
-				tpu_clkdivstep = <0x201>;
+				tpu_clkdivstep = <0x1>;
 				gpu_con_heavy = <0xf04385>;
 				gpu_con_light = <0>;
-				gpu_clkdivstep = <0x801>;
-				cpu2_clkdivstep = <0x801>;
-				cpu1_clkdivstep = <0x0>;
+				gpu_clkdivstep = <0x1>;
+				cpu2_clkdivstep = <0x1>;
+				cpu1_clkdivstep = <0x1>;
 				cpu0_clkdivstep = <0x1>;
+				odpm_ratio = <3>;
+				gpios = <&gpa5 5 0>,		/* VDROOP1 */
+					<&gpa5 6 0>;		/* VDROOP2 */
 			};
 		};
 	};
@@ -58,7 +61,7 @@
 		thermal-sensors = <&google_mitigation 1>;
 		trips {
 			vdroop1: vdroop1{
-				temperature = <1150>;
+				temperature = <1000>;
 				hysteresis = <100>;
 				type = "passive";
 			};
@@ -72,7 +75,7 @@
 		thermal-sensors = <&google_mitigation 2>;
 		trips {
 			vdroop2: vdroop2{
-				temperature = <1350>;
+				temperature = <1200>;
 				hysteresis = <100>;
 				type = "passive";
 			};
@@ -136,7 +139,7 @@
 
 		trips {
 			soc_trip:soc-trip {
-				temperature = <90>;
+				temperature = <80>;
 				hysteresis = <0>;
 				type = "passive";
 			};
@@ -193,7 +196,7 @@
 
 		trips {
 			soft_ocp_cpu1:soft-ocp-cpu1 {
-				temperature = <7000>;
+				temperature = <8000>;
 				hysteresis = <100>;
 				type = "passive";
 			};
@@ -207,7 +210,7 @@
 
 		trips {
 			soft_ocp_cpu2:soft-ocp-cpu2 {
-				temperature = <9000>;
+				temperature = <12000>;
 				hysteresis = <100>;
 				type = "passive";
 			};
@@ -221,7 +224,7 @@
 
 		trips {
 			ocp_tpu:ocp-tpu{
-				temperature = <10500>;
+				temperature = <12000>;
 				hysteresis = <100>;
 				type = "passive";
 			};
