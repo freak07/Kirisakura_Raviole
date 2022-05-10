@@ -1483,13 +1483,7 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 		subpage = page - page_to_pfn(page) + pte_pfn(*pvmw.pte);
 		address = pvmw.address;
 
-		if (PageHuge(page) && !PageAnon(page)) {
-			/*
-			 * To call huge_pmd_unshare, i_mmap_rwsem must be
-			 * held in write mode.  Caller needs to explicitly
-			 * do this outside rmap routines.
-			 */
-			VM_BUG_ON(!(flags & TTU_RMAP_LOCKED));
+		if (PageHuge(page)) {
 			/*
 			 * huge_pmd_unshare may unmap an entire PMD page.
 			 * There is no way of knowing exactly which PMDs may
@@ -1499,22 +1493,31 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 			 */
 			flush_cache_range(vma, range.start, range.end);
 
-			if (huge_pmd_unshare(mm, vma, &address, pvmw.pte)) {
-				flush_tlb_range(vma, range.start, range.end);
-				mmu_notifier_invalidate_range(mm, range.start,
-							      range.end);
-
+			if (!PageAnon(page)) {
 				/*
-				 * The ref count of the PMD page was dropped
-				 * which is part of the way map counting
-				 * is done for shared PMDs.  Return 'true'
-				 * here.  When there is no other sharing,
-				 * huge_pmd_unshare returns false and we will
-				 * unmap the actual page and drop map count
-				 * to zero.
+				 * To call huge_pmd_unshare, i_mmap_rwsem must be
+				 * held in write mode.  Caller needs to explicitly
+				 * do this outside rmap routines.
 				 */
-				page_vma_mapped_walk_done(&pvmw);
-				break;
+				VM_BUG_ON(!(flags & TTU_RMAP_LOCKED));
+
+				if (huge_pmd_unshare(mm, vma, &address, pvmw.pte)) {
+					flush_tlb_range(vma, range.start, range.end);
+					mmu_notifier_invalidate_range(mm, range.start,
+								      range.end);
+
+					/*
+					 * The ref count of the PMD page was dropped
+					 * which is part of the way map counting
+					 * is done for shared PMDs.  Return 'true'
+					 * here.  When there is no other sharing,
+					 * huge_pmd_unshare returns false and we will
+					 * unmap the actual page and drop map count
+					 * to zero.
+					 */
+					page_vma_mapped_walk_done(&pvmw);
+					break;
+				}
 			}
 		} else {
 			flush_cache_page(vma, address, pte_pfn(*pvmw.pte));
