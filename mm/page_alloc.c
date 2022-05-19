@@ -2598,6 +2598,9 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 		del_page_from_free_list(page, zone, current_order);
 		expand(zone, page, order, current_order, migratetype);
 		set_pcppage_migratetype(page, migratetype);
+		trace_mm_page_alloc_zone_locked(page, order, migratetype,
+				pcp_allowed_order(order) &&
+				migratetype < MIGRATE_PCPTYPES);
 		return page;
 	}
 
@@ -3121,7 +3124,6 @@ retry:
 						  alloc_flags))
 		goto retry;
 
-	trace_mm_page_alloc_zone_locked(page, order, migratetype);
 	return page;
 }
 
