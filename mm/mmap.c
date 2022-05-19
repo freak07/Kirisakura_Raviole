@@ -2799,6 +2799,12 @@ cannot_expand:
 		i_mmap_unlock_write(vma->vm_file->f_mapping);
 	}
 
+	/*
+	 * vma_merge() calls khugepaged_enter_vma() either, the below
+	 * call covers the non-merge case.
+	 */
+	khugepaged_enter_vma(vma, vma->vm_flags);
+
 	/* Once vma denies write, undo our temporary denial count */
 	if (file) {
 unmap_writable:
