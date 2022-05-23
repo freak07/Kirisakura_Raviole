@@ -5,13 +5,13 @@
  *
  * Copyright 2020 Google LLC
  */
-#include <linux/lockdep.h>
+
 #include <linux/kobject.h>
 #include <linux/sched.h>
 #include <linux/sched/signal.h>
 #include <linux/sched/task.h>
-#include <linux/proc_fs.h>
-#include <linux/uaccess.h>
+#include <linux/sysfs.h>
+#include <linux/lockdep.h>
 #include <kernel/sched/sched.h>
 
 #include "sched_priv.h"
@@ -24,6 +24,7 @@ DECLARE_PER_CPU(struct uclamp_stats, uclamp_stats);
 unsigned int __read_mostly vendor_sched_uclamp_threshold;
 unsigned int __read_mostly vendor_sched_util_post_init_scale = DEF_UTIL_POST_INIT_SCALE;
 bool __read_mostly vendor_sched_npi_packing = true; //non prefer idle packing
+static struct kobject *vendor_sched_kobj;
 struct proc_dir_entry *vendor_sched;
 extern unsigned int sched_capacity_margin[CPU_NUM];
 
@@ -41,154 +42,83 @@ bool pmu_poll_enabled;
 extern void pmu_poll_enable(void);
 extern void pmu_poll_disable(void);
 
-#define MAX_PROC_SIZE 128
-
-#define PROC_OPS_RW(__name) \
-		static int __name##_proc_open(\
-			struct inode *inode, struct file *file) \
-		{ \
-			return single_open(file,\
-			__name##_show, PDE_DATA(inode));\
-		} \
-		static const struct proc_ops  __name##_proc_ops = { \
-			.proc_open	=  __name##_proc_open, \
-			.proc_read	= seq_read, \
-			.proc_lseek	= seq_lseek,\
-			.proc_release = single_release,\
-			.proc_write	=  __name##_store,\
-		}
-
-#define PROC_OPS_RO(__name) \
-		static int __name##_proc_open(\
-			struct inode *inode, struct file *file) \
-		{ \
-			return single_open(file,\
-			__name##_show, PDE_DATA(inode));\
-		} \
-		static const struct proc_ops __name##_proc_ops = { \
-			.proc_open	= __name##_proc_open, \
-			.proc_read	= seq_read, \
-			.proc_lseek	= seq_lseek,\
-			.proc_release = single_release,\
-		}
-
-#define PROC_OPS_WO(__name) \
-		static int __name##_proc_open(\
-			struct inode *inode, struct file *file) \
-		{ \
-			return single_open(file,\
-			NULL, NULL);\
-		} \
-		static const struct proc_ops __name##_proc_ops = { \
-			.proc_open	= __name##_proc_open, \
-			.proc_lseek	= seq_lseek,\
-			.proc_release = single_release,\
-			.proc_write	= __name##_store,\
-		}
-
-#define PROC_ENTRY(__name) {__stringify(__name), &__name##_proc_ops}
-
 #define SET_VENDOR_GROUP_STORE(__grp, __vg)						      \
-		static ssize_t set_task_group_##__grp##_store(struct file *filp, \
-			const char __user *ubuf, \
-			size_t count, loff_t *pos) \
+		static ssize_t set_task_group_##__grp##_store (struct kobject *kobj,	      \
+							       struct kobj_attribute *attr,   \
+							       const char *buf, size_t count) \
 		{									      \
-			char buf[MAX_PROC_SIZE];	\
 			int ret = update_vendor_group_attribute(buf, VTA_TASK_GROUP, __vg);   \
-			if (count >= sizeof(buf))	\
-				return -EINVAL;	\
-			if (copy_from_user(buf, ubuf, count))	\
-				return -EFAULT;	\
-			buf[count] = '\0';	\
 			return ret ?: count;						      \
 		}									      \
-		PROC_OPS_WO(set_task_group_##__grp);		\
-		static ssize_t set_proc_group_##__grp##_store(struct file *filp, \
-			const char __user *ubuf, \
-			size_t count, loff_t *pos)		\
+		static struct kobj_attribute set_task_group_##__grp##_attribute =	      \
+							__ATTR_WO(set_task_group_##__grp);    \
+		static ssize_t set_proc_group_##__grp##_store (struct kobject *kobj,	      \
+							       struct kobj_attribute *attr,   \
+							       const char *buf, size_t count) \
 		{									      \
-			char buf[MAX_PROC_SIZE];	\
-			int ret  = update_vendor_group_attribute(buf, VTA_PROC_GROUP, __vg);   \
-			if (count >= sizeof(buf))	\
-				return -EINVAL;	\
-			if (copy_from_user(buf, ubuf, count))	\
-				return -EFAULT;	\
-			buf[count] = '\0';	\
+			int ret = update_vendor_group_attribute(buf, VTA_PROC_GROUP, __vg);   \
 			return ret ?: count;						      \
 		}									      \
-		PROC_OPS_WO(set_proc_group_##__grp);
+		static struct kobj_attribute set_proc_group_##__grp##_attribute =	      \
+							__ATTR_WO(set_proc_group_##__grp);
+
 
 #define VENDOR_GROUP_BOOL_ATTRIBUTE(__grp, __attr, __vg)				      \
-		static int __grp##_##__attr##_show(struct seq_file *m, void *v) 	\
+		static ssize_t __grp##_##__attr##_show(struct kobject *kobj,		      \
+						       struct kobj_attribute *attr,char *buf) \
 		{									      \
 			struct vendor_group_property *gp = get_vendor_group_property(__vg);   \
-			seq_printf(m, "%s\n", gp->__attr==true? "true":"false"); \
-			return 0; 	\
+			return scnprintf(buf, PAGE_SIZE, "%s\n",			      \
+					gp->__attr==true? "true":"false");		      \
 		}									      \
-		static ssize_t __grp##_##__attr##_store(struct file *filp, \
-			const char __user *ubuf, \
-			size_t count, loff_t *pos) \
+		static ssize_t __grp##_##__attr##_store (struct kobject *kobj,		      \
+							 struct kobj_attribute *attr,	      \
+							 const char *buf, size_t count)	      \
 		{									      \
 			bool val;							      \
 			struct vendor_group_property *gp = get_vendor_group_property(__vg);   \
-			char buf[MAX_PROC_SIZE];	\
-			if (count >= sizeof(buf))	\
-				return -EINVAL;	\
-			if (copy_from_user(buf, ubuf, count))	\
-				return -EFAULT;	\
-			buf[count] = '\0';	\
 			if (kstrtobool(buf, &val))					      \
 				return -EINVAL;						      \
 			gp->__attr = val;						      \
 			return count;							      \
 		}									      \
-		PROC_OPS_RW(__grp##_##__attr);
+		static struct kobj_attribute __grp##_##__attr##_##attribute =		      \
+							__ATTR_RW(__grp##_##__attr);
 
 #define VENDOR_GROUP_UINT_ATTRIBUTE(__grp, __attr, __vg)				      \
-		static int __grp##_##__attr##_show(struct seq_file *m, void *v) 	\
+		static ssize_t __grp##_##__attr##_show(struct kobject *kobj,		      \
+						       struct kobj_attribute *attr,char *buf) \
 		{									      \
 			struct vendor_group_property *gp = get_vendor_group_property(__vg);   \
-			seq_printf(m, "%u\n", gp->__attr);	      \
-			return 0;	      \
+			return scnprintf(buf, PAGE_SIZE, "%u\n",	gp->__attr);	      \
 		}									      \
-		static ssize_t __grp##_##__attr##_store(struct file *filp,			\
-			const char __user *ubuf, \
-			size_t count, loff_t *pos) \
+		static ssize_t __grp##_##__attr##_store (struct kobject *kobj,		      \
+							 struct kobj_attribute *attr,	      \
+							 const char *buf, size_t count)	      \
 		{									      \
 			unsigned int val;					              \
 			struct vendor_group_property *gp = get_vendor_group_property(__vg);   \
-			char buf[MAX_PROC_SIZE];	\
-			if (count >= sizeof(buf))	\
-				return -EINVAL;	\
-			if (copy_from_user(buf, ubuf, count))	\
-				return -EFAULT;	\
-			buf[count] = '\0';	\
 			if (kstrtouint(buf, 10, &val))					      \
 				return -EINVAL;						      \
 			gp->__attr = val;						      \
 			return count;							      \
 		}									      \
-		PROC_OPS_RW(__grp##_##__attr);
+		static struct kobj_attribute __grp##_##__attr##_##attribute =		      \
+							__ATTR_RW(__grp##_##__attr);
 
 #define VENDOR_GROUP_UCLAMP_ATTRIBUTE(__grp, __attr, __vg, __cid)			      \
-		static int __grp##_##__attr##_show(struct seq_file *m, void *v) 	\
+		static ssize_t __grp##_##__attr##_show(struct kobject *kobj,		      \
+						       struct kobj_attribute *attr,char *buf) \
 		{									      \
 			struct vendor_group_property *gp = get_vendor_group_property(__vg);   \
-			seq_printf(m, "%u\n", gp->uc_req[__cid].value);		      \
-			return 0;	\
+			return sprintf(buf, "%u\n", gp->uc_req[__cid].value);		      \
 		}									      \
-		static ssize_t __grp##_##__attr##_store(struct file *filp,			\
-			const char __user *ubuf, \
-			size_t count, loff_t *pos) \
+		static ssize_t __grp##_##__attr##_store (struct kobject *kobj,		      \
+							 struct kobj_attribute *attr,	      \
+							 const char *buf, size_t count)	      \
 		{									      \
 			unsigned int val;						      \
 			struct vendor_group_property *gp = get_vendor_group_property(__vg);   \
-			char buf[MAX_PROC_SIZE];	\
-			if (count >= sizeof(buf))	\
-				return -EINVAL;	\
-			if (copy_from_user(buf, ubuf, count))	\
-				return -EFAULT;	\
-			buf[count] = '\0';	\
 			if (kstrtouint(buf, 0, &val))					      \
 				return -EINVAL;						      \
 			if (val > 1024)							      \
@@ -199,7 +129,8 @@ extern void pmu_poll_disable(void);
 			apply_uclamp_change(__vg, __cid);				      \
 			return count;							      \
 		}									      \
-		PROC_OPS_RW(__grp##_##__attr);
+		static struct kobj_attribute __grp##_##__attr##_##attribute =		      \
+							__ATTR_RW(__grp##_##__attr);
 
 /// ******************************************************************************** ///
 /// ********************* Create vendor group sysfs nodes*************************** ///
@@ -743,28 +674,18 @@ static int dump_task_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-PROC_OPS_RO(dump_task);
-
-static int uclamp_threshold_show(struct seq_file *m, void *v)
+static ssize_t uclamp_threshold_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf)
 {
-	seq_printf(m, "%d\n", vendor_sched_uclamp_threshold);
-	return 0;
+	return snprintf(buf, PAGE_SIZE, "%d\n", vendor_sched_uclamp_threshold);
 }
 
-static ssize_t uclamp_threshold_store(struct file *filp,
-							const char __user *ubuf,
-							size_t count, loff_t *pos)
+static ssize_t uclamp_threshold_store(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					const char *buf, size_t count)
 {
 	unsigned int val;
-	char buf[MAX_PROC_SIZE];
-
-	if (count >= sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, ubuf, count))
-		return -EFAULT;
-
-	buf[count] = '\0';
 
 	if (kstrtouint(buf, 0, &val))
 		return -EINVAL;
@@ -777,61 +698,44 @@ static ssize_t uclamp_threshold_store(struct file *filp,
 	return count;
 }
 
-PROC_OPS_RW(uclamp_threshold);
+static struct kobj_attribute uclamp_threshold_attribute = __ATTR_RW(uclamp_threshold);
 
-static int util_threshold_show(struct seq_file *m, void *v)
+static ssize_t util_threshold_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf)
 {
-	int i;
+	int i, len = 0;
 
 	for (i = 0; i < CPU_NUM; i++) {
-		seq_printf(m, "%u ", sched_capacity_margin[i]);
+		len += scnprintf(buf + len, PAGE_SIZE - len, "%u ", sched_capacity_margin[i]);
 	}
 
-	seq_printf(m, "\n");
+	len += scnprintf(buf + len, PAGE_SIZE - len, "\n");
 
-	return 0;
+	return len;
 }
 
-static ssize_t util_threshold_store(struct file *filp,
-							const char __user *ubuf,
-							size_t count, loff_t *pos)
+static ssize_t util_threshold_store(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					const char *buf, size_t count)
 {
-	char buf[MAX_PROC_SIZE];
-
-	if (count >= sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, ubuf, count))
-		return -EFAULT;
-
-	buf[count] = '\0';
-
 	return update_sched_capacity_margin(buf, count);
 }
 
-PROC_OPS_RW(util_threshold);
+static struct kobj_attribute util_threshold_attribute = __ATTR_RW(util_threshold);
 
-static int npi_packing_show(struct seq_file *m, void *v)
+static ssize_t npi_packing_show(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				char *buf)
 {
-	seq_printf(m, "%s\n", vendor_sched_npi_packing ? "true" : "false");
-
-	return 0;
+	return sysfs_emit(buf, "%s\n", vendor_sched_npi_packing ? "true" : "false");
 }
 
-static ssize_t npi_packing_store(struct file *filp,
-							const char __user *ubuf,
-							size_t count, loff_t *pos)
+static ssize_t npi_packing_store(struct kobject *kobj,
+				 struct kobj_attribute *attr,
+				 const char *buf, size_t count)
 {
 	bool enable;
-	char buf[MAX_PROC_SIZE];
-
-	if (count >= sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, ubuf, count))
-		return -EFAULT;
-
-	buf[count] = '\0';
 
 	if (kstrtobool(buf, &enable))
 		return -EINVAL;
@@ -841,118 +745,135 @@ static ssize_t npi_packing_store(struct file *filp,
 	return count;
 }
 
-PROC_OPS_RW(npi_packing);
+static struct kobj_attribute npi_packing_attribute = __ATTR_RW(npi_packing);
 
 #if IS_ENABLED(CONFIG_UCLAMP_STATS)
-static int uclamp_stats_show(struct seq_file *m, void *v)
+static ssize_t uclamp_stats_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	int i, j, index;
 	struct uclamp_stats *stats;
+	ssize_t len = 0;
 
-	seq_printf(m, "V, T(ms), %%\n");
+	len += scnprintf(buf + len, PAGE_SIZE - len, "V, T(ms), %%\n");
 	for (i = 0; i < CONFIG_VH_SCHED_CPU_NR; i++) {
 		stats = &per_cpu(uclamp_stats, i);
-		seq_printf(m, "CPU %d - total time: %llu ms\n", i, stats->total_time \
-		/ NSEC_PER_MSEC);
-		seq_printf(m, "uclamp.min\n");
-
+		len += scnprintf(buf + len, PAGE_SIZE - len, "CPU %d - total time: %llu ms\n",
+				 i, stats->total_time / NSEC_PER_MSEC);
+		len += scnprintf(buf + len, PAGE_SIZE - len, "uclamp.min\n");
+		if (len >= PAGE_SIZE)
+			break;
 		for (j = 0, index = 0; j < UCLAMP_STATS_SLOTS; j++, index += UCLAMP_STATS_STEP) {
-			seq_printf(m, "%d, %llu, %llu%%\n", index,
+			len += scnprintf(buf + len, PAGE_SIZE - len, "%d, %llu, %llu%%\n", index,
 					stats->time_in_state_min[j] / NSEC_PER_MSEC,
 					stats->time_in_state_min[j] / (stats->total_time / 100));
+			if (len >= PAGE_SIZE)
+				break;
 		}
 
-		seq_printf(m, "uclamp.max\n");
-
+		len += scnprintf(buf + len, PAGE_SIZE - len, "uclamp.max\n");
+		if (len >= PAGE_SIZE)
+			break;
 		for (j = 0, index = 0; j < UCLAMP_STATS_SLOTS; j++, index += UCLAMP_STATS_STEP) {
-			seq_printf(m, "%d, %llu, %llu%%\n", index,
+			len += scnprintf(buf + len, PAGE_SIZE - len, "%d, %llu, %llu%%\n", index,
 					stats->time_in_state_max[j] / NSEC_PER_MSEC,
 					stats->time_in_state_max[j] / (stats->total_time / 100));
+			if (len >= PAGE_SIZE)
+				break;
 		}
 	}
 
-	return 0;
+	return len;
 }
 
-PROC_OPS_RO(uclamp_stats);
+static struct kobj_attribute uclamp_stats_attribute = __ATTR_RO(uclamp_stats);
 
-static int uclamp_effective_stats_show(struct seq_file *m, void *v)
+static ssize_t uclamp_effective_stats_show(struct kobject *kobj, struct kobj_attribute *attr,
+					   char *buf)
 {
 	int i, j, index;
 	struct uclamp_stats *stats;
+	ssize_t len = 0;
 
-	seq_printf(m, "V, T(ms), %%(Based on T in uclamp_stats)\n");
+	len += scnprintf(buf + len, PAGE_SIZE - len, "V, T(ms), %%(Based on T in uclamp_stats)\n");
 	for (i = 0; i < CONFIG_VH_SCHED_CPU_NR; i++) {
 		stats = &per_cpu(uclamp_stats, i);
 
-		seq_printf(m, "CPU %d\n", i);
-		seq_printf(m, "uclamp.min\n");
+		len += scnprintf(buf + len, PAGE_SIZE - len, "CPU %d\n", i);
+		len += scnprintf(buf + len, PAGE_SIZE - len, "uclamp.min\n");
+		if (len >= PAGE_SIZE)
+			break;
 		for (j = 0, index = 0; j < UCLAMP_STATS_SLOTS; j++, index += UCLAMP_STATS_STEP) {
-			seq_printf(m, "%d, %llu, %llu%%\n", index,
+			len += scnprintf(buf + len, PAGE_SIZE - len, "%d, %llu, %llu%%\n", index,
 					stats->effect_time_in_state_min[j] / NSEC_PER_MSEC,
 					stats->effect_time_in_state_min[j] /
 					(stats->time_in_state_min[j] / 100));
+			if (len >= PAGE_SIZE)
+				break;
 		}
 
-		seq_printf(m, "uclamp.max\n");
+		len += scnprintf(buf + len, PAGE_SIZE - len, "uclamp.max\n");
+		if (len >= PAGE_SIZE)
+			break;
 		for (j = 0, index = 0; j < UCLAMP_STATS_SLOTS; j++, index += UCLAMP_STATS_STEP) {
-			seq_printf(m, "%d, %llu, %llu%%\n", index,
+			len += scnprintf(buf + len, PAGE_SIZE - len, "%d, %llu, %llu%%\n", index,
 					stats->effect_time_in_state_max[j] / NSEC_PER_MSEC,
 					stats->effect_time_in_state_max[j] /
 					(stats->time_in_state_max[j] / 100));
+			if (len >= PAGE_SIZE)
+				break;
 		}
 	}
 
-	return 0;
+	return len;
 }
 
-PROC_OPS_RO(uclamp_effective_stats);
+static struct kobj_attribute uclamp_effective_stats_attribute = __ATTR_RO(uclamp_effective_stats);
 
-static int uclamp_util_diff_stats_show(struct seq_file *m, void *v)
+static ssize_t uclamp_util_diff_stats_show(struct kobject *kobj, struct kobj_attribute *attr,
+					   char *buf)
 {
 	int i, j, index;
 	struct uclamp_stats *stats;
+	ssize_t len = 0;
 
-	seq_printf(m, "V, T(ms), %%\n");
+	len += scnprintf(buf + len, PAGE_SIZE - len, "V, T(ms), %%\n");
 	for (i = 0; i < CONFIG_VH_SCHED_CPU_NR; i++) {
 		stats = &per_cpu(uclamp_stats, i);
-		seq_printf(m, "CPU %d - total time: %llu ms\n",
+		len += scnprintf(buf + len, PAGE_SIZE - len, "CPU %d - total time: %llu ms\n",
 				 i, stats->total_time / NSEC_PER_MSEC);
-		seq_printf(m, "util_diff_min\n");
+		len += scnprintf(buf + len, PAGE_SIZE - len, "util_diff_min\n");
+		if (len >= PAGE_SIZE)
+			break;
 		for (j = 0, index = 0; j < UCLAMP_STATS_SLOTS; j++, index += UCLAMP_STATS_STEP) {
-			seq_printf(m, "%d, %llu, %llu%%\n", index,
+			len += scnprintf(buf + len, PAGE_SIZE - len, "%d, %llu, %llu%%\n", index,
 					stats->util_diff_min[j] / NSEC_PER_MSEC,
 					stats->util_diff_min[j] / (stats->total_time / 100));
+			if (len >= PAGE_SIZE)
+				break;
 		}
 
-		seq_printf(m, "util_diff_max\n");
+		len += scnprintf(buf + len, PAGE_SIZE - len, "util_diff_max\n");
+		if (len >= PAGE_SIZE)
+			break;
 		for (j = 0, index = 0; j < UCLAMP_STATS_SLOTS; j++, index -= UCLAMP_STATS_STEP) {
-			seq_printf(m, "%d, %llu, %llu%%\n", index,
+			len += scnprintf(buf + len, PAGE_SIZE - len, "%d, %llu, %llu%%\n", index,
 					stats->util_diff_max[j] / NSEC_PER_MSEC,
 					stats->util_diff_max[j] / (stats->total_time / 100));
+			if (len >= PAGE_SIZE)
+				break;
 		}
 	}
 
-	return 0;
+	return len;
 }
 
-PROC_OPS_RO(uclamp_util_diff_stats);
+static struct kobj_attribute uclamp_util_diff_stats_attribute = __ATTR_RO(uclamp_util_diff_stats);
 
 
-static ssize_t reset_uclamp_stats_store(struct file *filp,
-							const char __user *ubuf,
-							size_t count, loff_t *pos)
+static ssize_t reset_uclamp_stats_store(struct kobject *kobj, struct kobj_attribute *attr,
+					const char *buf, size_t count)
 {
 	bool reset;
-	char buf[MAX_PROC_SIZE];
-
-	if (count >= sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, ubuf, count))
-		return -EFAULT;
-
-	buf[count] = '\0';
 
 	if (kstrtobool(buf, &reset))
 		return -EINVAL;
@@ -963,29 +884,21 @@ static ssize_t reset_uclamp_stats_store(struct file *filp,
 	return count;
 }
 
-PROC_OPS_WO(reset_uclamp_stats);
+static struct kobj_attribute reset_uclamp_stats_attribute = __ATTR_WO(reset_uclamp_stats);
 #endif
 
-static int util_post_init_scale_show(struct seq_file *m, void *v)
+static ssize_t util_post_init_scale_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf)
 {
-	seq_printf(m, "%d\n", vendor_sched_util_post_init_scale);
-	return 0;
+	return snprintf(buf, PAGE_SIZE, "%d\n", vendor_sched_util_post_init_scale);
 }
 
-static ssize_t util_post_init_scale_store(struct file *filp,
-							const char __user *ubuf,
-							size_t count, loff_t *pos)
+static ssize_t util_post_init_scale_store(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					const char *buf, size_t count)
 {
 	unsigned int val;
-	char buf[MAX_PROC_SIZE];
-
-	if (count >= sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, ubuf, count))
-		return -EFAULT;
-
-	buf[count] = '\0';
 
 	if (kstrtouint(buf, 0, &val))
 		return -EINVAL;
@@ -998,28 +911,20 @@ static ssize_t util_post_init_scale_store(struct file *filp,
 	return count;
 }
 
-PROC_OPS_RW(util_post_init_scale);
+static struct kobj_attribute util_post_init_scale_attribute = __ATTR_RW(util_post_init_scale);
 
-static int pmu_poll_time_show(struct seq_file *m, void *v)
+static ssize_t pmu_poll_time_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf)
 {
-	seq_printf(m, "%u\n", pmu_poll_time_ms);
-	return 0;
+	return sysfs_emit(buf, "%u\n", pmu_poll_time_ms);
 }
 
-static ssize_t pmu_poll_time_store(struct file *filp,
-							const char __user *ubuf,
-							size_t count, loff_t *pos)
+static ssize_t pmu_poll_time_store(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					const char *buf, size_t count)
 {
 	unsigned int val;
-	char buf[MAX_PROC_SIZE];
-
-	if (count >= sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, ubuf, count))
-		return -EFAULT;
-
-	buf[count] = '\0';
 
 	if (kstrtouint(buf, 0, &val))
 		return -EINVAL;
@@ -1032,28 +937,20 @@ static ssize_t pmu_poll_time_store(struct file *filp,
 	return count;
 }
 
-PROC_OPS_RW(pmu_poll_time);
+static struct kobj_attribute pmu_poll_time_attribute = __ATTR_RW(pmu_poll_time);
 
-static  pmu_poll_enable_show(struct seq_file *m, void *v)
+static ssize_t pmu_poll_enable_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf)
 {
-	seq_printf(m, "%s\n", pmu_poll_enabled ? "true" : "false");
-	return 0;
+	return sysfs_emit(buf, "%s\n", pmu_poll_enabled ? "true" : "false");
 }
 
-static ssize_t pmu_poll_enable_store(struct file *filp,
-							const char __user *ubuf,
-							size_t count, loff_t *pos)
+static ssize_t pmu_poll_enable_store(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					const char *buf, size_t count)
 {
 	bool enable;
-	char buf[MAX_PROC_SIZE];
-
-	if (count >= sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, ubuf, count))
-		return -EFAULT;
-
-	buf[count] = '\0';
 
 	if (kstrtobool(buf, &enable))
 		return -EINVAL;
@@ -1069,24 +966,15 @@ static ssize_t pmu_poll_enable_store(struct file *filp,
 	return count;
 }
 
-PROC_OPS_RW(pmu_poll_enable);
+static struct kobj_attribute pmu_poll_enable_attribute = __ATTR_RW(pmu_poll_enable);
 
-static ssize_t uclamp_fork_reset_set_store(struct file *filp,
-							const char __user *ubuf,
-							size_t count, loff_t *pos)
+static ssize_t uclamp_fork_reset_set_store(struct kobject *kobj,
+					      struct kobj_attribute *attr,
+					      const char *buf, size_t count)
 {
 	struct vendor_task_struct *vp;
 	struct task_struct *p;
 	pid_t pid;
-	char buf[MAX_PROC_SIZE];
-
-	if (count >= sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, ubuf, count))
-		return -EFAULT;
-
-	buf[count] = '\0';
 
 	if (kstrtoint(buf, 0, &pid) || pid <= 0)
 		return -EINVAL;
@@ -1103,24 +991,16 @@ static ssize_t uclamp_fork_reset_set_store(struct file *filp,
 	rcu_read_unlock();
 	return count;
 }
-PROC_OPS_WO(uclamp_fork_reset_set);
+static struct kobj_attribute uclamp_fork_reset_set_attribute =
+	__ATTR_WO(uclamp_fork_reset_set);
 
-static ssize_t uclamp_fork_reset_clear_store(struct file *filp,
-							const char __user *ubuf,
-							size_t count, loff_t *pos)
+static ssize_t uclamp_fork_reset_clear_store(struct kobject *kobj,
+					     struct kobj_attribute *attr,
+					     const char *buf, size_t count)
 {
 	struct vendor_task_struct *vp;
 	struct task_struct *p;
 	pid_t pid;
-	char buf[MAX_PROC_SIZE];
-
-	if (count >= sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, ubuf, count))
-		return -EFAULT;
-
-	buf[count] = '\0';
 
 	if (kstrtoint(buf, 0, &pid) || pid <= 0)
 		return -EINVAL;
@@ -1137,174 +1017,176 @@ static ssize_t uclamp_fork_reset_clear_store(struct file *filp,
 	rcu_read_unlock();
 	return count;
 }
-PROC_OPS_WO(uclamp_fork_reset_clear);
+static struct kobj_attribute uclamp_fork_reset_clear_attribute = __ATTR_WO(uclamp_fork_reset_clear);
 
-struct pentry {
-	const char *name;
-	const struct proc_ops *fops;
-};
-static struct pentry entries[] = {
+static struct attribute *attrs[] = {
 	// Topapp group attributes
-	PROC_ENTRY(ta_prefer_idle),
-	PROC_ENTRY(ta_prefer_high_cap),
-	PROC_ENTRY(ta_task_spreading),
-	PROC_ENTRY(ta_group_throttle),
-	PROC_ENTRY(ta_uclamp_min),
-	PROC_ENTRY(ta_uclamp_max),
+	&ta_prefer_idle_attribute.attr,
+	&ta_prefer_high_cap_attribute.attr,
+	&ta_task_spreading_attribute.attr,
+	&ta_group_throttle_attribute.attr,
+	&ta_uclamp_min_attribute.attr,
+	&ta_uclamp_max_attribute.attr,
 	// Foreground group attributes
-	PROC_ENTRY(fg_prefer_idle),
-	PROC_ENTRY(fg_prefer_high_cap),
-	PROC_ENTRY(fg_task_spreading),
-	PROC_ENTRY(fg_group_throttle),
-	PROC_ENTRY(fg_uclamp_min),
-	PROC_ENTRY(fg_uclamp_max),
+	&fg_prefer_idle_attribute.attr,
+	&fg_prefer_high_cap_attribute.attr,
+	&fg_task_spreading_attribute.attr,
+	&fg_group_throttle_attribute.attr,
+	&fg_uclamp_min_attribute.attr,
+	&fg_uclamp_max_attribute.attr,
 	// System group attributes
-	PROC_ENTRY(sys_prefer_idle),
-	PROC_ENTRY(sys_prefer_high_cap),
-	PROC_ENTRY(sys_task_spreading),
-	PROC_ENTRY(sys_group_throttle),
-	PROC_ENTRY(sys_uclamp_min),
-	PROC_ENTRY(sys_uclamp_max),
+	&sys_prefer_idle_attribute.attr,
+	&sys_prefer_high_cap_attribute.attr,
+	&sys_task_spreading_attribute.attr,
+	&sys_group_throttle_attribute.attr,
+	&sys_uclamp_min_attribute.attr,
+	&sys_uclamp_max_attribute.attr,
 	// Camera group attributes
-	PROC_ENTRY(cam_prefer_idle),
-	PROC_ENTRY(cam_prefer_high_cap),
-	PROC_ENTRY(cam_task_spreading),
-	PROC_ENTRY(cam_group_throttle),
-	PROC_ENTRY(cam_uclamp_min),
-	PROC_ENTRY(cam_uclamp_max),
+	&cam_prefer_idle_attribute.attr,
+	&cam_prefer_high_cap_attribute.attr,
+	&cam_task_spreading_attribute.attr,
+	&cam_group_throttle_attribute.attr,
+	&cam_uclamp_min_attribute.attr,
+	&cam_uclamp_max_attribute.attr,
 	// Camera_power group attributes
-	PROC_ENTRY(cam_power_prefer_idle),
-	PROC_ENTRY(cam_power_prefer_high_cap),
-	PROC_ENTRY(cam_power_task_spreading),
-	PROC_ENTRY(cam_power_group_throttle),
-	PROC_ENTRY(cam_power_uclamp_min),
-	PROC_ENTRY(cam_power_uclamp_max),
+	&cam_power_prefer_idle_attribute.attr,
+	&cam_power_prefer_high_cap_attribute.attr,
+	&cam_power_task_spreading_attribute.attr,
+	&cam_power_group_throttle_attribute.attr,
+	&cam_power_uclamp_min_attribute.attr,
+	&cam_power_uclamp_max_attribute.attr,
 	// Background group attributes
-	PROC_ENTRY(bg_prefer_idle),
-	PROC_ENTRY(bg_prefer_high_cap),
-	PROC_ENTRY(bg_task_spreading),
-	PROC_ENTRY(bg_group_throttle),
-	PROC_ENTRY(bg_uclamp_min),
-	PROC_ENTRY(bg_uclamp_max),
+	&bg_prefer_idle_attribute.attr,
+	&bg_prefer_high_cap_attribute.attr,
+	&bg_task_spreading_attribute.attr,
+	&bg_group_throttle_attribute.attr,
+	&bg_uclamp_min_attribute.attr,
+	&bg_uclamp_max_attribute.attr,
 	// System Background group attributes
-	PROC_ENTRY(sysbg_prefer_idle),
-	PROC_ENTRY(sysbg_prefer_high_cap),
-	PROC_ENTRY(sysbg_task_spreading),
-	PROC_ENTRY(sysbg_group_throttle),
-	PROC_ENTRY(sysbg_uclamp_min),
-	PROC_ENTRY(sysbg_uclamp_max),
+	&sysbg_prefer_idle_attribute.attr,
+	&sysbg_prefer_high_cap_attribute.attr,
+	&sysbg_task_spreading_attribute.attr,
+	&sysbg_group_throttle_attribute.attr,
+	&sysbg_uclamp_min_attribute.attr,
+	&sysbg_uclamp_max_attribute.attr,
 	// Nnapi-HAL group attributes
-	PROC_ENTRY(nnapi_prefer_idle),
-	PROC_ENTRY(nnapi_prefer_high_cap),
-	PROC_ENTRY(nnapi_task_spreading),
-	PROC_ENTRY(nnapi_group_throttle),
-	PROC_ENTRY(nnapi_uclamp_min),
-	PROC_ENTRY(nnapi_uclamp_max),
+	&nnapi_prefer_idle_attribute.attr,
+	&nnapi_prefer_high_cap_attribute.attr,
+	&nnapi_task_spreading_attribute.attr,
+	&nnapi_group_throttle_attribute.attr,
+	&nnapi_uclamp_min_attribute.attr,
+	&nnapi_uclamp_max_attribute.attr,
 	// RT group attributes
-	PROC_ENTRY(rt_prefer_idle),
-	PROC_ENTRY(rt_prefer_high_cap),
-	PROC_ENTRY(rt_task_spreading),
-	PROC_ENTRY(rt_group_throttle),
-	PROC_ENTRY(rt_uclamp_min),
-	PROC_ENTRY(rt_uclamp_max),
+	&rt_prefer_idle_attribute.attr,
+	&rt_prefer_high_cap_attribute.attr,
+	&rt_task_spreading_attribute.attr,
+	&rt_group_throttle_attribute.attr,
+	&rt_uclamp_min_attribute.attr,
+	&rt_uclamp_max_attribute.attr,
 	// DEX2OAT group attributes
-	PROC_ENTRY(dex2oat_prefer_idle),
-	PROC_ENTRY(dex2oat_prefer_high_cap),
-	PROC_ENTRY(dex2oat_task_spreading),
-	PROC_ENTRY(dex2oat_group_throttle),
-	PROC_ENTRY(dex2oat_uclamp_min),
-	PROC_ENTRY(dex2oat_uclamp_max),
+	&dex2oat_prefer_idle_attribute.attr,
+	&dex2oat_prefer_high_cap_attribute.attr,
+	&dex2oat_task_spreading_attribute.attr,
+	&dex2oat_group_throttle_attribute.attr,
+	&dex2oat_uclamp_min_attribute.attr,
+	&dex2oat_uclamp_max_attribute.attr,
 	// OTA group attributes
-	PROC_ENTRY(ota_prefer_idle),
-	PROC_ENTRY(ota_prefer_high_cap),
-	PROC_ENTRY(ota_task_spreading),
-	PROC_ENTRY(ota_group_throttle),
-	PROC_ENTRY(ota_uclamp_min),
-	PROC_ENTRY(ota_uclamp_max),
+	&ota_prefer_idle_attribute.attr,
+	&ota_prefer_high_cap_attribute.attr,
+	&ota_task_spreading_attribute.attr,
+	&ota_group_throttle_attribute.attr,
+	&ota_uclamp_min_attribute.attr,
+	&ota_uclamp_max_attribute.attr,
 	// SF group attributes
-	PROC_ENTRY(sf_prefer_idle),
-	PROC_ENTRY(sf_prefer_high_cap),
-	PROC_ENTRY(sf_task_spreading),
-	PROC_ENTRY(sf_group_throttle),
-	PROC_ENTRY(sf_uclamp_min),
-	PROC_ENTRY(sf_uclamp_max),
+	&sf_prefer_idle_attribute.attr,
+	&sf_prefer_high_cap_attribute.attr,
+	&sf_task_spreading_attribute.attr,
+	&sf_group_throttle_attribute.attr,
+	&sf_uclamp_min_attribute.attr,
+	&sf_uclamp_max_attribute.attr,
 	// Vendor group attributes
-	PROC_ENTRY(set_task_group_ta),
-	PROC_ENTRY(set_task_group_fg),
-	PROC_ENTRY(set_task_group_sys),
-	PROC_ENTRY(set_task_group_cam),
-	PROC_ENTRY(set_task_group_cam_power),
-	PROC_ENTRY(set_task_group_bg),
-	PROC_ENTRY(set_task_group_sysbg),
-	PROC_ENTRY(set_task_group_nnapi),
-	PROC_ENTRY(set_task_group_rt),
-	PROC_ENTRY(set_task_group_dex2oat),
-	PROC_ENTRY(set_task_group_ota),
-	PROC_ENTRY(set_task_group_sf),
-	PROC_ENTRY(set_proc_group_ta),
-	PROC_ENTRY(set_proc_group_fg),
-	PROC_ENTRY(set_proc_group_sys),
-	PROC_ENTRY(set_proc_group_cam),
-	PROC_ENTRY(set_proc_group_cam_power),
-	PROC_ENTRY(set_proc_group_bg),
-	PROC_ENTRY(set_proc_group_sysbg),
-	PROC_ENTRY(set_proc_group_nnapi),
-	PROC_ENTRY(set_proc_group_rt),
-	PROC_ENTRY(set_proc_group_dex2oat),
-	PROC_ENTRY(set_proc_group_ota),
-	PROC_ENTRY(set_proc_group_sf),
+	&set_task_group_ta_attribute.attr,
+	&set_task_group_fg_attribute.attr,
+	&set_task_group_sys_attribute.attr,
+	&set_task_group_cam_attribute.attr,
+	&set_task_group_cam_power_attribute.attr,
+	&set_task_group_bg_attribute.attr,
+	&set_task_group_sysbg_attribute.attr,
+	&set_task_group_nnapi_attribute.attr,
+	&set_task_group_rt_attribute.attr,
+	&set_task_group_dex2oat_attribute.attr,
+	&set_task_group_ota_attribute.attr,
+	&set_task_group_sf_attribute.attr,
+	&set_proc_group_ta_attribute.attr,
+	&set_proc_group_fg_attribute.attr,
+	&set_proc_group_sys_attribute.attr,
+	&set_proc_group_cam_attribute.attr,
+	&set_proc_group_cam_power_attribute.attr,
+	&set_proc_group_bg_attribute.attr,
+	&set_proc_group_sysbg_attribute.attr,
+	&set_proc_group_nnapi_attribute.attr,
+	&set_proc_group_rt_attribute.attr,
+	&set_proc_group_dex2oat_attribute.attr,
+	&set_proc_group_ota_attribute.attr,
+	&set_proc_group_sf_attribute.attr,
 	// Uclamp stats
 #if IS_ENABLED(CONFIG_UCLAMP_STATS)
-	PROC_ENTRY(uclamp_stats),
-	PROC_ENTRY(uclamp_effective_stats),
-	PROC_ENTRY(uclamp_util_diff_stats),
-	PROC_ENTRY(reset_uclamp_stats),
+	&uclamp_stats_attribute.attr,
+	&uclamp_effective_stats_attribute.attr,
+	&uclamp_util_diff_stats_attribute.attr,
+	&reset_uclamp_stats_attribute.attr,
 #endif
-	PROC_ENTRY(uclamp_threshold),
-	PROC_ENTRY(util_threshold),
-	PROC_ENTRY(util_post_init_scale),
-	PROC_ENTRY(uclamp_fork_reset_set),
-	PROC_ENTRY(uclamp_fork_reset_clear),
-	PROC_ENTRY(npi_packing),
-	PROC_ENTRY(dump_task),
+	&uclamp_threshold_attribute.attr,
+	&util_threshold_attribute.attr,
+	&util_post_init_scale_attribute.attr,
+	&uclamp_fork_reset_set_attribute.attr,
+	&uclamp_fork_reset_clear_attribute.attr,
+	&npi_packing_attribute.attr,
 
-	PROC_ENTRY(pmu_poll_time),
-	PROC_ENTRY(pmu_poll_enable),
+	&pmu_poll_time_attribute.attr,
+	&pmu_poll_enable_attribute.attr,
+
+	NULL,
+};
+
+static struct attribute_group attr_group = {
+	.attrs = attrs,
 };
 
 
-int create_procfs_node(void)
+static int create_procfs_node(void)
 {
-	int i;
-	struct uclamp_se uc_max = {};
-	enum uclamp_id clamp_id;
-
 	vendor_sched = proc_mkdir("vendor_sched", NULL);
 
 	if (!vendor_sched)
+		return -ENOMEM;
+
+	if (!proc_create_single("dump_task", 0, vendor_sched, dump_task_show)) {
+		remove_proc_entry("vendor_sched", NULL);
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+int create_sysfs_node(void)
+{
+	int ret;
+	struct uclamp_se uc_max = {};
+	enum uclamp_id clamp_id;
+
+	vendor_sched_kobj = kobject_create_and_add("vendor_sched", kernel_kobj);
+
+	if (!vendor_sched_kobj)
+		return -ENOMEM;
+
+	ret = sysfs_create_group(vendor_sched_kobj, &attr_group);
+	if (ret)
 		goto out;
 
-	/* create procfs */
-	for (i = 0; i < ARRAY_SIZE(entries); i++) {
-		umode_t mode;
-
-		if (entries[i].fops->proc_write == NULL) {
-			mode = 0444;
-		} else if(entries[i].fops->proc_read== NULL) {
-			mode = 0200;
-		} else {
-			mode = 0644;
-		}
-
-		if (!proc_create(entries[i].name, mode,
-					vendor_sched, entries[i].fops)) {
-			pr_debug("%s(), create %s failed\n",
-					__func__, entries[i].name);
-			remove_proc_entry("vendor_sched", NULL);
-
-			goto out;
-		}
-	}
+	ret = create_procfs_node();
+	if (ret)
+		goto out;
 
 	uc_max.value = uclamp_none(UCLAMP_MAX);
 	uc_max.bucket_id = get_bucket_id(uc_max.value);
@@ -1315,8 +1197,9 @@ int create_procfs_node(void)
 
 	initialize_vendor_group_property();
 
-	return 0;
+	return ret;
 
 out:
+	kobject_put(vendor_sched_kobj);
 	return -ENOMEM;
 }
