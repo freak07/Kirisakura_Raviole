@@ -193,12 +193,7 @@ enum power_supply_type {
 	POWER_SUPPLY_TYPE_USB_PD,		/* Power Delivery Port */
 	POWER_SUPPLY_TYPE_USB_PD_DRP,		/* PD Dual Role Port */
 	POWER_SUPPLY_TYPE_APPLE_BRICK_ID,	/* Apple Charging Method */
-
-	/*
-	 * force to 50 to minimize the chances of userspace binary
-	 * incompatibility on newer upstream kernels
-	 */
-	POWER_SUPPLY_TYPE_WIRELESS_EXT = 50,	/* Wireless */
+	POWER_SUPPLY_TYPE_WIRELESS,		/* Wireless */
 };
 
 enum power_supply_usb_type {
