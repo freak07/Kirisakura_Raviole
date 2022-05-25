@@ -424,7 +424,9 @@
   dev_pm_domain_attach_by_name
   dev_pm_domain_detach
   dev_pm_opp_add
+  dev_pm_opp_adjust_voltage
   dev_pm_opp_disable
+  dev_pm_opp_enable
   dev_pm_opp_find_freq_ceil
   dev_pm_opp_find_freq_exact
   dev_pm_opp_find_freq_floor
@@ -432,6 +434,7 @@
   dev_pm_opp_get_opp_count
   dev_pm_opp_get_voltage
   dev_pm_opp_of_add_table
+  dev_pm_opp_of_cpumask_add_table
   dev_pm_opp_of_register_em
   dev_pm_opp_of_remove_table
   dev_pm_opp_put
