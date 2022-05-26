@@ -55,6 +55,9 @@ extern void rvh_set_task_cpu_pixel_mod(void *data, struct task_struct *p, unsign
 extern void rvh_enqueue_task_pixel_mod(void *data, struct rq *rq, struct task_struct *p, int flags);
 extern void rvh_dequeue_task_pixel_mod(void *data, struct rq *rq, struct task_struct *p, int flags);
 
+extern void rvh_cpumask_any_and_distribute(void *data, struct task_struct *p,
+	const struct cpumask *cpu_valid_mask, const struct cpumask *new_mask, int *dest_cpu);
+
 extern void vh_dump_throttled_rt_tasks_mod(void *data, int cpu, u64 clock, ktime_t rt_period,
 					   u64 rt_runtime, s64 rt_period_timer_expires);
 
@@ -184,6 +187,11 @@ static int vh_sched_init(void)
 		return ret;
 
 	ret = register_trace_android_vh_sched_setaffinity_early(vh_sched_setaffinity_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_cpumask_any_and_distribute(
+		rvh_cpumask_any_and_distribute, NULL);
 	if (ret)
 		return ret;
 
