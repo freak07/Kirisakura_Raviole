@@ -208,6 +208,10 @@ out_of_memory:
 do_sigbus:
 	tsk->thread.trap_no = trap_no(regs);
 
+	/* The fault is fully completed (including releasing mmap lock) */
+	if (fault & VM_FAULT_COMPLETED)
+		return;
+
 	mmap_read_unlock(mm);
 
 	/* Kernel mode? Handle exceptions or die */
