@@ -145,7 +145,7 @@ int __init register_nfs_fs(void)
 	ret = nfs_register_sysctl();
 	if (ret < 0)
 		goto error_2;
-	ret = register_shrinker(&acl_shrinker);
+	ret = register_shrinker(&acl_shrinker, "nfs-acl");
 	if (ret < 0)
 		goto error_3;
 	nfs_ssc_register_ops();
