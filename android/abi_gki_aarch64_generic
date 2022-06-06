@@ -43,7 +43,6 @@
   atomic_notifier_chain_unregister
   autoremove_wake_function
   available_idle_cpu
-  backlight_device_set_brightness
   bcmp
   bdget_disk
   bdput
@@ -489,7 +488,6 @@
   dma_fence_remove_callback
   dma_fence_signal
   dma_fence_signal_locked
-  dma_fence_wait_timeout
   dma_free_attrs
   dma_free_noncoherent
   dma_get_slave_caps
@@ -573,6 +571,7 @@
   drm_atomic_helper_swap_state
   drm_atomic_helper_update_plane
   drm_atomic_helper_wait_for_dependencies
+  drm_atomic_helper_wait_for_fences
   drm_atomic_helper_wait_for_flip_done
   drm_atomic_nonblocking_commit
   drm_atomic_normalize_zpos
@@ -600,6 +599,7 @@
   drm_connector_unregister
   drm_crtc_arm_vblank_event
   drm_crtc_cleanup
+  __drm_crtc_commit_free
   drm_crtc_enable_color_mgmt
   drm_crtc_handle_vblank
   drm_crtc_init_with_planes
@@ -677,7 +677,6 @@
   drm_plane_create_alpha_property
   drm_plane_create_blend_mode_property
   drm_plane_create_rotation_property
-  drm_plane_create_zpos_immutable_property
   drm_plane_create_zpos_property
   drm_poll
   drm_prime_gem_destroy
@@ -692,9 +691,9 @@
   drm_property_create_bool
   drm_property_create_enum
   drm_property_create_range
-  drm_property_create_signed_range
   drm_property_lookup_blob
   drm_property_replace_blob
+  drm_puts
   __drm_puts_seq_file
   drm_read
   drm_rect_clip_scaled
@@ -1233,7 +1232,6 @@
   of_dma_is_coherent
   of_drm_find_bridge
   of_drm_find_panel
-  of_find_backlight_by_node
   of_find_compatible_node
   of_find_device_by_node
   of_find_i2c_adapter_by_node
@@ -2306,6 +2304,7 @@
   aes_encrypt
   aes_expandkey
   alloc_skb_with_frags
+  backlight_device_set_brightness
   badblocks_check
   badblocks_clear
   badblocks_exit
@@ -2384,17 +2383,18 @@
   dev_pm_qos_remove_request
   dma_direct_alloc
   dma_direct_free
+  dma_fence_wait_timeout
   dma_get_sgtable_attrs
   do_exit
   down_read_trylock
   down_timeout
   driver_create_file
   driver_remove_file
-  drm_atomic_helper_wait_for_fences
   drm_connector_set_panel_orientation
-  __drm_crtc_commit_free
   drm_dsc_pps_payload_pack
+  drm_plane_create_zpos_immutable_property
   __drm_printfn_debug
+  drm_property_create_signed_range
   em_cpu_get
   errno_to_blk_status
   ether_setup
@@ -2456,6 +2456,7 @@
   nla_append
   nla_put_64bit
   nla_reserve
+  of_find_backlight_by_node
   of_find_node_with_property
   of_pwm_xlate_with_flags
   page_frag_alloc
