@@ -989,7 +989,7 @@ static ssize_t nr_stall_show(struct kobject *kobj, struct kobj_attribute *attr,
 {
 	struct eh_device *eh_dev = container_of(kobj, struct eh_device, kobj);
 
-	return sysfs_emit(buf, "%l\n", atomic64_read(&eh_dev->nr_stall));
+	return sysfs_emit(buf, "%lld\n", atomic64_read(&eh_dev->nr_stall));
 }
 EH_ATTR_RO(nr_stall);
 
