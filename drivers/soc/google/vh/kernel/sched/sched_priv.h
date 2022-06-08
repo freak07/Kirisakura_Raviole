@@ -48,6 +48,24 @@
 	WRITE_ONCE(*ptr, res);					\
 } while (0)
 
+#define __container_of(ptr, type, member) ({			\
+	void *__mptr = (void *)(ptr);				\
+	((type *)(__mptr - offsetof(type, member))); })
+
+#define remove_from_vendor_group_list(__node, __group) do {	\
+	raw_spin_lock(&vendor_group_list[__group].lock);	\
+	if (__node == vendor_group_list[__group].cur_iterator)	\
+		vendor_group_list[__group].cur_iterator = (__node)->prev;	\
+	list_del_init(__node);					\
+	raw_spin_unlock(&vendor_group_list[__group].lock);	\
+} while (0)
+
+#define add_to_vendor_group_list(__node, __group) do {		\
+	raw_spin_lock(&vendor_group_list[__group].lock);	\
+	list_add_tail(__node, &vendor_group_list[__group].list);	\
+	raw_spin_unlock(&vendor_group_list[__group].lock);	\
+} while (0)
+
 struct vendor_group_property {
 	bool prefer_idle;
 	bool prefer_high_cap;
@@ -74,11 +92,11 @@ struct uclamp_stats {
 	u64 effect_time_in_state_max[UCLAMP_STATS_SLOTS];
 };
 
-struct vendor_cfs_util {
+
+struct vendor_group_list {
+	struct list_head list;
 	raw_spinlock_t lock;
-	struct sched_avg avg;
-	unsigned long util_removed;
-	unsigned int util_est;
+	struct list_head *cur_iterator;
 };
 
 unsigned long map_util_freq_pixel_mod(unsigned long util, unsigned long freq,
@@ -88,6 +106,17 @@ enum vendor_group_attribute {
 	VTA_TASK_GROUP,
 	VTA_PROC_GROUP,
 };
+
+struct vendor_task_group_struct {
+	enum vendor_group group;
+};
+
+ANDROID_VENDOR_CHECK_SIZE_ALIGN(u64 android_vendor_data1[4], struct vendor_task_group_struct t);
+
+static inline struct vendor_task_group_struct *get_vendor_task_group_struct(struct task_group *tg)
+{
+	return (struct vendor_task_group_struct *)tg->android_vendor_data1;
+}
 
 struct vendor_rq_struct {
 	raw_spinlock_t lock;

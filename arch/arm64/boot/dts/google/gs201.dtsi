@@ -186,7 +186,7 @@
 		clock-names = "eh-clock";
 		power-domains = <&pd_eh>;
 		google,eh,ignore-gctrl-reset;
-		s2mpus = <&s2mpu_eh>;
+		s2mpu = <&s2mpu_eh>;
 	};
 
 	serial_0: uart@10A00000 {
@@ -676,7 +676,6 @@
 		#size-cells = <1>;
 		ranges;
 		power-domains = <&pd_hsi0>;
-		s2mpus = <&s2mpu_hsi0>;
 		status = "okay";
 
 		interrupts = <GIC_SPI IRQ_USB31DRD_GIC_0_HSI0 IRQ_TYPE_LEVEL_HIGH>;
@@ -734,6 +733,7 @@
 		phyclk_mux = "none";
 		phy_refclk = "phy_ref";
 		phy_ref_clock = <19200000>;
+		s2mpu = <&s2mpu_hsi0>;
 
 		/*
 		 * if Main phy has the other phy,
@@ -883,6 +883,9 @@
 			/* governor data */
 			governor = <SIMPLE_INTERACTIVE>;
 
+			/* boot_info */
+			boot_info = <60 2730000>;
+
 			dfs_id = <ACPM_DVFS_MIF>;
 			acpm-ipc-channel = <1>;
 			use_acpm = "true";
@@ -942,6 +945,9 @@
 
 			freq_info = <100000 100000 100000 100000 533000 533000>;
 			/* <initial_freq, default_qos, suspend_freq, min, max, reboot_freq> */
+
+			/* boot_info */
+			boot_info = <60 465000>;
 
 			/* governor data */
 			governor = <SIMPLE_INTERACTIVE>;

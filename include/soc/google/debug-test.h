@@ -10,11 +10,14 @@
 
 struct debug_trigger {
 	void (*hard_lockup)(char *arg);
+#if IS_ENABLED(CONFIG_SOC_GS101)
 	void (*cold_reset)(char *arg);
+#endif
 	void (*watchdog_emergency_reset)(char *arg);
 	void (*halt)(char *arg);
 	void (*arraydump)(char *arg);
 	void (*scandump)(char *arg);
+	void (*hyp_panic)(char *arg);
 };
 
 #if IS_ENABLED(CONFIG_PIXEL_DEBUG_TEST)

@@ -449,6 +449,11 @@ static struct mfc_buf *__mfc_handle_frame_output_del(struct mfc_core *core,
 			mfc_debug(2, "[QoS] framerate changed\n");
 		}
 
+		if ((IS_VP9_DEC(ctx) || IS_AV1_DEC(ctx)) && dec->has_multiframe) {
+			mfc_set_mb_flag(dst_mb, MFC_FLAG_MULTIFRAME);
+			mfc_debug(2, "[MULTIFRAME] multiframe detected\n");
+		}
+
 		if (ctx->dst_fmt->mem_planes == 1) {
 			vb2_set_plane_payload(&dst_mb->vb.vb2_buf, 0,
 					raw->total_plane_size);
@@ -460,6 +465,7 @@ static struct mfc_buf *__mfc_handle_frame_output_del(struct mfc_core *core,
 						raw->plane_size[i]);
 			}
 		}
+
 		dst_mb->vb.flags &= ~(V4L2_BUF_FLAG_KEYFRAME |
 					V4L2_BUF_FLAG_PFRAME |
 					V4L2_BUF_FLAG_BFRAME |
@@ -848,10 +854,13 @@ static void __mfc_handle_frame_input(struct mfc_core *core,
 				&ctx->src_ctrls[index]) < 0)
 		mfc_err("failed in core_recover_buf_ctrls_val\n");
 
-	dec->consumed = 0;
-	dec->remained_size = 0;
-
 	mfc_clear_mb_flag(src_mb);
+
+	if ((IS_VP9_DEC(ctx) || IS_AV1_DEC(ctx)) && dec->has_multiframe &&
+		(mfc_core_get_disp_status() == MFC_REG_DEC_STATUS_DECODING_ONLY)) {
+		mfc_set_mb_flag(src_mb, MFC_FLAG_CONSUMED_ONLY);
+		mfc_debug(2, "[STREAM][MULTIFRAME] last frame is decoding only\n");
+	}
 
 	/*
 	 * VP8 decoder has decoding only frame,
@@ -896,6 +905,11 @@ static void __mfc_handle_frame_input(struct mfc_core *core,
 	if (call_cop(ctx, core_get_buf_ctrls_val, core, ctx,
 				&ctx->src_ctrls[index]) < 0)
 		mfc_err("failed in core_get_buf_ctrls_val\n");
+
+	dec->consumed = 0;
+	if (IS_VP9_DEC(ctx) || IS_AV1_DEC(ctx))
+		dec->has_multiframe = 0;
+	dec->remained_size = 0;
 
 	vb2_buffer_done(&src_mb->vb.vb2_buf, VB2_BUF_STATE_DONE);
 }
@@ -1031,6 +1045,10 @@ static void __mfc_handle_frame(struct mfc_core *core, struct mfc_ctx *ctx,
 		__mfc_handle_frame_copy_timestamp(core_ctx,
 				mfc_core_get_dec_y_addr());
 
+	/* Mark source buffer as complete */
+	if (dst_frame_status != MFC_REG_DEC_STATUS_DISPLAY_ONLY)
+		__mfc_handle_frame_input(core, ctx, err);
+
 	/* A frame has been decoded and is in the buffer  */
 	if (mfc_dec_status_display(dst_frame_status))
 		mfc_buf = __mfc_handle_frame_output(core, ctx, err);
@@ -1060,10 +1078,6 @@ static void __mfc_handle_frame(struct mfc_core *core, struct mfc_ctx *ctx,
 			mfc_debug(2, "[REFINFO] Released FD = %d will update with display buffer\n",
 					dec->ref_buf[i].fd[0]);
 	}
-
-	/* Mark source buffer as complete */
-	if (dst_frame_status != MFC_REG_DEC_STATUS_DISPLAY_ONLY)
-		__mfc_handle_frame_input(core, ctx, err);
 
 	if (regression_option & MFC_TEST_DEC_PER_FRAME)
 		mfc_core_dec_save_regression_result(core);
@@ -1605,7 +1619,7 @@ static int __mfc_handle_seq_enc(struct mfc_core *core, struct mfc_ctx *ctx)
 	struct mfc_enc *enc = ctx->enc_priv;
 	struct mfc_enc_params *p = &enc->params;
 	struct mfc_buf *dst_mb;
-	int ret, index;
+	int index;
 
 	enc->header_size = mfc_core_get_enc_strm_size();
 	mfc_debug(2, "[STREAM] encoded slice type: %d, header size: %d, display order: %d\n",
@@ -1663,21 +1677,6 @@ static int __mfc_handle_seq_enc(struct mfc_core *core, struct mfc_ctx *ctx)
 
 	/* If the ROI is enabled at SEQ_START, clear ROI_ENABLE bit */
 	mfc_core_clear_roi_enable(core);
-
-	if (core_ctx->codec_buffer_allocated) {
-		mfc_debug(2, "[DRC] previous codec buffer is exist\n");
-
-		if (core->has_llc && core->llc_on_status)
-			mfc_llc_flush(core);
-
-		if (core->has_slc && core->slc_on_status)
-			mfc_slc_flush(core);
-
-		mfc_release_codec_buffers(core_ctx);
-	}
-	ret = mfc_alloc_codec_buffers(core_ctx);
-	if (ret)
-		mfc_err("Failed to allocate encoding buffers\n");
 
 	mfc_change_state(core_ctx, MFCINST_HEAD_PARSED);
 

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2019-2020 Google LLC
+ * Copyright 2019-2022 Google LLC
  */
 
 #ifndef __GOOGLE_GVOTABLE_H_
@@ -16,9 +16,9 @@
 struct gvotable_election;
 
 typedef int (*gvotable_cmp_fn)(void *a, void *b);
-typedef void (*gvotable_callback_fn)(struct gvotable_election *el,
-				     const char *reason,
-				     void *vote);
+typedef int (*gvotable_callback_fn)(struct gvotable_election *el,
+				    const char *reason,
+				    void *vote);
 
 struct gvotable_election *
 gvotable_create_election(const char *name, int vote_size,
@@ -47,9 +47,9 @@ struct gvotable_election *gvotable_election_get_handle(const char *name);
 /* TODO: redesign this API  */
 typedef int (*gvotable_foreach_callback_fn)(void *data, const char *reason,
 					    void *vote);
-void gvotable_election_for_each(struct gvotable_election *el,
-				gvotable_foreach_callback_fn callback_fn,
-				void *callback_data);
+int gvotable_election_for_each(struct gvotable_election *el,
+			       gvotable_foreach_callback_fn callback_fn,
+			       void *callback_data);
 int gvotable_election_set_result(struct gvotable_election *el,
 				 const char *reason, void *vote);
 
@@ -87,6 +87,8 @@ static inline int gvotable_cast_bool_vote(struct gvotable_election *el,
 
 int gvotable_recast_ballot(struct gvotable_election *el, const char *reason,
 			   bool enabled);
+int gvotable_run_election(struct gvotable_election *el, bool force_callback);
+
 
 int gvotable_get_vote(struct gvotable_election *el, const char *reason,
 		      void **vote);
@@ -114,5 +116,6 @@ int gvotable_v2s_uint(char *str, size_t len, const void *vote);
 int gvotable_v2s_uint_hex(char *str, size_t len, const void *vote);
 void gvotable_set_vote2str(struct gvotable_election *el,
 			   gvotable_v2sfn_t vote2str);
+int gvotable_disable_force_int_entry(struct gvotable_election *el);
 
 #endif /* __GOOGLE_GVOTABLE_H_*/

@@ -436,7 +436,7 @@ static ssize_t exynos_pcie_rc_store(struct device *dev, struct device_attribute 
 		dev_info(dev, "PM_POWER_STATE  = 0x%08x\n",
 			 exynos_phy_pcs_read(exynos_pcie, 0x188));
 		exynos_elbi_write(exynos_pcie, 0x1, APP_INIT_RST);
-		break;
+		return count;
 
 	case 16:
 		exynos_pcie_rc_set_outbound_atu(1, 0x47200000, 0x0, SZ_1M);
@@ -3199,9 +3199,9 @@ static int exynos_pcie_rc_set_l1ss(int enable, struct pcie_port *pp, int id)
 				exynos_pcie_rc_wr_own_conf(pp, PCIE_LINK_L1SS_CONTROL, 4, val);
 
 				/* [RC] set TPOWERON */
-				/* Set TPOWERON value for RC: 90->130 usec */
+				/* Set TPOWERON value for RC: 90->200 usec */
 				exynos_pcie_rc_wr_own_conf(pp, PCIE_LINK_L1SS_CONTROL2, 4,
-							   PORT_LINK_TPOWERON_130US);
+							   PORT_LINK_TPOWERON_200US);
 
 				/* exynos_pcie_rc_wr_own_conf(pp,
 				 *	PCIE_L1_SUBSTATES_OFF, 4,
@@ -3221,10 +3221,10 @@ static int exynos_pcie_rc_set_l1ss(int enable, struct pcie_port *pp, int id)
 							     exp_cap_off + PCI_EXP_DEVCTL2, 4, val);
 
 				/* [EP] set TPOWERON */
-				/* Set TPOWERON value for EP: 90->130 usec */
+				/* Set TPOWERON value for EP: 90->200 usec */
 				exynos_pcie_rc_wr_other_conf(pp, ep_pci_bus, 0,
 							     exynos_pcie->ep_l1ss_ctrl2_off, 4,
-							     PORT_LINK_TPOWERON_130US);
+							     PORT_LINK_TPOWERON_200US);
 
 				/* [EP] set Entrance latency */
 				/* Set L1.2 Enterance Latency for EP: 64 usec */

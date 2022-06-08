@@ -1682,6 +1682,8 @@ static void __mfc_core_nal_q_handle_frame_copy_timestamp(struct mfc_ctx *ctx,
 	}
 
 	dst_mb = mfc_find_buf(ctx, &ctx->dst_buf_nal_queue, dec_y_addr);
+	if (!dst_mb)
+		dst_mb = mfc_find_buf(ctx, &ctx->dst_buf_queue, dec_y_addr);
 	if (dst_mb)
 		dst_mb->vb.vb2_buf.timestamp = src_mb->vb.vb2_buf.timestamp;
 
@@ -1891,6 +1893,11 @@ static struct mfc_buf *__mfc_core_nal_q_handle_frame_output_del(struct mfc_core 
 			mfc_set_mb_flag(dst_mb, MFC_FLAG_FRAMERATE_CH);
 			ctx->update_framerate = false;
 			mfc_debug(2, "[NALQ][QoS] framerate changed\n");
+		}
+
+		if ((IS_VP9_DEC(ctx) || IS_AV1_DEC(ctx)) && dec->has_multiframe) {
+			mfc_set_mb_flag(dst_mb, MFC_FLAG_MULTIFRAME);
+			mfc_debug(2, "[MULTIFRAME] multiframe detected\n");
 		}
 
 		for (i = 0; i < raw->num_planes; i++)
@@ -2158,13 +2165,20 @@ static void __mfc_core_nal_q_handle_frame_input(struct mfc_core *core, struct mf
 
 	mfc_clear_mb_flag(src_mb);
 
+	dst_frame_status = pOutStr->DisplayStatus
+		& MFC_REG_DISP_STATUS_DISPLAY_STATUS_MASK;
+
+	if ((IS_VP9_DEC(ctx) || IS_AV1_DEC(ctx)) && dec->has_multiframe &&
+		(dst_frame_status == MFC_REG_DEC_STATUS_DECODING_ONLY)) {
+		mfc_set_mb_flag(src_mb, MFC_FLAG_CONSUMED_ONLY);
+		mfc_debug(2, "[NALQ][STREAM][MULTIFRAME] last frame is decoding only\n");
+	}
+
 	/*
 	 * VP8/VP9 decoder has decoding only frame,
 	 * it will be used for reference frame only not displayed.
 	 * So, driver inform to user this input has no destination.
 	 */
-	dst_frame_status = pOutStr->DisplayStatus
-		& MFC_REG_DISP_STATUS_DISPLAY_STATUS_MASK;
 	if ((IS_VP8_DEC(ctx) || IS_VP9_DEC(ctx)) &&
 		(dst_frame_status == MFC_REG_DEC_STATUS_DECODING_ONLY)) {
 		mfc_set_mb_flag(src_mb, MFC_FLAG_CONSUMED_ONLY);
@@ -2204,6 +2218,8 @@ static void __mfc_core_nal_q_handle_frame_input(struct mfc_core *core, struct mf
 		mfc_ctx_err("[NALQ] failed in get_buf_ctrls_val\n");
 
 	dec->consumed = 0;
+	if (IS_VP9_DEC(ctx) || IS_AV1_DEC(ctx))
+		dec->has_multiframe = 0;
 	dec->remained_size = 0;
 
 	vb2_buffer_done(&src_mb->vb.vb2_buf, VB2_BUF_STATE_DONE);
@@ -2345,6 +2361,13 @@ void __mfc_core_nal_q_handle_frame(struct mfc_core *core, struct mfc_core_ctx *c
 		break;
 	}
 
+	/* Mark source buffer as complete */
+	if (dst_frame_status != MFC_REG_DEC_STATUS_DISPLAY_ONLY)
+		__mfc_core_nal_q_handle_frame_input(core, ctx, err, pOutStr);
+	else
+		mfc_debug(2, "[NALQ][DPB] can't support display only in NAL-Q, is_dpb_full: %d\n",
+				dec->is_dpb_full);
+
 	/* A frame has been decoded and is in the buffer  */
 	if (mfc_dec_status_display(dst_frame_status))
 		mfc_buf = __mfc_core_nal_q_handle_frame_output(core, ctx, pOutStr);
@@ -2374,13 +2397,6 @@ void __mfc_core_nal_q_handle_frame(struct mfc_core *core, struct mfc_core_ctx *c
 			mfc_debug(2, "[NALQ][REFINFO] Released FD = %d will update with display buffer\n",
 					dec->ref_buf[i].fd[0]);
 	}
-
-	/* Mark source buffer as complete */
-	if (dst_frame_status != MFC_REG_DEC_STATUS_DISPLAY_ONLY)
-		__mfc_core_nal_q_handle_frame_input(core, ctx, err, pOutStr);
-	else
-		mfc_debug(2, "[NALQ][DPB] can't support display only in NAL-Q, is_dpb_full: %d\n",
-				dec->is_dpb_full);
 
 #ifdef CONFIG_MFC_USE_COREDUMP
 	if (sscd_report && (ctx->frame_cnt == 200)) {

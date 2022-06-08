@@ -169,28 +169,20 @@ static void gsa_unlink_s2mpu(void *ctx)
 
 static int gsa_link_s2mpu(struct device *dev, struct gsa_mbox *mb)
 {
-	struct device_node *np;
-	struct platform_device *pdev;
-
 	/* We expect "s2mpu" entry in device node to point to gsa s2mpu driver
 	 * This entry is absolutely required for normal operation on most
 	 * devices.
 	 */
-	np = of_parse_phandle(dev->of_node, "s2mpu", 0);
-	if (!np) {
+	mb->s2mpu = pkvm_s2mpu_of_parse(dev);
+	if (!mb->s2mpu) {
 		dev_err(dev, "no 's2mpu' entry found\n");
 		return -ENODEV;
-	}
-
-	/* Note: next call obtains additional reference on returned device */
-	pdev = of_find_device_by_node(np);
-	of_node_put(np);
-	if (!pdev) {
-		dev_err(dev, "no device in 's2mpus' device_node\n");
+	} else if (IS_ERR(mb->s2mpu)) {
+		dev_err(dev, "error parsing 's2mpu' phandle: %ld\n",
+			PTR_ERR(mb->s2mpu));
 		return -ENODEV;
 	}
 
-	mb->s2mpu = &pdev->dev;
 	dev_info(dev, "linked to %s\n", dev_name(mb->s2mpu));
 
 	/* register unlink hook for s2mpu device  */
@@ -492,7 +484,7 @@ static int gsa_data_xfer_prepare_locked(struct gsa_mbox *mb)
 	++mb->wake_ref_cnt;
 
 	/* resume gsa s2mpu */
-	ret = pm_runtime_get_sync(mb->s2mpu);
+	ret = pkvm_s2mpu_resume(mb->s2mpu);
 	if (ret < 0) {
 		dev_err(mb->s2mpu, "failed to resume s2mpu (%d)\n", ret);
 		goto err_s2mpu_resume;
@@ -527,7 +519,7 @@ static void gsa_data_xfer_finish_locked(struct gsa_mbox *mb)
 	}
 
 	/* suspend gsa s2mpu */
-	rc = pm_runtime_put_sync_suspend(mb->s2mpu);
+	rc = pkvm_s2mpu_suspend(mb->s2mpu);
 	if (rc < 0) {
 		dev_err(mb->s2mpu, "failed to suspend s2mpu (%d), leaking wakelock\n", rc);
 		return;

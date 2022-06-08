@@ -544,6 +544,10 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 			goto err1;
 		}
 
+		ret = usb_gadget_activate(dwc->gadget);
+		if (ret < 0)
+			dev_err(dev, "USB gadget activate failed with %d\n", ret);
+
 		dwc3_otg_set_peripheral_mode(dotg);
 
 		dev_dbg(dev, "%s: start check usb configuration timer\n", __func__);
@@ -560,6 +564,10 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 
 		if (exynos->extra_delay)
 			msleep(100);
+
+		ret = usb_gadget_deactivate(dwc->gadget);
+		if (ret < 0)
+			dev_err(dev, "USB gadget deactivate failed with %d\n", ret);
 
 		ret = dwc3_otg_phy_enable(fsm, 0, on);
 err1:
@@ -876,6 +884,7 @@ static int dwc3_otg_reboot_notify(struct notifier_block *nb, unsigned long event
 	case SYS_POWER_OFF:
 		exynos->dwc->current_dr_role = DWC3_EXYNOS_IGNORE_CORE_OPS;
 		dotg->in_shutdown = true;
+		del_timer_sync(&exynos->usb_connect_timer);
 		break;
 	}
 
@@ -921,6 +930,9 @@ static void dwc3_otg_recovery_reconnection(struct work_struct *w)
 	struct dwc3_exynos *exynos = dotg->exynos;
 	struct otg_fsm	*fsm = &dotg->fsm;
 	int ret = 0;
+
+	if (dotg->in_shutdown)
+		return;
 
 	__pm_stay_awake(dotg->reconn_wakelock);
 	/* Lock to avoid real cable insert/remove operation. */
@@ -968,6 +980,10 @@ int dwc3_otg_usb_recovery_reconn(struct dwc3_exynos *exynos)
 	}
 
 	dotg = exynos->dotg;
+
+	if (dotg->in_shutdown)
+		return -ESHUTDOWN;
+
 	schedule_work(&dotg->recov_work);
 
 	return 0;
