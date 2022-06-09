@@ -645,7 +645,6 @@ static int dump_task_show(struct seq_file *m, void *v)
 	enum vendor_group group;
 	const char *grp_name = "unknown";
 	bool uclamp_fork_reset;
-	bool prefer_idle;
 
 	rcu_read_lock();
 
@@ -661,10 +660,9 @@ static int dump_task_show(struct seq_file *m, void *v)
 		uclamp_eff_max = uclamp_eff_value(t, UCLAMP_MAX);
 		pid = t->pid;
 		uclamp_fork_reset = vp->uclamp_fork_reset;
-		prefer_idle = vp->prefer_idle;
 		put_task_struct(t);
-		seq_printf(m, "%u %s %u %u %u %u %d %d\n", pid, grp_name, uclamp_min, uclamp_max,
-			uclamp_eff_min, uclamp_eff_max, uclamp_fork_reset, prefer_idle);
+		seq_printf(m, "%u %s %u %u %u %u %d\n", pid, grp_name, uclamp_min, uclamp_max,
+			uclamp_eff_min, uclamp_eff_max, uclamp_fork_reset);
 	}
 
 	rcu_read_unlock();
