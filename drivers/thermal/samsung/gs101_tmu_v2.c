@@ -240,21 +240,53 @@ static int gs101_tmu_tz_config_init(struct platform_device *pdev)
 	return 0;
 }
 
+static const char * const trace_suffix[] = {
+	[CPU_THROTTLE] = "cpu_throttle",
+	[HARD_LIMIT] = "hard_limit",
+	[HOTPLUG] = "hotplug",
+	[PAUSE] = "pause",
+};
+#define MAX_TRACE_SUFFIX_STR_LEN (13)
+
+#define update_thermal_trace(pdata, feature, value)                                                \
+	do {                                                                                       \
+		if (unlikely(trace_clock_set_rate_enabled()))                                      \
+			update_thermal_trace_internal(pdata, feature, value);                      \
+	} while (0);
+
+static void update_thermal_trace_internal(struct gs101_tmu_data *pdata,
+					  enum thermal_feature feature, int value)
+{
+	char clock_name[THERMAL_NAME_LENGTH + MAX_TRACE_SUFFIX_STR_LEN + 1];
+	scnprintf(clock_name, (THERMAL_NAME_LENGTH + 1 + strlen(trace_suffix[feature])),
+		 "%s_%s", pdata->tmu_name, trace_suffix[feature]);
+	trace_clock_set_rate(clock_name, value, raw_smp_processor_id());
+}
+
 static bool has_tz_pending_irq(struct gs101_tmu_data *pdata)
 {
 	struct thermal_zone_data *tz_config_p = &tz_config[pdata->id];
-	u32 val;
+	u32 val, counter = 0;
 	u16 cnt;
 	enum tmu_sensor_t probe_id;
+	int i;
+	bool ret = false;
 
 	for (cnt = 0; cnt < tz_config_p->sensor_cnt; cnt++) {
 		probe_id = tz_config_p->sensors[cnt].probe_id;
 		val = readl(pdata->base + TMU_REG_INTPEND(probe_id));
+		counter |= val;
+
 		if (val)
-			return true;
+			ret = true;
 	}
 
-	return false;
+	for (i = 0; i < TRIP_LEVEL_NUM; i++) {
+		if (counter & TMU_REG_INTPEND_RISE_MASK(i))
+			atomic64_inc(&(pdata->trip_counter[i]));
+	}
+
+	return ret;
 }
 
 static void gs101_report_trigger(struct gs101_tmu_data *p)
@@ -946,9 +978,7 @@ static void gs101_throttle_arm(struct kthread_work *work)
 			data->is_cpu_hw_throttled = true;
 		}
 	}
-	trace_thermal_exynos_arm_update(data->tmu_name, data->is_cpu_hw_throttled,
-					data->ppm_throttle_level, data->ppm_clr_throttle_level,
-					data->mpmm_throttle_level, data->mpmm_clr_throttle_level);
+	update_thermal_trace(data, CPU_THROTTLE, data->is_cpu_hw_throttled);
 
 unlock:
 	mutex_unlock(&data->lock);
@@ -996,6 +1026,7 @@ static void gs101_throttle_cpu_hotplug(struct kthread_work *work)
 			}
 		}
 	}
+	update_thermal_trace(data, HOTPLUG, data->is_cpu_hotplugged_out);
 	disable_stats_update(data->disable_stats, data->is_cpu_hotplugged_out);
 
 	mutex_unlock(&data->lock);
@@ -1102,11 +1133,8 @@ static void gs101_throttle_pause(struct kthread_work *work)
 			}
 		}
 	}
-	if (data->tmu_type == TMU_TYPE_CPU)
-		trace_thermal_exynos_cpu_pause(data->tmu_name, &mask, data->is_paused);
-	else if (data->tmu_type == TMU_TYPE_TPU)
-		trace_thermal_exynos_tpu_pause(data->tmu_name, data->is_paused);
 
+	update_thermal_trace(data, PAUSE, data->is_paused);
 	disable_stats_update(data->disable_stats, data->is_paused);
 
 unlock:
@@ -1164,10 +1192,6 @@ static void gs101_throttle_hard_limit(struct kthread_work *work)
 			pr_info_ratelimited("%s: clear hard limit, is_hardlimited = %d, pid swithed_on = %d\n",
 					    data->tmu_name, data->is_hardlimited,
 					    data->pi_param->switched_on);
-			trace_thermal_exynos_hard_limit_cdev_update(data->tmu_name, cdev->type,
-								    data->is_hardlimited,
-								    data->pi_param->switched_on,
-								    prev_max_state, state);
 		}
 	} else {
 		if (data->temperature >= data->hardlimit_threshold) {
@@ -1202,12 +1226,9 @@ static void gs101_throttle_hard_limit(struct kthread_work *work)
 					    data->tmu_name, cdev->type,
 					    data->hardlimit_cooling_state, data->is_hardlimited,
 					    data->pi_param->switched_on);
-			trace_thermal_exynos_hard_limit_cdev_update(data->tmu_name, cdev->type,
-								    data->is_hardlimited,
-								    data->pi_param->switched_on,
-								    prev_max_state, state);
 		}
 	}
+	update_thermal_trace(data, HARD_LIMIT, data->is_hardlimited);
 	hard_limit_stats_update(data->hardlimit_stats, data->is_hardlimited);
 
 err_exit:
@@ -2105,6 +2126,39 @@ pause_reset_store(struct device *dev, struct device_attribute *attr, const char 
 	return count;
 }
 
+static ssize_t trip_counter_show(struct device *dev,
+				 struct device_attribute *attr,
+				 char *buf)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct gs101_tmu_data *data = platform_get_drvdata(pdev);
+	int i;
+	int len = 0;
+
+	for (i = 0; i < TRIP_LEVEL_NUM; i++)
+		len += sysfs_emit_at(buf, len, "%lld ",
+				     atomic64_read(&(data->trip_counter[i])));
+
+	len += sysfs_emit_at(buf, len, "\n");
+
+	return len;
+}
+
+static ssize_t trip_counter_reset_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf,
+					size_t count)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct gs101_tmu_data *data = platform_get_drvdata(pdev);
+	int i;
+
+	for (i = 0; i < TRIP_LEVEL_NUM; i++)
+		atomic64_set(&(data->trip_counter[i]), 0);
+
+	return count;
+}
+
 static ssize_t ipc_dump1_show(struct device *dev, struct device_attribute *attr,
 				char *buf)
 {
@@ -2186,6 +2240,8 @@ static DEVICE_ATTR_WO(pause_reset);
 static DEVICE_ATTR_RO(hardlimit_time_in_state_ms);
 static DEVICE_ATTR_RO(hardlimit_total_count);
 static DEVICE_ATTR_WO(hardlimit_reset);
+static DEVICE_ATTR_RO(trip_counter);
+static DEVICE_ATTR_WO(trip_counter_reset);
 static DEVICE_ATTR_RO(ipc_dump1);
 static DEVICE_ATTR_RO(ipc_dump2);
 create_s32_param_attr(k_po);
@@ -2217,6 +2273,8 @@ static struct attribute *gs101_tmu_attrs[] = {
 	&dev_attr_hardlimit_time_in_state_ms.attr,
 	&dev_attr_hardlimit_total_count.attr,
 	&dev_attr_hardlimit_reset.attr,
+	&dev_attr_trip_counter.attr,
+	&dev_attr_trip_counter_reset.attr,
 	&dev_attr_ipc_dump1.attr,
 	&dev_attr_ipc_dump2.attr,
 	NULL,

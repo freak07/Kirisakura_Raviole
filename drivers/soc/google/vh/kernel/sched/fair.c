@@ -17,6 +17,11 @@
 extern void update_uclamp_stats(int cpu, u64 time);
 #endif
 
+#if IS_ENABLED(CONFIG_PIXEL_EM)
+struct em_perf_domain **vendor_sched_cpu_to_em_pd;
+EXPORT_SYMBOL_GPL(vendor_sched_cpu_to_em_pd);
+#endif
+
 extern unsigned int vendor_sched_uclamp_threshold;
 extern unsigned int vendor_sched_high_capacity_start_cpu;
 extern unsigned int vendor_sched_util_post_init_scale;
@@ -42,22 +47,6 @@ unsigned int map_scaling_freq(int cpu, unsigned int freq);
  * Any change for these functions in upstream GKI would require extensive review
  * to make proper adjustment in vendor hook.
  */
-
-#define lsub_positive(_ptr, _val) do {				\
-	typeof(_ptr) ptr = (_ptr);				\
-	*ptr -= min_t(typeof(*ptr), *ptr, _val);		\
-} while (0)
-
-#define sub_positive(_ptr, _val) do {				\
-	typeof(_ptr) ptr = (_ptr);				\
-	typeof(*ptr) val = (_val);				\
-	typeof(*ptr) res, var = READ_ONCE(*ptr);		\
-	res = var - val;					\
-	if (res > var)						\
-		res = 0;					\
-	WRITE_ONCE(*ptr, res);					\
-} while (0)
-
 #if IS_ENABLED(CONFIG_FAIR_GROUP_SCHED)
 static inline struct task_struct *task_of(struct sched_entity *se)
 {
@@ -272,7 +261,7 @@ static inline bool get_prefer_idle(struct task_struct *p)
 	return vg[get_vendor_task_struct(p)->group].prefer_idle;
 }
 
-static inline bool get_prefer_high_cap(struct task_struct *p)
+bool get_prefer_high_cap(struct task_struct *p)
 {
 	return vg[get_vendor_task_struct(p)->group].prefer_high_cap;
 }
@@ -439,7 +428,7 @@ struct vendor_group_property *get_vendor_group_property(enum vendor_group group)
 	return &(vg[group]);
 }
 
-bool task_fits_capacity(struct task_struct *p, int cpu,  bool sync_boost)
+static bool task_fits_capacity(struct task_struct *p, int cpu,  bool sync_boost)
 {
 	unsigned long task_util;
 
@@ -548,6 +537,14 @@ static inline unsigned long em_cpu_energy_pixel_mod(struct em_perf_domain *pd,
 
 	cpu = cpumask_first(to_cpumask(pd->cpus));
 
+#if IS_ENABLED(CONFIG_PIXEL_EM)
+	{
+		struct em_perf_domain **cpu_to_em_pd = READ_ONCE(vendor_sched_cpu_to_em_pd);
+		if (cpu_to_em_pd)
+			pd = cpu_to_em_pd[cpu];
+	}
+#endif
+
 	scale_cpu = arch_scale_cpu_capacity(cpu);
 	ps = &pd->table[pd->nr_perf_states - 1];
 	freq = map_util_freq_pixel_mod(max_util, ps->frequency, scale_cpu, cpu);
@@ -617,6 +614,7 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
 		energy += em_cpu_energy_pixel_mod(pd->em_pd, max_util, sum_util);
 	}
 
+	trace_sched_compute_energy(p, dst_cpu, energy);
 	return energy;
 }
 
@@ -685,6 +683,8 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 	int pd_max_spare_cap_cpu, pd_best_idle_cpu, pd_most_unimportant_cpu, pd_best_packing_cpu;
 	int most_spare_cap_cpu = -1;
 	struct cpuidle_state *idle_state;
+	unsigned long util;
+	bool prefer_fit = prefer_idle && get_vendor_task_struct(p)->uclamp_fork_reset;
 
 	rd = cpu_rq(this_cpu)->rd;
 
@@ -723,6 +723,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 					  group_capacity - wake_group_util);
 			group_overutilize = group_overutilized(i, task_group(p));
 			exit_lat = 0;
+			util = cpu_util(i);
 
 			if (is_idle) {
 				idle_state = idle_get_state(cpu_rq(i));
@@ -730,9 +731,13 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 					exit_lat = idle_state->exit_latency;
 			}
 
-			trace_sched_cpu_util(i, is_idle, exit_lat, cpu_importance, cpu_util(i),
-					       capacity, wake_util, group_capacity, wake_group_util,
-					       spare_cap, task_fits, group_overutilize);
+			trace_sched_cpu_util_cfs(i, is_idle, exit_lat, cpu_importance, util,
+						 capacity, wake_util, group_capacity,
+						 wake_group_util, spare_cap, task_fits,
+						 group_overutilize);
+
+			if (prefer_fit && !task_fits)
+				continue;
 
 			if (prefer_idle) {
 				/*
@@ -777,6 +782,9 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 				if (prefer_high_cap && i < HIGH_CAPACITY_CPU)
 					continue;
 
+				if (group_overutilize || cpu_overutilized(util, capacity, i))
+					continue;
+
 				/* find max spare capacity cpu, used as backup */
 				if (spare_cap > target_max_spare_cap) {
 					target_max_spare_cap = spare_cap;
@@ -786,12 +794,15 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 					cpumask_set_cpu(i, &max_spare_cap);
 				}
 			} else {/* Below path is for non-prefer idle case*/
+				if (group_overutilize || cpu_overutilized(util, capacity, i))
+					continue;
+
 				if (spare_cap >= target_max_spare_cap) {
 					target_max_spare_cap = spare_cap;
 					most_spare_cap_cpu = i;
 				}
 
-				if (!task_fits || group_overutilize)
+				if (!task_fits)
 					continue;
 
 				if (spare_cap < min_t(unsigned long, task_util_est(p),
@@ -803,7 +814,8 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 				 * Find the best packing CPU with the maximum spare capacity in
 				 * the performance domain
 				 */
-				if (vendor_sched_npi_packing &&
+				if (vendor_sched_npi_packing && !is_idle &&
+				    cpu_importance <= DEFAULT_IMPRATANCE_THRESHOLD &&
 				    spare_cap > pd_max_packing_spare_cap && capacity_curr_of(i) >=
 				    ((cpu_util_next(i, p, i) + cpu_util_rt(cpu_rq(i))) *
 				    sched_capacity_margin[i]) >> SCHED_CAPACITY_SHIFT) {
@@ -869,27 +881,26 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 	}
 
 	/* Assign candidates based on search order. */
-	if (cpumask_weight(&idle_fit)) {
+	if (!cpumask_empty(&idle_fit)) {
 		cpumask_copy(&candidates, &idle_fit);
-	} else if (cpumask_weight(&idle_unfit)) {
+	} else if (!cpumask_empty(&idle_unfit)) {
 		cpumask_copy(&candidates, &idle_unfit);
-	} else if (cpumask_weight(&unimportant_fit)) {
+	} else if (!cpumask_empty(&unimportant_fit)) {
 		cpumask_copy(&candidates, &unimportant_fit);
-	} else if (cpumask_weight(&unimportant_unfit)) {
+	} else if (!cpumask_empty(&unimportant_unfit)) {
 		cpumask_copy(&candidates, &unimportant_unfit);
-	} else if (cpumask_weight(&packing)) {
+	} else if (!cpumask_empty(&packing)) {
 		cpumask_copy(&candidates, &packing);
-	} else if (cpumask_weight(&max_spare_cap)) {
+	} else if (!cpumask_empty(&max_spare_cap)) {
 		cpumask_copy(&candidates, &max_spare_cap);
 	}
 
 	weight = cpumask_weight(&candidates);
+	best_energy_cpu = most_spare_cap_cpu;
 
 	/* Bail out if no candidate was found. */
-	if (weight == 0) {
-		best_energy_cpu = most_spare_cap_cpu;
+	if (weight == 0)
 		goto out;
-	}
 
 	/* Bail out if only 1 candidate was found. */
 	if (weight == 1) {
@@ -933,7 +944,7 @@ out:
 	rcu_read_unlock();
 	trace_sched_find_energy_efficient_cpu(p, task_util_est(p), prefer_idle, prefer_high_cap,
 				     task_importance, &idle_fit, &idle_unfit, &unimportant_fit,
-				     &unimportant_unfit, &max_spare_cap, best_energy_cpu);
+				     &unimportant_unfit, &packing, &max_spare_cap, best_energy_cpu);
 	return best_energy_cpu;
 }
 
@@ -1264,7 +1275,7 @@ void rvh_select_task_rq_fair_pixel_mod(void *data, struct task_struct *p, int pr
 
 	/* prefer prev cpu */
 	if (cpu_active(prev_cpu) && cpu_is_idle(prev_cpu) && task_fits_capacity(p, prev_cpu,
-	     sync_boost) && !group_overutilized(cpu, task_group(p))) {
+	     sync_boost) && !group_overutilized(prev_cpu, task_group(p))) {
 		struct cpuidle_state *idle_state;
 		unsigned int exit_lat = UINT_MAX;
 

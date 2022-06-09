@@ -59,7 +59,7 @@
 			reg = <0x0 0x0000>;
 			enable-method = "psci";
 			cpu-idle-states =  <&ANANKE_CPU_SLEEP>;
-			capacity-dmips-mhz = <193>;
+			capacity-dmips-mhz = <250>;
 			dynamic-power-coefficient = <70>;
 			operating-points-v2 = <&opp_table_little>;
 		};
@@ -69,7 +69,7 @@
 			reg = <0x0 0x0100>;
 			enable-method = "psci";
 			cpu-idle-states =  <&ANANKE_CPU_SLEEP>;
-			capacity-dmips-mhz = <193>;
+			capacity-dmips-mhz = <250>;
 			dynamic-power-coefficient = <70>;
 			operating-points-v2 = <&opp_table_little>;
 		};
@@ -79,7 +79,7 @@
 			reg = <0x0 0x0200>;
 			enable-method = "psci";
 			cpu-idle-states =  <&ANANKE_CPU_SLEEP>;
-			capacity-dmips-mhz = <193>;
+			capacity-dmips-mhz = <250>;
 			dynamic-power-coefficient = <70>;
 			operating-points-v2 = <&opp_table_little>;
 		};
@@ -89,7 +89,7 @@
 			reg = <0x0 0x0300>;
 			enable-method = "psci";
 			cpu-idle-states =  <&ANANKE_CPU_SLEEP>;
-			capacity-dmips-mhz = <193>;
+			capacity-dmips-mhz = <250>;
 			dynamic-power-coefficient = <70>;
 			operating-points-v2 = <&opp_table_little>;
 		};
@@ -99,7 +99,7 @@
 			reg = <0x0 0x0400>;
 			enable-method = "psci";
 			cpu-idle-states =  <&ENYO_CPU_SLEEP>;
-			capacity-dmips-mhz = <532>;
+			capacity-dmips-mhz = <620>;
 			dynamic-power-coefficient = <284>;
 			operating-points-v2 = <&opp_table_mid>;
 		};
@@ -109,7 +109,7 @@
 			reg = <0x0 0x0500>;
 			enable-method = "psci";
 			cpu-idle-states =  <&ENYO_CPU_SLEEP>;
-			capacity-dmips-mhz = <532>;
+			capacity-dmips-mhz = <620>;
 			dynamic-power-coefficient = <284>;
 			operating-points-v2 = <&opp_table_mid>;
 		};
@@ -544,6 +544,18 @@
 				list = <&big_ank_perf>;
 			};
 		};
+	};
+
+	pixel-em {
+		compatible = "google,pixel-em";
+		profile = "
+			cpu0 {
+			}
+			cpu4 {
+			}
+			cpu6 {
+			}
+			";
 	};
 
 	dm-tables {
