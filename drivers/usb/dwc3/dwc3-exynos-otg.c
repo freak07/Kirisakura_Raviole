@@ -174,6 +174,11 @@ static void dwc3_otg_set_host_mode(struct dwc3_otg *dotg)
 		reg &= ~DWC3_OTG_OCTL_PERIMODE;
 		dwc3_writel(dotg->regs, DWC3_OCTL, reg);
 	} else {
+		/* Disable undefined length burst mode */
+		reg = dwc3_readl(dwc->regs, DWC3_GSBUSCFG0);
+		reg &= ~(DWC3_GSBUSCFG0_INCRBRSTEN);
+		dwc3_writel(dwc->regs, DWC3_GSBUSCFG0, reg);
+
 		dwc3_otg_set_mode(dwc, DWC3_GCTL_PRTCAP_HOST);
 	}
 }
@@ -384,6 +389,9 @@ static int dwc3_otg_start_host(struct otg_fsm *fsm, int on)
 	__pm_stay_awake(dotg->wakelock);
 
 	if (on) {
+		if (!dwc3_otg_check_usb_suspend(exynos))
+			dev_err(dev, "too long to wait for dwc3 suspended\n");
+
 		dotg->otg_connection = 1;
 		exynos->need_dr_role = 1;
 		while (dwc->gadget_driver == NULL) {
@@ -512,6 +520,9 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 
 	if (on) {
 		__pm_stay_awake(dotg->wakelock);
+		if (!dwc3_otg_check_usb_suspend(exynos))
+			dev_err(dev, "too long to wait for dwc3 suspended\n");
+
 		exynos->vbus_state = true;
 		while (dwc->gadget_driver == NULL) {
 			wait_counter++;
@@ -524,6 +535,7 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 		}
 
 		exynos->need_dr_role = 1;
+		dwc->connected = true;
 		ret = dwc3_otg_phy_enable(fsm, 0, on);
 		exynos->need_dr_role = 0;
 		if (ret) {
@@ -825,6 +837,27 @@ int dwc3_otg_host_enable(bool enabled)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(dwc3_otg_host_enable);
+
+bool dwc3_otg_check_usb_suspend(struct dwc3_exynos *exynos)
+{
+	int wait_counter = 0;
+	bool exynos_suspend, dwc_suspend;
+
+	do {
+		exynos_suspend = (pm_runtime_suspend(exynos->dev) &
+				  (atomic_read(&exynos->dev->power.usage_count) < 1));
+		dwc_suspend = (pm_runtime_suspend(exynos->dwc->dev) &
+			       (atomic_read(&exynos->dwc->dev->power.usage_count) < 1));
+
+		if (exynos_suspend && dwc_suspend)
+			break;
+
+		wait_counter++;
+		msleep(20);
+	} while (wait_counter < DWC3_EXYNOS_MAX_WAIT_COUNT);
+
+	return wait_counter < DWC3_EXYNOS_MAX_WAIT_COUNT;
+}
 
 static int dwc3_otg_reboot_notify(struct notifier_block *nb, unsigned long event, void *buf)
 {
