@@ -21,11 +21,11 @@
 #include <linux/string.h>
 
 #if IS_ENABLED(CONFIG_VH_SCHED)
-extern struct em_perf_domain **vendor_sched_cpu_to_em_pd;
+struct em_perf_domain **vendor_sched_cpu_to_em_pd;
 #endif
 
 #if IS_ENABLED(CONFIG_EXYNOS_CPU_THERMAL)
-extern struct em_perf_domain **exynos_cpu_cooling_cpu_to_em_pd;
+struct em_perf_domain **exynos_cpu_cooling_cpu_to_em_pd;
 #endif
 
 static int pixel_em_max_cpu;
