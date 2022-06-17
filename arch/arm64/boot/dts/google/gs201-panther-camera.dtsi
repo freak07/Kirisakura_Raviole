@@ -133,7 +133,7 @@
 	#size-cells = <0>;
 	gpios = <&gpp4 0 GPIO_ACTIVE_HIGH &gpp4 1 GPIO_ACTIVE_HIGH>;
 	status = "okay";
-	clock-frequency = <1000000>;
+	clock-frequency = <950000>;
 	samsung,reset-before-trans;
 
 	pinctrl-names = "default","on_i2c","off_i2c";
@@ -147,7 +147,7 @@
 	#size-cells = <0>;
 	gpios = <&gpp6 0 GPIO_ACTIVE_HIGH &gpp6 1 GPIO_ACTIVE_HIGH>;
 	status = "okay";
-	clock-frequency = <785000>;
+	clock-frequency = <950000>;
 	samsung,reset-before-trans;
 
 	pinctrl-names = "default","on_i2c","off_i2c";
@@ -271,6 +271,11 @@
 					 0
 					 6000
 					 0>;
+
+				/* Thread priority */
+				transaction-thread-priority = <99>;
+
+				i2c-lock-group-id = <0>;
 			};
 
 			/* FRONT CAMERA DOKKAEBI */
@@ -350,6 +355,11 @@
 					 0
 					 0
 					 1000>;
+
+				/* Thread priority */
+				transaction-thread-priority = <99>;
+
+				i2c-lock-group-id = <1>;
 			};
 
 			/* REAR ULTRA WIDE CAMERA SANDWORM */
@@ -429,6 +439,11 @@
 					 0
 					 0
 					 1000>;
+
+				/* Thread priority */
+				transaction-thread-priority = <99>;
+
+				i2c-lock-group-id = <2>;
 			};
 
 			/* EEPROM GARGOYLE for NAGUAL*/
@@ -471,6 +486,8 @@
 				power-down-seq-delays-us =
 					<1000
 					 1000>;
+
+				i2c-lock-group-id = <0>;
 			};
 
 			/* EEPROM SMAUG for DOKKAEBI */
@@ -506,6 +523,8 @@
 					"regulator";
 				power-down-seq-delays-us =
 					<1000>;
+
+				i2c-lock-group-id = <1>;
 			};
 
 			/* EEPROM SMAUG for SANDWORM */
@@ -541,6 +560,8 @@
 					"regulator";
 				power-down-seq-delays-us =
 					<1000>;
+
+				i2c-lock-group-id = <2>;
 			};
 
 			/* Actuator SLENDERMAN for NAGUAL*/
@@ -586,6 +607,8 @@
 
 				/* Thread priority */
 				periodic-io-thread-priority = <99>;
+
+				i2c-lock-group-id = <0>;
 			};
 
 			/* Ois GARGOYLE for NAGUAL*/
@@ -638,6 +661,8 @@
 
 				/* Thread priority */
 				periodic-io-thread-priority = <99>;
+
+				i2c-lock-group-id = <0>;
 			};
 
 			flash0: flash@0 {

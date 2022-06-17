@@ -14,8 +14,9 @@
 #include "../systrace.h"
 
 #if IS_ENABLED(CONFIG_PIXEL_EM)
-struct em_perf_domain **vendor_sched_cpu_to_em_pd;
-EXPORT_SYMBOL_GPL(vendor_sched_cpu_to_em_pd);
+#include "../../include/pixel_em.h"
+struct pixel_em_profile **vendor_sched_pixel_em_profile;
+EXPORT_SYMBOL_GPL(vendor_sched_pixel_em_profile);
 #endif
 
 extern unsigned int vendor_sched_uclamp_threshold;
@@ -27,8 +28,6 @@ static struct vendor_group_property vg[VG_MAX];
 
 unsigned int sched_capacity_margin[CPU_NUM] = {
 			[0 ... CPU_NUM-1] = DEF_UTIL_THRESHOLD };
-static unsigned long scale_freq[CPU_NUM] = {
-			[0 ... CPU_NUM-1] = SCHED_CAPACITY_SCALE };
 
 extern struct vendor_group_list vendor_group_list[VG_MAX];
 
@@ -132,7 +131,7 @@ static unsigned long capacity_curr_of(int cpu)
 {
 	unsigned long max_cap = cpu_rq(cpu)->cpu_capacity_orig;
 
-	return cap_scale(max_cap, scale_freq[cpu]);
+	return cap_scale(max_cap, per_cpu(freq_scale, cpu));
 }
 
 /* Runqueue only has SCHED_IDLE tasks enqueued */
@@ -579,9 +578,32 @@ static inline unsigned long em_cpu_energy_pixel_mod(struct em_perf_domain *pd,
 
 #if IS_ENABLED(CONFIG_PIXEL_EM)
 	{
-		struct em_perf_domain **cpu_to_em_pd = READ_ONCE(vendor_sched_cpu_to_em_pd);
-		if (cpu_to_em_pd)
-			pd = cpu_to_em_pd[cpu];
+		struct pixel_em_profile **profile_ptr_snapshot;
+		profile_ptr_snapshot = READ_ONCE(vendor_sched_pixel_em_profile);
+		if (profile_ptr_snapshot) {
+			struct pixel_em_profile *profile = READ_ONCE(*profile_ptr_snapshot);
+			if (profile) {
+				struct pixel_em_cluster *cluster = profile->cpu_to_cluster[cpu];
+				struct pixel_em_opp *max_opp;
+				struct pixel_em_opp *opp;
+
+				max_opp = &cluster->opps[cluster->num_opps - 1];
+
+				freq = map_util_freq_pixel_mod(max_util,
+							       max_opp->freq,
+							       max_opp->capacity,
+							       cpu);
+				freq = map_scaling_freq(cpu, freq);
+
+				for (i = 0; i < cluster->num_opps; i++) {
+					opp = &cluster->opps[i];
+					if (opp->freq >= freq)
+						break;
+				}
+
+				return opp->cost * sum_util / max_opp->capacity;
+			}
+		}
 	}
 #endif
 
@@ -843,6 +865,9 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
 				if (group_overutilize || cpu_overutilized(util, capacity, i))
 					continue;
+#else
+				if (cpu_overutilized(util, capacity, i))
+					continue;
 #endif
 
 				/* find max spare capacity cpu, used as backup */
@@ -856,6 +881,9 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 			} else {/* Below path is for non-prefer idle case*/
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
 				if (group_overutilize || cpu_overutilized(util, capacity, i))
+					continue;
+#else
+				if (cpu_overutilized(util, capacity, i))
 					continue;
 #endif
 
@@ -1015,15 +1043,37 @@ out:
 	return best_energy_cpu;
 }
 
+#if IS_ENABLED(CONFIG_PIXEL_EM)
 void vh_arch_set_freq_scale_pixel_mod(void *data, const struct cpumask *cpus,
 				      unsigned long freq,
 				      unsigned long max, unsigned long *scale)
 {
 	int i;
+	struct pixel_em_profile **profile_ptr_snapshot;
+	profile_ptr_snapshot = READ_ONCE(vendor_sched_pixel_em_profile);
+	if (profile_ptr_snapshot) {
+		struct pixel_em_profile *profile = READ_ONCE(*profile_ptr_snapshot);
+		if (profile) {
+			struct pixel_em_cluster *cluster;
+			struct pixel_em_opp *max_opp;
+			struct pixel_em_opp *opp;
 
-	for_each_cpu(i, cpus)
-		scale_freq[i] = *scale;
+			cluster = profile->cpu_to_cluster[cpumask_first(cpus)];
+			max_opp = &cluster->opps[cluster->num_opps - 1];
+
+			for (i = 0; i < cluster->num_opps; i++) {
+				opp = &cluster->opps[i];
+				if (opp->freq >= freq)
+					break;
+			}
+
+			*scale = (opp->capacity << SCHED_CAPACITY_SHIFT) /
+				  max_opp->capacity;
+		}
+	}
 }
+EXPORT_SYMBOL_GPL(vh_arch_set_freq_scale_pixel_mod);
+#endif
 
 void rvh_set_iowait_pixel_mod(void *data, struct task_struct *p, int *should_iowait_boost)
 {
@@ -1354,13 +1404,9 @@ void rvh_select_task_rq_fair_pixel_mod(void *data, struct task_struct *p, int pr
 	sync_boost = sync && cpu >= HIGH_CAPACITY_CPU;
 
 	/* prefer prev cpu */
-#if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
-	if (cpu_active(prev_cpu) && cpu_is_idle(prev_cpu) && task_fits_capacity(p, prev_cpu,
-	     sync_boost) && !group_overutilized(prev_cpu, task_group(p))) {
-#else
 	if (cpu_active(prev_cpu) && cpu_is_idle(prev_cpu) && task_fits_capacity(p, prev_cpu,
 	     sync_boost)) {
-#endif
+
 		struct cpuidle_state *idle_state;
 		unsigned int exit_lat = UINT_MAX;
 
