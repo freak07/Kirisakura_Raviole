@@ -26,7 +26,6 @@
 		idt,fuel-gauge = <&max77759_fg>;
 		/* Defender */
 		google,power_mitigate_threshold = <90>;
-		google,has-sw-ramp;
 
 		p9xxx_gpio: p9xxx_gpio {
 			gpio-controller;
