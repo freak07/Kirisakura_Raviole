@@ -17,7 +17,6 @@
 		idt,has_rtx = <1>;
 		idt,gpio_extben = <&gpp1 3 GPIO_ACTIVE_HIGH>;
 		/* WLCDC */
-		idt,gpio_dc_switch = <&s2mpg10_gpio 0 GPIO_ACTIVE_HIGH>;
 		idt,max_vout_mv = <19500>;
 		idt,has_wlc_dc = <1>;
 		/* Enable */
@@ -26,6 +25,10 @@
 		idt,fuel-gauge = <&max77759_fg>;
 		/* Defender */
 		google,power_mitigate_threshold = <90>;
+		google,has-sw-ramp;
+
+		/* TXID: Phone type */
+		idt,tx_id_phone_type = /bits/ 8 <2>;
 
 		p9xxx_gpio: p9xxx_gpio {
 			gpio-controller;

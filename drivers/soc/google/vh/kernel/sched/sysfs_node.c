@@ -27,6 +27,7 @@ bool __read_mostly vendor_sched_npi_packing = true; //non prefer idle packing
 static struct kobject *vendor_sched_kobj;
 struct proc_dir_entry *vendor_sched;
 extern unsigned int sched_capacity_margin[CPU_NUM];
+extern struct vendor_group_list vendor_group_list[VG_MAX];
 
 extern void initialize_vendor_group_property(void);
 extern void rvh_uclamp_eff_get_pixel_mod(void *data, struct task_struct *p, enum uclamp_id clamp_id,
@@ -123,6 +124,8 @@ extern void pmu_poll_disable(void);
 				return -EINVAL;						      \
 			if (val > 1024)							      \
 				return -EINVAL;						      \
+			if (val == gp->uc_req[__cid].value)				      \
+				return count;						      \
 			gp->uc_req[__cid].value = val;					      \
 			gp->uc_req[__cid].bucket_id = get_bucket_id(val);		      \
 			gp->uc_req[__cid].user_defined = false;				      \
@@ -543,31 +546,72 @@ fail:
 	return -EINVAL;
 }
 
-static void apply_uclamp_change(enum vendor_group group, enum uclamp_id clamp_id)
+static inline struct task_struct *get_next_task(int group, struct list_head *head)
 {
-	struct task_struct *p, *t;
+	unsigned long flags;
+	struct task_struct *p;
 	struct vendor_task_struct *vp;
+	struct list_head *cur;
 
-	rcu_read_lock();
+	raw_spin_lock_irqsave(&vendor_group_list[group].lock, flags);
 
-	for_each_process_thread(p, t) {
-		vp = get_vendor_task_struct(t);
-		if (t->on_rq && vp->group == group) {
-			uclamp_update_active(t, clamp_id);
-		}
+	if (list_empty(head)) {
+		vendor_group_list[group].cur_iterator = NULL;
+		raw_spin_unlock_irqrestore(&vendor_group_list[group].lock, flags);
+		return NULL;
 	}
 
-	rcu_read_unlock();
+	if (vendor_group_list[group].cur_iterator)
+		cur = vendor_group_list[group].cur_iterator;
+	else
+		cur = head;
+
+	do {
+		if (cur->next == head) {
+			vendor_group_list[group].cur_iterator = NULL;
+			raw_spin_unlock_irqrestore(&vendor_group_list[group].lock, flags);
+			return NULL;
+		}
+
+		cur = cur->next;
+		vp = list_entry(cur, struct vendor_task_struct, node);
+		p = __container_of(vp, struct task_struct, android_vendor_data1);
+	} while ((!task_on_rq_queued(p) || p->flags & PF_EXITING));
+
+	get_task_struct(p);
+	vendor_group_list[group].cur_iterator = cur;
+
+	raw_spin_unlock_irqrestore(&vendor_group_list[group].lock, flags);
+
+	return p;
+}
+
+static void apply_uclamp_change(enum vendor_group group, enum uclamp_id clamp_id)
+{
+	struct task_struct *p;
+	unsigned long flags;
+	struct list_head *head = &vendor_group_list[group].list;
+
+	raw_spin_lock_irqsave(&vendor_group_list[group].lock, flags);
+	vendor_group_list[group].cur_iterator = NULL;
+	raw_spin_unlock_irqrestore(&vendor_group_list[group].lock, flags);
+
+	while ((p = get_next_task(group, head))) {
+		uclamp_update_active(p, clamp_id);
+		put_task_struct(p);
+	}
 }
 
 static int update_vendor_group_attribute(const char *buf, enum vendor_group_attribute vta,
-					 unsigned int val)
+					 unsigned int new)
 {
 	struct vendor_task_struct *vp;
 	struct task_struct *p, *t;
 	enum uclamp_id clamp_id;
 	pid_t pid;
 	const struct cred *cred, *tcred;
+	unsigned long flags;
+	int old;
 
 	if (kstrtoint(buf, 0, &pid) || pid <= 0)
 		return -EINVAL;
@@ -597,16 +641,32 @@ static int update_vendor_group_attribute(const char *buf, enum vendor_group_attr
 	switch (vta) {
 	case VTA_TASK_GROUP:
 		vp = get_vendor_task_struct(p);
-		vp->group = val;
+		old = vp->group;
+		raw_spin_lock_irqsave(&vp->lock, flags);
+		if (vp->queued_to_list) {
+			remove_from_vendor_group_list(&vp->node, old);
+			add_to_vendor_group_list(&vp->node, new);
+		}
+		vp->group = new;
+		raw_spin_unlock_irqrestore(&vp->lock, flags);
 		for (clamp_id = 0; clamp_id < UCLAMP_CNT; clamp_id++)
 			uclamp_update_active(p, clamp_id);
 		break;
 	case VTA_PROC_GROUP:
 		for_each_thread(p, t) {
+			get_task_struct(t);
 			vp = get_vendor_task_struct(t);
-			vp->group = val;
+			old = vp->group;
+			raw_spin_lock_irqsave(&vp->lock, flags);
+			if (vp->queued_to_list) {
+				remove_from_vendor_group_list(&vp->node, old);
+				add_to_vendor_group_list(&vp->node, new);
+			}
+			vp->group = new;
+			raw_spin_unlock_irqrestore(&vp->lock, flags);
 			for (clamp_id = 0; clamp_id < UCLAMP_CNT; clamp_id++)
 				uclamp_update_active(t, clamp_id);
+			put_task_struct(t);
 		}
 		break;
 	default:
@@ -742,6 +802,37 @@ static ssize_t npi_packing_store(struct kobject *kobj,
 }
 
 static struct kobj_attribute npi_packing_attribute = __ATTR_RW(npi_packing);
+
+static int reduce_prefer_idle_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%s\n", vendor_sched_reduce_prefer_idle ? "true" : "false");
+
+	return 0;
+}
+
+static ssize_t reduce_prefer_idle_store(struct file *filp, const char __user *ubuf,
+					size_t count, loff_t *pos)
+{
+	bool enable;
+	char buf[MAX_PROC_SIZE];
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, ubuf, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+
+	if (kstrtobool(buf, &enable))
+		return -EINVAL;
+
+	vendor_sched_reduce_prefer_idle = enable;
+
+	return count;
+}
+
+PROC_OPS_RW(reduce_prefer_idle);
 
 #if IS_ENABLED(CONFIG_UCLAMP_STATS)
 static ssize_t uclamp_stats_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
