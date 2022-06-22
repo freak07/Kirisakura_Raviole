@@ -238,6 +238,8 @@
   cpuhp_tasks_frozen
   cpu_hwcap_keys
   cpu_hwcaps
+  cpuidle_driver_state_disabled
+  cpuidle_get_driver
   cpu_latency_qos_add_request
   cpu_latency_qos_remove_request
   cpu_latency_qos_update_request
@@ -1836,6 +1838,7 @@
   sysfs_create_link
   sysfs_emit
   sysfs_emit_at
+  __sysfs_match_string
   sysfs_notify
   sysfs_remove_file_from_group
   sysfs_remove_file_ns
@@ -1901,6 +1904,7 @@
   __traceiter_android_rvh_cpu_cgroup_online
   __traceiter_android_rvh_cpu_overutilized
   __traceiter_android_rvh_dequeue_task
+  __traceiter_android_rvh_enqueue_task
   __traceiter_android_rvh_irqs_disable
   __traceiter_android_rvh_irqs_enable
   __traceiter_android_rvh_post_init_entity_util_avg
@@ -1988,6 +1992,7 @@
   __tracepoint_android_rvh_cpu_cgroup_online
   __tracepoint_android_rvh_cpu_overutilized
   __tracepoint_android_rvh_dequeue_task
+  __tracepoint_android_rvh_enqueue_task
   __tracepoint_android_rvh_irqs_disable
   __tracepoint_android_rvh_irqs_enable
   __tracepoint_android_rvh_post_init_entity_util_avg
@@ -2160,6 +2165,8 @@
   usb_free_all_descriptors
   usb_function_register
   usb_function_unregister
+  usb_gadget_activate
+  usb_gadget_deactivate
   usb_gadget_set_state
   usb_gstrings_attach
   usb_hcd_is_primary_hcd
@@ -2592,7 +2599,6 @@
   stpcpy
   strchrnul
   strnchr
-  __sysfs_match_string
   system_long_wq
   __tasklet_hi_schedule
   __trace_bprintk
@@ -2606,7 +2612,6 @@
   __traceiter_android_rvh_do_sea
   __traceiter_android_rvh_do_sp_pc_abort
   __traceiter_android_rvh_do_undefinstr
-  __traceiter_android_rvh_enqueue_task
   __traceiter_android_rvh_enqueue_task_fair
   __traceiter_android_rvh_find_energy_efficient_cpu
   __traceiter_android_rvh_remove_entity_load_avg
@@ -2622,7 +2627,6 @@
   __tracepoint_android_rvh_do_sea
   __tracepoint_android_rvh_do_sp_pc_abort
   __tracepoint_android_rvh_do_undefinstr
-  __tracepoint_android_rvh_enqueue_task
   __tracepoint_android_rvh_enqueue_task_fair
   __tracepoint_android_rvh_find_energy_efficient_cpu
   __tracepoint_android_rvh_remove_entity_load_avg
