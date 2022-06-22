@@ -22,7 +22,6 @@ extern unsigned int vendor_sched_uclamp_threshold;
 extern unsigned int vendor_sched_high_capacity_start_cpu;
 extern unsigned int vendor_sched_util_post_init_scale;
 extern bool vendor_sched_npi_packing;
-extern bool vendor_sched_reduce_prefer_idle;
 
 static struct vendor_group_property vg[VG_MAX];
 
