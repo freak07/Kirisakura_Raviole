@@ -238,8 +238,6 @@
   cpuhp_tasks_frozen
   cpu_hwcap_keys
   cpu_hwcaps
-  cpuidle_driver_state_disabled
-  cpuidle_get_driver
   cpu_latency_qos_add_request
   cpu_latency_qos_remove_request
   cpu_latency_qos_update_request
@@ -1960,6 +1958,7 @@
   __traceiter_android_vh_ufs_send_command
   __traceiter_android_vh_ufs_send_tm_command
   __traceiter_android_vh_ufs_send_uic_command
+  __traceiter_android_vh_ufs_update_sdev
   __traceiter_android_vh_ufs_update_sysfs
   __traceiter_android_vh_usb_dev_resume
   __traceiter_android_vh_usb_dev_suspend
@@ -2048,6 +2047,7 @@
   __tracepoint_android_vh_ufs_send_command
   __tracepoint_android_vh_ufs_send_tm_command
   __tracepoint_android_vh_ufs_send_uic_command
+  __tracepoint_android_vh_ufs_update_sdev
   __tracepoint_android_vh_ufs_update_sysfs
   __tracepoint_android_vh_usb_dev_resume
   __tracepoint_android_vh_usb_dev_suspend
@@ -2371,6 +2371,8 @@
   _copy_from_iter_full
   cpufreq_get_policy
   cpufreq_quick_get_max
+  cpuidle_driver_state_disabled
+  cpuidle_get_driver
   cpuidle_governor_latency_req
   cpuidle_pause_and_lock
   cpuidle_resume_and_unlock
