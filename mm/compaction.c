@@ -2702,30 +2702,6 @@ int sysctl_compact_memory;
  */
 unsigned int __read_mostly sysctl_compaction_proactiveness = 20;
 
-int compaction_proactiveness_sysctl_handler(struct ctl_table *table, int write,
-		void *buffer, size_t *length, loff_t *ppos)
-{
-	int rc, nid;
-
-	rc = proc_dointvec_minmax(table, write, buffer, length, ppos);
-	if (rc)
-		return rc;
-
-	if (write && sysctl_compaction_proactiveness) {
-		for_each_online_node(nid) {
-			pg_data_t *pgdat = NODE_DATA(nid);
-
-			if (pgdat->proactive_compact_trigger)
-				continue;
-
-			pgdat->proactive_compact_trigger = true;
-			wake_up_interruptible(&pgdat->kcompactd_wait);
-		}
-	}
-
-	return 0;
-}
-
 /*
  * This is the entry point for compacting all nodes via
  * /proc/sys/vm/compact_memory
@@ -2770,8 +2746,7 @@ void compaction_unregister_node(struct node *node)
 
 static inline bool kcompactd_work_requested(pg_data_t *pgdat)
 {
-	return pgdat->kcompactd_max_order > 0 || kthread_should_stop() ||
-		pgdat->proactive_compact_trigger;
+	return pgdat->kcompactd_max_order > 0 || kthread_should_stop();
 }
 
 static bool kcompactd_node_suitable(pg_data_t *pgdat)
@@ -2924,8 +2899,7 @@ static int kcompactd(void *p)
 		trace_mm_compaction_kcompactd_sleep(pgdat->node_id);
 		if (wait_event_freezable_timeout(pgdat->kcompactd_wait,
 			kcompactd_work_requested(pgdat),
-			msecs_to_jiffies(HPAGE_FRAG_CHECK_INTERVAL_MSEC)) &&
-			!pgdat->proactive_compact_trigger) {
+			msecs_to_jiffies(HPAGE_FRAG_CHECK_INTERVAL_MSEC))) {
 
 			psi_memstall_enter(&pflags);
 			kcompactd_do_work(pgdat);
@@ -2937,20 +2911,10 @@ static int kcompactd(void *p)
 		if (should_proactive_compact_node(pgdat)) {
 			unsigned int prev_score, score;
 
-			/*
-			 * On wakeup of proactive compaction by sysctl
-			 * write, ignore the accumulated defer score.
-			 * Anyway, if the proactive compaction didn't
-			 * make any progress for the new value, it will
-			 * be further deferred by 2^COMPACT_MAX_DEFER_SHIFT
-			 * times.
-			 */
-			if (proactive_defer &&
-				!pgdat->proactive_compact_trigger) {
+			if (proactive_defer) {
 				proactive_defer--;
 				continue;
 			}
-
 			prev_score = fragmentation_score_node(pgdat);
 			proactive_compact_node(pgdat);
 			score = fragmentation_score_node(pgdat);
@@ -2961,8 +2925,6 @@ static int kcompactd(void *p)
 			proactive_defer = score < prev_score ?
 					0 : 1 << COMPACT_MAX_DEFER_SHIFT;
 		}
-		if (pgdat->proactive_compact_trigger)
-			pgdat->proactive_compact_trigger = false;
 	}
 
 	return 0;
