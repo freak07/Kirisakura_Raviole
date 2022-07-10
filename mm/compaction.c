@@ -2925,14 +2925,11 @@ static int kcompactd(void *p)
 
 	while (!kthread_should_stop()) {
 		unsigned long pflags;
-		long timeout;
 
-		timeout = sysctl_compaction_proactiveness ?
-			msecs_to_jiffies(HPAGE_FRAG_CHECK_INTERVAL_MSEC) :
-			MAX_SCHEDULE_TIMEOUT;
 		trace_mm_compaction_kcompactd_sleep(pgdat->node_id);
 		if (wait_event_freezable_timeout(pgdat->kcompactd_wait,
-			kcompactd_work_requested(pgdat), timeout) &&
+			kcompactd_work_requested(pgdat),
+			msecs_to_jiffies(HPAGE_FRAG_CHECK_INTERVAL_MSEC)) &&
 			!pgdat->proactive_compact_trigger) {
 
 			psi_memstall_enter(&pflags);
