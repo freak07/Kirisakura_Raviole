@@ -751,7 +751,7 @@ static inline bool set_page_guard(struct zone *zone, struct page *page,
 		return false;
 
 	__SetPageGuard(page);
-	INIT_LIST_HEAD(&page->buddy_list);
+	INIT_LIST_HEAD(&page->lru);
 	set_page_private(page, order);
 	/* Guard pages are not available for any usage */
 	__mod_zone_freepage_state(zone, -(1 << order), migratetype);
@@ -925,7 +925,7 @@ static inline void add_to_free_list(struct page *page, struct zone *zone,
 {
 	struct free_area *area = &zone->free_area[order];
 
-	list_add(&page->buddy_list, &area->free_list[migratetype]);
+	list_add(&page->lru, &area->free_list[migratetype]);
 	area->nr_free++;
 }
 
@@ -935,7 +935,7 @@ static inline void add_to_free_list_tail(struct page *page, struct zone *zone,
 {
 	struct free_area *area = &zone->free_area[order];
 
-	list_add_tail(&page->buddy_list, &area->free_list[migratetype]);
+	list_add_tail(&page->lru, &area->free_list[migratetype]);
 	area->nr_free++;
 }
 
@@ -949,7 +949,7 @@ static inline void move_to_free_list(struct page *page, struct zone *zone,
 {
 	struct free_area *area = &zone->free_area[order];
 
-	list_move_tail(&page->buddy_list, &area->free_list[migratetype]);
+	list_move_tail(&page->lru, &area->free_list[migratetype]);
 }
 
 static inline void del_page_from_free_list(struct page *page, struct zone *zone,
@@ -959,7 +959,7 @@ static inline void del_page_from_free_list(struct page *page, struct zone *zone,
 	if (page_reported(page))
 		__ClearPageReported(page);
 
-	list_del(&page->buddy_list);
+	list_del(&page->lru);
 	__ClearPageBuddy(page);
 	set_page_private(page, 0);
 	zone->free_area[order].nr_free--;
@@ -1465,7 +1465,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		do {
 			page = list_last_entry(list, struct page, lru);
 			/* must delete to avoid corrupting pcp list */
-			list_del(&page->pcp_list);
+			list_del(&page->lru);
 			pcp->count--;
 
 			if (bulkfree_pcp_prepare(page))
@@ -3069,7 +3069,7 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 		 * for IO devices that can merge IO requests if the physical
 		 * pages are ordered properly.
 		 */
-		list_add_tail(&page->pcp_list, list);
+		list_add_tail(&page->lru, list);
 		alloced++;
 		if (is_migrate_cma(get_pcppage_migratetype(page)))
 			__mod_zone_page_state(zone, NR_FREE_CMA_PAGES,
@@ -3357,7 +3357,7 @@ static void free_unref_page_commit(struct page *page, int migratetype)
 
 	__count_vm_event(PGFREE);
 	pcp = &this_cpu_ptr(zone->pageset)->pcp;
-	list_add(&page->pcp_list, &pcp->lists[migratetype]);
+	list_add(&page->lru, &pcp->lists[migratetype]);
 	pcp->count++;
 	if (pcp->count >= pcp->high) {
 		unsigned long batch = READ_ONCE(pcp->batch);
@@ -3604,7 +3604,7 @@ static struct page *__rmqueue_pcplist(struct zone *zone, int migratetype,
 		}
 
 		page = list_first_entry(list, struct page, lru);
-		list_del(&page->pcp_list);
+		list_del(&page->lru);
 		pcp->count--;
 	} while (check_new_pcp(page));
 
