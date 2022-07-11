@@ -2,7 +2,6 @@
 # commonly used symbols
   alloc_chrdev_region
   __alloc_disk_node
-  __alloc_pages_nodemask
   alloc_workqueue
   amba_driver_register
   amba_driver_unregister

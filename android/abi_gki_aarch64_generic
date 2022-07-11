@@ -14,8 +14,8 @@
   __alloc_disk_node
   alloc_etherdev_mqs
   alloc_netdev_mqs
+  __alloc_pages
   alloc_pages_exact
-  __alloc_pages_nodemask
   __alloc_percpu
   __alloc_percpu_gfp
   __alloc_skb
