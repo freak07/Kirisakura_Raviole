@@ -2389,7 +2389,11 @@ void __mfc_core_nal_q_handle_frame(struct mfc_core *core, struct mfc_core_ctx *c
 		dec->has_multiframe = 1;
 		core->nal_q_stop_cause |= (1 << NALQ_EXCEPTION_NEED_DPB);
 		core->nal_q_handle->nal_q_exception = 1;
-		mfc_ctx_info("[NALQ][MULTIFRAME] nal_q_exception is set\n");
+		if (dec->is_multiframe)
+			mfc_debug(2, "[NALQ][MULTIFRAME] nal_q_exception is set\n");
+		else
+			mfc_ctx_info("[NALQ][MULTIFRAME] nal_q_exception is set\n");
+		dec->is_multiframe = 1;
 		goto leave_handle_frame;
 	}
 	if (need_dpb_change || need_scratch_change) {

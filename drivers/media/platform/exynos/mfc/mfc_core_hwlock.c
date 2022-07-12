@@ -691,7 +691,10 @@ static int __mfc_nal_q_just_run(struct mfc_core *core, struct mfc_core_ctx *core
 				mfc_core_cache_flush(
 					core, ctx->is_drm, MFC_CACHEFLUSH, drm_switch, 0);
 
-			mfc_ctx_info("[NALQ] start NAL QUEUE\n");
+			if (IS_NO_INFOLOG(ctx))
+				mfc_debug(2, "[NALQ] start NAL QUEUE\n");
+			else
+				mfc_ctx_info("[NALQ] start NAL QUEUE\n");
 			mfc_core_nal_q_start(core, nal_q_handle);
 
 			if (mfc_core_nal_q_enqueue_in_buf(core, core_ctx, nal_q_handle->nal_q_in_handle)) {
@@ -720,7 +723,11 @@ static int __mfc_nal_q_just_run(struct mfc_core *core, struct mfc_core_ctx *core
 				nal_q_handle->nal_q_exception) {
 			/* disable NAL QUEUE */
 			mfc_core_nal_q_stop(core, nal_q_handle);
-			mfc_ctx_info("[NALQ] stop NAL QUEUE\n");
+
+			if (IS_NO_INFOLOG(ctx))
+				mfc_debug(2, "[NALQ] stop NAL QUEUE\n");
+			else
+				mfc_ctx_info("[NALQ] stop NAL QUEUE\n");
 			if (mfc_wait_for_done_core(core,
 					MFC_REG_R2H_CMD_COMPLETE_QUEUE_RET)) {
 				mfc_err("[NALQ] Failed to stop queue\n");
