@@ -46,19 +46,19 @@ raven:/sys/devices/system/cpu/cpufreq $ cat policy6/scaling_available_frequencie
 */
 
 // saver 1
-#define LVL1_LITTLE 1704000
-#define LVL1_BIG    2130000
-#define LVL1_PRIME  2401000
+#define LVL1_LITTLE 1598000
+#define LVL1_BIG    1836000
+#define LVL1_PRIME  2188000
 
 // saver 2
-#define LVL2_LITTLE 1598000
-#define LVL2_BIG    1836000
-#define LVL2_PRIME  2188000
+#define LVL2_LITTLE 1401000
+#define LVL2_BIG    1491000
+#define LVL2_PRIME  1826000
 
 // saver 3
-#define LVL3_LITTLE 1401000
-#define LVL3_BIG    1491000
-#define LVL3_PRIME  1745000
+#define LVL3_LITTLE 1197000
+#define LVL3_BIG    1197000
+#define LVL3_PRIME  1426000
 
 static int batterysaver = 0; // 0 - 1 - 3
 // default 0, seriously cutting back max freqs for sunshine inside car/long gps tracking...
