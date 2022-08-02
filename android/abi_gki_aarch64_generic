@@ -17,8 +17,8 @@
   __alloc_disk_node
   alloc_etherdev_mqs
   alloc_netdev_mqs
+  __alloc_pages
   alloc_pages_exact
-  __alloc_pages_nodemask
   __alloc_percpu
   __alloc_percpu_gfp
   __alloc_skb
@@ -117,10 +117,10 @@
   blocking_notifier_call_chain
   blocking_notifier_chain_register
   blocking_notifier_chain_unregister
-  bpf_trace_run1
   bpf_trace_run10
   bpf_trace_run11
   bpf_trace_run12
+  bpf_trace_run1
   bpf_trace_run2
   bpf_trace_run3
   bpf_trace_run4
@@ -503,7 +503,9 @@
   dev_pm_domain_attach_by_name
   dev_pm_domain_detach
   dev_pm_opp_add
+  dev_pm_opp_adjust_voltage
   dev_pm_opp_disable
+  dev_pm_opp_enable
   dev_pm_opp_find_freq_ceil
   dev_pm_opp_find_freq_exact
   dev_pm_opp_find_freq_floor
@@ -511,6 +513,7 @@
   dev_pm_opp_get_opp_count
   dev_pm_opp_get_voltage
   dev_pm_opp_of_add_table
+  dev_pm_opp_of_cpumask_add_table
   dev_pm_opp_of_register_em
   dev_pm_opp_of_remove_table
   dev_pm_opp_put
@@ -1030,6 +1033,13 @@
   ieee80211_freq_khz_to_channel
   ieee80211_get_channel_khz
   ieee80211_hdrlen
+  ieee802154_alloc_hw
+  ieee802154_free_hw
+  ieee802154_register_hw
+  ieee802154_rx_irqsafe
+  ieee802154_unregister_hw
+  ieee802154_wake_queue
+  ieee802154_xmit_complete
   iio_device_unregister
   import_iovec
   in6_pton
@@ -1138,8 +1148,8 @@
   irq_work_queue
   irq_work_sync
   is_vmalloc_addr
-  jiffies
   jiffies64_to_msecs
+  jiffies
   jiffies_to_msecs
   jiffies_to_usecs
   kasan_flag_enabled
@@ -1279,8 +1289,8 @@
   mempool_free
   mempool_free_slab
   memremap
-  memset
   memset64
+  memset
   __memset_io
   memstart_addr
   memunmap
@@ -1349,8 +1359,8 @@
   nla_append
   nla_memcpy
   __nla_parse
-  nla_put
   nla_put_64bit
+  nla_put
   nla_put_nohdr
   nla_reserve
   nla_strlcpy
@@ -1363,6 +1373,11 @@
   ns_capable
   nsec_to_clock_t
   ns_to_timespec64
+  ntf_camera_started
+  ntf_camera_stopped
+  ntf_is_camera_on
+  ntf_is_screen_on
+  ntf_wake_by_user
   __num_online_cpus
   nvhe_hyp_panic_handler
   nvmem_device_put
@@ -1809,6 +1824,7 @@
   rtnl_trylock
   rtnl_unlock
   runqueues
+  s2s_freeze_coords
   sched_clock
   sched_feat_keys
   sched_setattr_nocheck
@@ -2419,6 +2435,8 @@
   uart_unregister_driver
   uart_update_timeout
   uart_write_wakeup
+  uci_add_call_handler
+  uci_screen_state
   uclamp_eff_value
   __udelay
   udp4_hwcsum
@@ -2607,6 +2625,7 @@
   wait_for_completion_interruptible_timeout
   wait_for_completion_killable
   wait_for_completion_timeout
+  wait_on_page_bit
   wait_woken
   __wake_up
   __wake_up_locked
