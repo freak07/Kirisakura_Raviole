@@ -383,8 +383,18 @@ struct vm_area_struct {
 	/* Information about our backing store: */
 	unsigned long vm_pgoff;		/* Offset (within vm_file) in PAGE_SIZE
 					   units */
-	struct file * vm_file;		/* File we map to (can be NULL). */
-	void * vm_private_data;		/* was vm_pte (shared mem) */
+	union {
+		struct {
+			/* File we map to (can be NULL). */
+			struct file *vm_file;
+
+			/* was vm_pte (shared mem) */
+			void *vm_private_data;
+		};
+#ifdef CONFIG_PER_VMA_LOCK
+		struct list_head vm_free_list;
+#endif
+	};
 
 #ifdef CONFIG_SWAP
 	atomic_long_t swap_readahead_info;
@@ -502,6 +512,11 @@ struct mm_struct {
 					  */
 #ifdef CONFIG_PER_VMA_LOCK
 		int mm_lock_seq;
+		struct {
+			struct list_head head;
+			spinlock_t lock;
+			int size;
+		} vma_free_list;
 #endif
 
 
