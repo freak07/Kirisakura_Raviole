@@ -64,7 +64,7 @@
 		>;
 
 		/* DVFS v2 operating points */
-		gpu_dvfs_table_size_v2 = <12 10>; /*<row col>*/
+		gpu_dvfs_table_size_v2 = <11 10>; /*<row col>*/
 		gpu_dvfs_table_v2 = <
 			/*
 			 *gpu0    gpu1   down     up    hys      int      mif   little  middle   big
@@ -82,7 +82,6 @@
 			434000  302000     60     90      3        0        0        0       0     0
 			434000  251000     50     80      2        0        0        0       0     0
 			302000  202000     45     67      1        0        0        0       0     0
-			302000  151000      0     70      1        0        0        0       0     0
 		>;
 
 		/* DVFS Level locks */
