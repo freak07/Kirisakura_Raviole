@@ -466,7 +466,7 @@ void rvh_set_task_cpu_pixel_mod(void *data, struct task_struct *p, unsigned int 
 	struct vendor_rq_struct *vrq;
 	unsigned long flags;
 
-	if (p->prio >= MAX_RT_PRIO)
+	if (p->prio >= MAX_RT_PRIO + 1)
 		return;
 
 	vrq = get_vendor_rq_struct(cpu_rq(task_cpu(p)));
