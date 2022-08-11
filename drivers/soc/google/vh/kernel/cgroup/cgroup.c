@@ -17,7 +17,7 @@ void rvh_cgroup_force_kthread_migration_pixel_mod(void *data, struct task_struct
 	 * Just say no.
 	 */
 #ifdef CONFIG_RT_GROUP_SCHED
-	if (tsk->prio < MAX_RT_PRIO && tsk->no_cgroup_migration &&
+	if (tsk->prio < MAX_RT_PRIO + 1 && tsk->no_cgroup_migration &&
 	    (dst_cgrp->root->subsys_mask & (1U << cpu_cgrp_id)))
 		*force_migration = false;
 #endif
