@@ -1207,8 +1207,8 @@ got_it:
 	f2fs_put_page(fio.encrypted_page, 0);
 	f2fs_put_page(page, 1);
 
-	f2fs_update_iostat(sbi, FS_DATA_READ_IO, F2FS_BLKSIZE);
-	f2fs_update_iostat(sbi, FS_GDATA_READ_IO, F2FS_BLKSIZE);
+	f2fs_update_iostat(sbi, inode, FS_DATA_READ_IO, F2FS_BLKSIZE);
+	f2fs_update_iostat(sbi, NULL, FS_GDATA_READ_IO, F2FS_BLKSIZE);
 
 	return 0;
 put_encrypted_page:
@@ -1308,8 +1308,10 @@ static int move_data_block(struct inode *inode, block_t bidx,
 			goto up_out;
 		}
 
-		f2fs_update_iostat(fio.sbi, FS_DATA_READ_IO, F2FS_BLKSIZE);
-		f2fs_update_iostat(fio.sbi, FS_GDATA_READ_IO, F2FS_BLKSIZE);
+		f2fs_update_iostat(fio.sbi, inode, FS_DATA_READ_IO,
+							F2FS_BLKSIZE);
+		f2fs_update_iostat(fio.sbi, NULL, FS_GDATA_READ_IO,
+							F2FS_BLKSIZE);
 
 		lock_page(mpage);
 		if (unlikely(mpage->mapping != META_MAPPING(fio.sbi) ||
@@ -1361,7 +1363,7 @@ static int move_data_block(struct inode *inode, block_t bidx,
 		goto put_page_out;
 	}
 
-	f2fs_update_iostat(fio.sbi, FS_GC_DATA_IO, F2FS_BLKSIZE);
+	f2fs_update_iostat(fio.sbi, NULL, FS_GC_DATA_IO, F2FS_BLKSIZE);
 
 	f2fs_update_data_blkaddr(&dn, newaddr);
 	set_inode_flag(inode, FI_APPEND_WRITE);
