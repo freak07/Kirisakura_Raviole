@@ -17,6 +17,7 @@
 #include <linux/kcov.h>
 #include <linux/scs.h>
 
+#include <asm/irq_regs.h>
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
 
@@ -9928,6 +9929,19 @@ struct cgroup_subsys cpu_cgrp_subsys = {
 
 void dump_cpu_task(int cpu)
 {
+	if (cpu == smp_processor_id() && in_hardirq()) {
+		struct pt_regs *regs;
+
+		regs = get_irq_regs();
+		if (regs) {
+			show_regs(regs);
+			return;
+		}
+	}
+
+	if (trigger_single_cpu_backtrace(cpu))
+		return;
+
 	pr_info("Task dump for CPU %d:\n", cpu);
 	sched_show_task(cpu_curr(cpu));
 }
