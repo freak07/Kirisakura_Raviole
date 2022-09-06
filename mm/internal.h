@@ -57,8 +57,9 @@ static inline void wake_throttle_isolated(pg_data_t *pgdat)
 vm_fault_t do_swap_page(struct vm_fault *vmf);
 void activate_page(struct page *page);
 
-void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *start_vma,
-		unsigned long floor, unsigned long ceiling);
+void free_pgtables(struct mmu_gather *tlb, struct maple_tree *mt,
+		   struct vm_area_struct *start_vma, unsigned long floor,
+		   unsigned long ceiling);
 
 static inline bool can_madv_lru_vma(struct vm_area_struct *vma)
 {
@@ -354,9 +355,6 @@ static inline bool is_data_mapping(vm_flags_t flags)
 }
 
 /* mm/util.c */
-void __vma_link_list(struct mm_struct *mm, struct vm_area_struct *vma,
-		struct vm_area_struct *prev);
-void __vma_unlink_list(struct mm_struct *mm, struct vm_area_struct *vma);
 
 #ifdef CONFIG_MMU
 extern long populate_vma_page_range(struct vm_area_struct *vma,
