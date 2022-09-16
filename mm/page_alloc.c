@@ -5231,7 +5231,7 @@ nopage:
 		 * so that we can identify them and convert them to something
 		 * else.
 		 */
-		WARN_ON_ONCE(order > PAGE_ALLOC_COSTLY_ORDER);
+		WARN_ON_ONCE(costly_order);
 
 		/*
 		 * Help non-failing allocations by giving them access to memory
