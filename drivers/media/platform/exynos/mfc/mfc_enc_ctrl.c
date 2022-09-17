@@ -1355,7 +1355,7 @@ static int mfc_core_enc_set_buf_ctrls_val(struct mfc_core *core,
 	return 0;
 }
 
-static int mfc_core_enc_get_buf_ctrls_val(struct mfc_core *core,
+static int __nocfi mfc_core_enc_get_buf_ctrls_val(struct mfc_core *core,
 		struct mfc_ctx *ctx, struct list_head *head)
 {
 	struct mfc_buf_ctrl *buf_ctrl;
