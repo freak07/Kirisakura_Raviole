@@ -209,7 +209,7 @@ static int fusb307b_init_alert(struct fusb307b_plat *chip,
 	return 0;
 }
 
-static enable_load_switch(struct fusb307b_plat *chip)
+static int enable_load_switch(struct fusb307b_plat *chip)
 {
 	int ret;
 
