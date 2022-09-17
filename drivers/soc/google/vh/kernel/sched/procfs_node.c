@@ -1247,7 +1247,7 @@ static ssize_t pmu_poll_time_store(struct file *filp,
 
 PROC_OPS_RW(pmu_poll_time);
 
-static  pmu_poll_enable_show(struct seq_file *m, void *v)
+static int pmu_poll_enable_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "%s\n", pmu_poll_enabled ? "true" : "false");
 	return 0;
