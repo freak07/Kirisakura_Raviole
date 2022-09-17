@@ -162,7 +162,7 @@ static int get_s2s_y_above(void) {
 extern bool machine_is_cheetah(void);
 
 // device specifics
-static void s2s_setup_values() {
+static void s2s_setup_values(void) {
 	if (machine_is_cheetah()) {
 		pr_info("%s hw cheetah\n",__func__);
 		// leave original values
