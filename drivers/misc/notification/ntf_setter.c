@@ -41,10 +41,10 @@ bool rgb_pulse_blink_on_charger = false;
 int rgb_pulse_blink_on_charger_red_limit = 70;
 
 extern void ntf_led_front_set_charge_colors(int r, int g, int b, bool warp, bool blink);
-extern ntf_led_front_release_charge(void);
+extern int ntf_led_front_release_charge(void);
 
 extern void ntf_led_back_set_charge_colors(int r, int g, int b, bool warp, bool blink);
-extern ntf_led_back_release_charge(void);
+extern int ntf_led_back_release_charge(void);
 
 int notification_booster_overdrive_perc = 0;
 bool boost_only_in_pocket = false;
