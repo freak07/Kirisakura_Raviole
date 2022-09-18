@@ -55,6 +55,7 @@ static inline void wake_throttle_isolated(pg_data_t *pgdat)
 }
 
 vm_fault_t do_swap_page(struct vm_fault *vmf);
+void activate_page(struct page *page);
 
 #ifdef CONFIG_SPECULATIVE_PAGE_FAULT
 extern struct vm_area_struct *get_vma(struct mm_struct *mm,
