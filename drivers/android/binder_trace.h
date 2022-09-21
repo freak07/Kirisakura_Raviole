@@ -100,37 +100,6 @@ TRACE_EVENT(binder_set_priority,
 		  __entry->new_prio, __entry->desired_prio)
 );
 
-#ifdef CONFIG_UCLAMP_TASK
-TRACE_EVENT(binder_set_uclamp,
-	TP_PROTO(int proc, int thread, const struct uclamp_se *old_uclamp_req,
-		const struct uclamp_se *new_uclamp_req),
-	TP_ARGS(proc, thread, old_uclamp_req, new_uclamp_req),
-
-	TP_STRUCT__entry(
-		__field(int, proc)
-		__field(int, thread)
-		__field(unsigned int, old_uclamp_req_min)
-		__field(unsigned int, old_uclamp_req_max)
-		__field(unsigned int, new_uclamp_req_min)
-		__field(unsigned int, new_uclamp_req_max)
-	),
-
-	TP_fast_assign(
-		__entry->proc = proc;
-		__entry->thread = thread;
-		__entry->old_uclamp_req_min = old_uclamp_req[UCLAMP_MIN].value;
-		__entry->old_uclamp_req_max = old_uclamp_req[UCLAMP_MAX].value;
-		__entry->new_uclamp_req_min = new_uclamp_req[UCLAMP_MIN].value;
-		__entry->new_uclamp_req_max = new_uclamp_req[UCLAMP_MAX].value;
-	),
-
-	TP_printk("proc=%d thread=%d old_uclamp_min/max=%d/%d, new_uclamp_min/max=%d/%d",
-		  __entry->proc, __entry->thread,
-		  __entry->old_uclamp_req_min, __entry->old_uclamp_req_max,
-		  __entry->new_uclamp_req_min, __entry->new_uclamp_req_max)
-);
-#endif
-
 TRACE_EVENT(binder_wait_for_work,
 	TP_PROTO(bool proc_work, bool transaction_stack, bool thread_todo),
 	TP_ARGS(proc_work, transaction_stack, thread_todo),

@@ -680,20 +680,8 @@ static void binder_do_set_priority(struct binder_thread *thread,
 	int priority; /* user-space prio value */
 	bool has_cap_nice;
 	unsigned int policy = desired->sched_policy;
-#ifdef CONFIG_UCLAMP_TASK
-	struct sched_attr attrs = {
-		.sched_flags = SCHED_FLAG_UTIL_CLAMP,
-		.sched_util_min = desired->uclamp[UCLAMP_MIN].value,
-		.sched_util_max = desired->uclamp[UCLAMP_MAX].value,
-	};
-#endif
 
-	if (task->policy == policy && task->normal_prio == desired->prio
-#ifdef CONFIG_UCLAMP_TASK
-		&& task->uclamp[UCLAMP_MIN].value == desired->uclamp[UCLAMP_MIN].value
-		&& task->uclamp[UCLAMP_MAX].value == desired->uclamp[UCLAMP_MAX].value
-#endif
-		) {
+	if (task->policy == policy && task->normal_prio == desired->prio) {
 		spin_lock(&thread->prio_lock);
 		if (thread->prio_state == BINDER_PRIO_PENDING)
 			thread->prio_state = BINDER_PRIO_SET;
@@ -738,9 +726,7 @@ static void binder_do_set_priority(struct binder_thread *thread,
 	trace_binder_set_priority(task->tgid, task->pid, task->normal_prio,
 				  to_kernel_prio(policy, priority),
 				  desired->prio);
-#ifdef CONFIG_UCLAMP_TASK
-	trace_binder_set_uclamp(task->tgid, task->pid, task->uclamp_req, desired->uclamp);
-#endif
+
 	spin_lock(&thread->prio_lock);
 	if (!verify && thread->prio_state == BINDER_PRIO_ABORT) {
 		/*
@@ -754,10 +740,6 @@ static void binder_do_set_priority(struct binder_thread *thread,
 			thread->pid, __func__);
 		return;
 	}
-
-#ifdef CONFIG_UCLAMP_TASK
-	sched_setattr_nocheck(task, &attrs);
-#endif
 
 	/* Set the actual priority */
 	if (task->policy != policy || is_rt_policy(policy)) {
@@ -824,8 +806,7 @@ static void binder_transaction_priority(struct binder_thread *thread,
 		 * SCHED_FIFO, prefer SCHED_FIFO, since it can
 		 * run unbounded, unlike SCHED_RR.
 		 */
-		desired.prio = node_prio.prio;
-		desired.sched_policy = node_prio.sched_policy;
+		desired = node_prio;
 	}
 
 	spin_lock(&thread->prio_lock);
@@ -844,10 +825,6 @@ static void binder_transaction_priority(struct binder_thread *thread,
 	} else {
 		t->saved_priority.sched_policy = task->policy;
 		t->saved_priority.prio = task->normal_prio;
-#ifdef CONFIG_UCLAMP_TASK
-		t->saved_priority.uclamp[UCLAMP_MIN] = task->uclamp_req[UCLAMP_MIN];
-		t->saved_priority.uclamp[UCLAMP_MAX] = task->uclamp_req[UCLAMP_MAX];
-#endif
 	}
 	spin_unlock(&thread->prio_lock);
 
@@ -3037,10 +3014,6 @@ static void binder_transaction(struct binder_proc *proc,
 		/* Inherit supported policies for synchronous transactions */
 		t->priority.sched_policy = current->policy;
 		t->priority.prio = current->normal_prio;
-#ifdef CONFIG_UCLAMP_TASK
-		t->priority.uclamp[UCLAMP_MIN] = current->uclamp_req[UCLAMP_MIN];
-		t->priority.uclamp[UCLAMP_MAX] = current->uclamp_req[UCLAMP_MAX];
-#endif
 	} else {
 		/* Otherwise, fall back to the default priority */
 		t->priority = target_proc->default_priority;
@@ -5411,11 +5384,6 @@ static int binder_open(struct inode *nodp, struct file *filp)
 		proc->default_priority.sched_policy = SCHED_NORMAL;
 		proc->default_priority.prio = NICE_TO_PRIO(0);
 	}
-
-#ifdef CONFIG_UCLAMP_TASK
-	proc->default_priority.uclamp[UCLAMP_MIN] = current->uclamp_req[UCLAMP_MIN];
-	proc->default_priority.uclamp[UCLAMP_MAX] = current->uclamp_req[UCLAMP_MAX];
-#endif
 
 	/* binderfs stashes devices in i_private */
 	if (is_binderfs_device(nodp)) {
