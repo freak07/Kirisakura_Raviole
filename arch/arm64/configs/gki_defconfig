@@ -869,3 +869,6 @@ CONFIG_ARM64_ERRATUM_1463225=y
 # CONFIG_QCOM_FALKOR_ERRATUM_E1041 is not set
 # CONFIG_SOCIONEXT_SYNQUACER_PREITS is not set
 # end of ARM errata workarounds via the alternatives framework
+
+# CONFIG_UNMAP_KERNEL_AT_EL0 is not set
+# CONFIG_MITIGATE_SPECTRE_BRANCH_HISTORY is not set
