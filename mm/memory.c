@@ -3907,7 +3907,7 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 	}
 
 	if (!pte_none(*vmf->pte)) {
-		update_mmu_cache(vma, vmf->address, vmf->pte);
+		update_mmu_tlb(vma, vmf->address, vmf->pte);
 		goto unlock_and_release;
 	}
 
