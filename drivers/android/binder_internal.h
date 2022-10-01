@@ -77,10 +77,6 @@ extern const struct file_operations binder_fops;
 
 extern char *binder_devices_param;
 
-#ifdef CONFIG_UCLAMP_TASK
-unsigned long uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id);
-#endif
-
 #ifdef CONFIG_ANDROID_BINDERFS
 extern bool is_binderfs_device(const struct inode *inode);
 extern struct dentry *binderfs_create_file(struct dentry *dir, const char *name,
@@ -334,10 +330,10 @@ struct binder_ref {
 };
 
 /**
- * struct binder_priority - scheduler policy, priority and uclamp
+ * struct binder_priority - scheduler policy and priority
  * @sched_policy            scheduler policy
  * @prio                    [100..139] for SCHED_NORMAL, [0..99] for FIFO/RT
- * @uclamp                  [0..1024] for UCLAMP_MIN & UCLAMP_MAX
+ *
  * The binder driver supports inheriting the following scheduler policies:
  * SCHED_NORMAL
  * SCHED_BATCH
@@ -347,9 +343,6 @@ struct binder_ref {
 struct binder_priority {
 	unsigned int sched_policy;
 	int prio;
-#ifdef CONFIG_UCLAMP_TASK
-	struct uclamp_se uclamp[UCLAMP_CNT];
-#endif
 };
 
 enum binder_prio_state {
