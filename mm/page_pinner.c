@@ -150,7 +150,7 @@ void __free_page_pinner(struct page *page, unsigned int order)
 	if (!pp_buffer.buffer)
 		return;
 
-	page_ext = page_ext_get(page);
+	page_ext = lookup_page_ext(page);
 	if (unlikely(!page_ext))
 		return;
 
@@ -161,6 +161,10 @@ void __free_page_pinner(struct page *page, unsigned int order)
 			continue;
 
 		page_pinner = get_page_pinner(page_ext);
+		/* record page free call path */
+		page_ext = lookup_page_ext(page);
+		if (unlikely(!page_ext))
+			continue;
 
 		record.handle = save_stack(GFP_NOWAIT|__GFP_NOWARN);
 		record.ts_usec = (u64)ktime_to_us(ktime_get_boottime());
@@ -174,7 +178,6 @@ void __free_page_pinner(struct page *page, unsigned int order)
 		clear_bit(PAGE_EXT_PINNER_MIGRATION_FAILED, &page_ext->flags);
 		page_ext = page_ext_next(page_ext);
 	}
-	page_ext_put(page_ext);
 }
 
 static ssize_t
@@ -242,7 +245,7 @@ err:
 
 void __page_pinner_failure_detect(struct page *page)
 {
-	struct page_ext *page_ext = page_ext_get(page);
+	struct page_ext *page_ext = lookup_page_ext(page);
 	struct page_pinner *page_pinner;
 	struct captured_pinner record;
 	u64 now;
@@ -250,10 +253,8 @@ void __page_pinner_failure_detect(struct page *page)
 	if (unlikely(!page_ext))
 		return;
 
-	if (test_bit(PAGE_EXT_PINNER_MIGRATION_FAILED, &page_ext->flags)) {
-		page_ext_put(page_ext);
+	if (test_bit(PAGE_EXT_PINNER_MIGRATION_FAILED, &page_ext->flags))
 		return;
-	}
 
 	now = (u64)ktime_to_us(ktime_get_boottime());
 	page_pinner = get_page_pinner(page_ext);
@@ -266,13 +267,12 @@ void __page_pinner_failure_detect(struct page *page)
 	capture_page_state(page, &record);
 
 	add_record(&pp_buffer, &record);
-	page_ext_put(page_ext);
 }
 EXPORT_SYMBOL_GPL(__page_pinner_failure_detect);
 
 void __page_pinner_put_page(struct page *page)
 {
-	struct page_ext *page_ext = page_ext_get(page);
+	struct page_ext *page_ext = lookup_page_ext(page);
 	struct page_pinner *page_pinner;
 	struct captured_pinner record;
 	u64 now, ts_usec;
@@ -280,10 +280,8 @@ void __page_pinner_put_page(struct page *page)
 	if (unlikely(!page_ext))
 		return;
 
-	if (!test_bit(PAGE_EXT_PINNER_MIGRATION_FAILED, &page_ext->flags)) {
-		page_ext_put(page_ext);
+	if (!test_bit(PAGE_EXT_PINNER_MIGRATION_FAILED, &page_ext->flags))
 		return;
-	}
 
 	page_pinner = get_page_pinner(page_ext);
 	record.handle = save_stack(GFP_NOWAIT|__GFP_NOWARN);
@@ -298,7 +296,6 @@ void __page_pinner_put_page(struct page *page)
 	capture_page_state(page, &record);
 
 	add_record(&pp_buffer, &record);
-	page_ext_put(page_ext);
 }
 EXPORT_SYMBOL_GPL(__page_pinner_put_page);
 
