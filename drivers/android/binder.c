@@ -512,43 +512,6 @@ static void binder_free_thread(struct binder_thread *thread);
 static void binder_free_proc(struct binder_proc *proc);
 static void binder_inc_node_tmpref_ilocked(struct binder_node *node);
 
-#ifdef CONFIG_UCLAMP_TASK
-static void set_saved_uclamp(struct binder_transaction *t, struct task_struct *task)
-{
-	t->saved_priority.uclamp[UCLAMP_MIN] = task->uclamp_req[UCLAMP_MIN].value;
-	t->saved_priority.uclamp[UCLAMP_MAX] = task->uclamp_req[UCLAMP_MAX].value;
-}
-
-static void set_inherited_uclamp(struct binder_transaction *t)
-{
-	if (!(t->flags & TF_ONE_WAY)) {
-		t->priority.uclamp[UCLAMP_MIN] = uclamp_eff_value(current, UCLAMP_MIN);
-		t->priority.uclamp[UCLAMP_MAX] = uclamp_eff_value(current, UCLAMP_MAX);
-	}
-}
-
-static void set_default_uclamp(struct binder_proc *proc)
-{
-	proc->default_priority.uclamp[UCLAMP_MIN] = current->uclamp_req[UCLAMP_MIN].value;
-	proc->default_priority.uclamp[UCLAMP_MAX] = current->uclamp_req[UCLAMP_MAX].value;
-}
-
-static bool check_uclamp(struct task_struct *task,  const struct binder_priority *desired)
-{
-	return task->uclamp_req[UCLAMP_MIN].value == desired->uclamp[UCLAMP_MIN]
-		&& task->uclamp_req[UCLAMP_MAX].value == desired->uclamp[UCLAMP_MAX];
-}
-
-#else
-static void set_saved_uclamp(struct binder_transaction *t, struct task_struct *task) {};
-static void set_inherited_uclamp(struct binder_transaction *t) {};
-static void set_default_uclamp(struct binder_proc *proc) {};
-static bool check_uclamp(struct task_struct *task,  const struct binder_priority *desired)
-{
-	return true;
-}
-#endif
-
 static bool binder_has_work_ilocked(struct binder_thread *thread,
 				    bool do_proc_work)
 {
@@ -717,14 +680,8 @@ static void binder_do_set_priority(struct binder_thread *thread,
 	int priority; /* user-space prio value */
 	bool has_cap_nice;
 	unsigned int policy = desired->sched_policy;
-	struct sched_attr attrs = {
-		.sched_flags = SCHED_FLAG_UTIL_CLAMP | SCHED_FLAG_RESET_ON_FORK,
-		.sched_util_min = desired->uclamp[UCLAMP_MIN],
-		.sched_util_max = desired->uclamp[UCLAMP_MAX],
-	};
 
-	if (task->policy == policy && task->normal_prio == desired->prio
-		&& check_uclamp(task, desired)) {
+	if (task->policy == policy && task->normal_prio == desired->prio) {
 		spin_lock(&thread->prio_lock);
 		if (thread->prio_state == BINDER_PRIO_PENDING)
 			thread->prio_state = BINDER_PRIO_SET;
@@ -784,15 +741,16 @@ static void binder_do_set_priority(struct binder_thread *thread,
 		return;
 	}
 
-	/* Set the actual priority and uclamp */
+	/* Set the actual priority */
 	if (task->policy != policy || is_rt_policy(policy)) {
-		attrs.sched_policy = policy;
-		attrs.sched_priority = is_rt_policy(policy) ? priority : 0;
-		attrs.sched_nice	 = PRIO_TO_NICE(task->static_prio);
+		struct sched_param params;
+
+		params.sched_priority = is_rt_policy(policy) ? priority : 0;
+
+		sched_setscheduler_nocheck(task,
+					   policy | SCHED_RESET_ON_FORK,
+					   &params);
 	}
-
-	sched_setattr_nocheck(task, &attrs);
-
 	if (is_fair_policy(policy))
 		set_user_nice(task, priority);
 
@@ -848,8 +806,7 @@ static void binder_transaction_priority(struct binder_thread *thread,
 		 * SCHED_FIFO, prefer SCHED_FIFO, since it can
 		 * run unbounded, unlike SCHED_RR.
 		 */
-		desired.prio = node_prio.prio;
-		desired.sched_policy = node_prio.sched_policy;
+		desired = node_prio;
 	}
 
 	spin_lock(&thread->prio_lock);
@@ -868,7 +825,6 @@ static void binder_transaction_priority(struct binder_thread *thread,
 	} else {
 		t->saved_priority.sched_policy = task->policy;
 		t->saved_priority.prio = task->normal_prio;
-		set_saved_uclamp(t, task);
 	}
 	spin_unlock(&thread->prio_lock);
 
@@ -3062,8 +3018,6 @@ static void binder_transaction(struct binder_proc *proc,
 		/* Otherwise, fall back to the default priority */
 		t->priority = target_proc->default_priority;
 	}
-
-	set_inherited_uclamp(t);
 
 	if (target_node && target_node->txn_security_ctx) {
 		u32 secid;
@@ -5430,8 +5384,6 @@ static int binder_open(struct inode *nodp, struct file *filp)
 		proc->default_priority.sched_policy = SCHED_NORMAL;
 		proc->default_priority.prio = NICE_TO_PRIO(0);
 	}
-
-	set_default_uclamp(proc);
 
 	/* binderfs stashes devices in i_private */
 	if (is_binderfs_device(nodp)) {
