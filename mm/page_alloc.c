@@ -3445,7 +3445,7 @@ static void free_unref_page_commit(struct page *page, unsigned long pfn,
 	int pindex;
 	bool free_high;
 
-	__count_vm_event(PGFREE);
+	__count_vm_events(PGFREE, 1 << order);
 	pcp = this_cpu_ptr(zone->per_cpu_pageset);
 	pindex = order_to_pindex(migratetype, order);
 	list_add(&page->lru, &pcp->lists[pindex]);
@@ -3752,7 +3752,7 @@ static struct page *rmqueue_pcplist(struct zone *preferred_zone,
 				 gfp_flags);
 	local_unlock_irqrestore(&pagesets.lock, flags);
 	if (page) {
-		__count_zid_vm_events(PGALLOC, page_zonenum(page), 1);
+		__count_zid_vm_events(PGALLOC, page_zonenum(page), 1 << order);
 		zone_statistics(preferred_zone, zone, 1);
 	}
 	return page;
