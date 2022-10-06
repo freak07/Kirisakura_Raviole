@@ -57,6 +57,7 @@
 #include <linux/timer.h>
 #include <linux/wait.h>
 #include <linux/freezer.h>
+#include <uapi/linux/sched/types.h>
 
 /* These are the possible values for the status field from the specification */
 enum eh_cdesc_status {
@@ -108,9 +109,9 @@ static LIST_HEAD(eh_dev_list);
 static DEFINE_SPINLOCK(eh_dev_list_lock);
 
 static DECLARE_WAIT_QUEUE_HEAD(eh_compress_wait);
-static unsigned int eh_default_fifo_size = 256;
+static unsigned int eh_default_fifo_size = 512;
 
-#define EH_SW_FIFO_SIZE	(1 << 15)
+#define EH_SW_FIFO_SIZE	(1 << 16)
 
 #define first_to_eh_request(head) (list_entry((head)->prev, \
 					      struct eh_request, list))
@@ -490,6 +491,7 @@ static void flush_sw_fifo(struct eh_device *eh_dev)
 	list_splice(&list, &fifo->head);
 	fifo->count -= nr_processed;
 	spin_unlock(&fifo->lock);
+	clear_eh_congested();
 }
 
 static void refill_hw_fifo(struct eh_device *eh_dev)
@@ -508,6 +510,7 @@ static void refill_hw_fifo(struct eh_device *eh_dev)
 		}
 	}
 	spin_unlock(&fifo->lock);
+	clear_eh_congested();
 }
 
 static irqreturn_t eh_error_irq(int irq, void *data)
@@ -622,7 +625,6 @@ static int eh_process_completed_descriptor(struct eh_device *eh_dev,
 	/* set the descriptor back to IDLE */
 	desc->status = EH_CDESC_IDLE;
 	atomic_dec(&eh_dev->nr_request);
-	clear_eh_congested();
 
 	update_fifo_complete_index(eh_dev);
 	return ret;
@@ -677,7 +679,12 @@ static int eh_comp_thread(void *data)
 	struct eh_device *eh_dev = data;
 	DEFINE_WAIT(wait);
 	int nr_processed = 0;
+	struct sched_attr attr = {
+		.sched_policy = SCHED_NORMAL,
+		.sched_nice = -10,
+	};
 
+	WARN_ON_ONCE(sched_setattr_nocheck(current, &attr) != 0);
 	current->flags |= PF_MEMALLOC;
 
 	while (!kthread_should_stop()) {
@@ -989,7 +996,7 @@ static ssize_t nr_stall_show(struct kobject *kobj, struct kobj_attribute *attr,
 {
 	struct eh_device *eh_dev = container_of(kobj, struct eh_device, kobj);
 
-	return sysfs_emit(buf, "%lld\n", atomic64_read(&eh_dev->nr_stall));
+	return sysfs_emit(buf, "%llu\n", atomic64_read(&eh_dev->nr_stall));
 }
 EH_ATTR_RO(nr_stall);
 
