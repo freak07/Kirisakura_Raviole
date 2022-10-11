@@ -131,6 +131,12 @@ void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 
 	dev_dbg(exynos_pcie->pci->dev, "[CAL: %s] CAL ver 210802\n", __func__);
 
+	writel(0x0, elbi_base_regs + 0x1404);
+	writel(0x0, elbi_base_regs + 0x1408);
+	udelay(10);
+	writel(0x1, elbi_base_regs + 0x1404);
+	udelay(10);
+
 	/* Debug code added to check if PCIe PHY is being reset correctly. */
 	logbuffer_log(exynos_pcie->log, "start checking reset values");
 	for (i = 0; i < 6; i++) {
