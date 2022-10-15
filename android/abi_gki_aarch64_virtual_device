@@ -3,7 +3,6 @@
   __alloc_disk_node
   alloc_etherdev_mqs
   alloc_netdev_mqs
-  __alloc_pages_nodemask
   __alloc_skb
   alloc_workqueue
   amba_driver_register
