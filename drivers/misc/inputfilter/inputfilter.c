@@ -2670,6 +2670,7 @@ static bool ts_input_filter(struct input_handle *handle,
 		if ( (strcmp("fts",handle->dev->name) 
 				&& strcmp("sec_touchscreen",handle->dev->name)
 				&& strcmp("synaptics_dsx",handle->dev->name)
+				&& strcmp("synaptics_tcm_touch",handle->dev->name)
 				&& strcmp("touchpanel",handle->dev->name)
 				&& strcmp("goodix_ts",handle->dev->name)
 			)
@@ -2988,6 +2989,7 @@ static int ts_input_dev_filter(struct input_dev *dev) {
 		strstr(dev->name, "sec_touchscreen") ||
 		strstr(dev->name, "himax-touchscreen") ||
 		strstr(dev->name, "synaptics_dsx") ||
+		strstr(dev->name, "synaptics_tcm_touch") ||
 		strstr(dev->name, "synaptics,s3320") ||
 		strstr(dev->name, "max1187x_touchscreen_0") ||
 		strstr(dev->name, "nvt_touchscreen") ||
@@ -3008,6 +3010,8 @@ static int ts_input_dev_filter(struct input_dev *dev) {
 		if (strstr(dev->name, "nvt_touchscreen")) ts_device = dev;
 		// U11+
 		if (strstr(dev->name, "synaptics_dsx")) ts_device = dev;
+		// pixel 7 pro
+		if (strstr(dev->name, "synaptics_tcm_touch")) ts_device = dev;
 		// m10
 		if (strstr(dev->name, "max1187x_touchscreen_0")) ts_device = dev;
 		// op6

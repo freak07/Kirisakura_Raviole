@@ -1051,6 +1051,9 @@ static int input_dev_filter(struct input_dev *dev) {
 	if (strstr(dev->name, "synaptics_dsx")) {
 		return 0;
 	} else
+	if (strstr(dev->name, "synaptics_tcm_touch")) {
+		return 0;
+	} else
 	if (strstr(dev->name, "fts")) {
 		return 0;
 	} else
@@ -1063,6 +1066,7 @@ static int input_dev_filter(struct input_dev *dev) {
 	if (strstr(dev->name, "sec_touchscreen")) {
 		return 0;
 	} else {
+		pr_info("%s sweep2sleep device filter check. Device didn't match any! %s\n",__func__,dev->name);
 		return 1;
 	}
 }
