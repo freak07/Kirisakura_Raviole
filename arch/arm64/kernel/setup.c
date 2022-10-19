@@ -218,7 +218,7 @@ static void __init setup_machine_fdt(phys_addr_t dt_phys)
 	if (!name)
 		return;
 #ifdef CONFIG_UCI
-	if (!strstr(name,"Cheetah")) is_cheetah = false;
+	if (!strstr(name,"CHEETAH")) is_cheetah = false;
 #endif
 	pr_info("Machine model: %s\n", name);
 	dump_stack_set_arch_desc("%s (DT)", name);
