@@ -121,6 +121,8 @@ void set_led_blink(bool b) {
 	}
 }
 
+extern bool ntf_ringing;
+
 #ifdef CONFIG_UCI_NOTIFICATIONS
 
 static void ntf_listener(char* event, int num_param, char* str_param) {
@@ -190,10 +192,11 @@ static void ntf_listener(char* event, int num_param, char* str_param) {
 		} else{
 			in_pocket = false;
 		}
-		ntf_vibration_set_in_pocket( (!ntf_is_screen_on() && boost_only_in_pocket)?notification_booster_overdrive_perc:0, (boost_only_in_pocket&&!ntf_is_screen_on())?in_pocket:false);
+		ntf_vibration_set_in_pocket( ( (!ntf_is_screen_on()||ntf_ringing) && boost_only_in_pocket)?notification_booster_overdrive_perc:0, (boost_only_in_pocket&&(!ntf_is_screen_on()||ntf_ringing))?in_pocket:false);
 	}
 }
 #endif
+
 
 static void uci_user_listener(void) {
 	int vibration_power_percentage = uci_get_user_property_int_mm("vibration_power_percentage", 10, 0, 100);
@@ -212,7 +215,7 @@ static void uci_user_listener(void) {
 
 	notification_booster_overdrive_perc = uci_get_user_property_int_mm("notification_booster_overdrive_perc", 10, 0, 100);
 	boost_only_in_pocket = !!uci_get_user_property_int_mm("boost_only_in_pocket", 0, 0, 1);
-	ntf_vibration_set_in_pocket( (!ntf_is_screen_on() && boost_only_in_pocket)?notification_booster_overdrive_perc:0, (boost_only_in_pocket&&!ntf_is_screen_on())?in_pocket:false);
+	ntf_vibration_set_in_pocket( (!ntf_is_screen_on() && boost_only_in_pocket)?notification_booster_overdrive_perc:0, (boost_only_in_pocket&&(!ntf_is_screen_on()||ntf_ringing))?in_pocket:false);
 
 
 }
