@@ -37,12 +37,12 @@
 #include <linux/notification/notification.h>
 
 /*
-raven:/sys/devices/system/cpu/cpufreq $ cat policy0/scaling_available_frequencies
+cheetah:/sys/devices/system/cpu/cpufreq $ cat policy0/scaling_available_frequencies
 300000 574000 738000 930000 1098000 1197000 1328000 1401000 1598000 1704000 1803000
-raven:/sys/devices/system/cpu/cpufreq $ cat policy4/scaling_available_frequencies
-400000 553000 696000 799000 910000 1024000 1197000 1328000 1491000 1663000 1836000 1999000 2130000 2253000
-raven:/sys/devices/system/cpu/cpufreq $ cat policy6/scaling_available_frequencies
-500000 851000 984000 1106000 1277000 1426000 1582000 1745000 1826000 2048000 2188000 2252000 2401000 2507000 2630000 2704000 2802000
+cheetah:/sys/devices/system/cpu/cpufreq $ cat policy4/scaling_available_frequencies
+400000 553000 696000 799000 910000 1024000 1197000 1328000 1491000 1663000 1836000 1999000 2130000 2253000 2348000
+cheetah:/sys/devices/system/cpu/cpufreq $ cat policy6/scaling_available_frequencies
+500000 851000 984000 1106000 1277000 1426000 1582000 1745000 1826000 2048000 2188000 2252000 2401000 2507000 2630000 2704000 2802000 2850000
 */
 
 // saver 1
