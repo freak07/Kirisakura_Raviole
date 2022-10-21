@@ -85,9 +85,8 @@
 		>;
 
 		/* DVFS Level locks */
-		gpu_dvfs_max_freq = <800000>;
-		gpu_dvfs_min_freq = <250000>;
-		gpu_dvfs_min_freq_compute = <450000>; /* When compute work detected */
+		gpu_dvfs_max_freq = <900000>;
+		gpu_dvfs_min_freq = <0>;
 
 		/* QOS */
 		gpu_dvfs_qos_bts_scenario = "g3d_performance";
