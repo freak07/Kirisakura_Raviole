@@ -1287,7 +1287,7 @@ PROC_OPS_RW(pmu_poll_enable);
 
 extern unsigned int sched_lib_cpu_freq_cached_val;
 
-static sched_lib_cpu_freq_cached_show(struct seq_file *m, void *v)
+static int sched_lib_cpu_freq_cached_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "%u\n", sched_lib_cpu_freq_cached_val);
 	return 0;
@@ -1319,7 +1319,7 @@ static ssize_t sched_lib_cpu_freq_cached_store(struct file *filp,
 PROC_OPS_RW(sched_lib_cpu_freq_cached);
 
 extern unsigned int sched_lib_freq_val;
-static sched_lib_freq_show(struct seq_file *m, void *v)
+static int sched_lib_freq_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "%d\n", sched_lib_freq_val);
 	return 0;
@@ -1350,7 +1350,7 @@ static ssize_t sched_lib_freq_store(struct file *filp,
 PROC_OPS_RW(sched_lib_freq);
 
 extern unsigned int sched_lib_affinity_val;
-static sched_lib_affinity_show(struct seq_file *m, void *v)
+static int sched_lib_affinity_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "%d\n", sched_lib_affinity_val);
 	return 0;
@@ -1383,7 +1383,7 @@ PROC_OPS_RW(sched_lib_affinity);
 extern ssize_t sched_lib_name_store(struct file *filp,
 				const char __user *ubuffer, size_t count,
 				loff_t *ppos);
-extern sched_lib_name_show(struct seq_file *m, void *v);
+extern int sched_lib_name_show(struct seq_file *m, void *v);
 
 
 PROC_OPS_RW(sched_lib_name);
