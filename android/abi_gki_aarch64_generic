@@ -1389,6 +1389,11 @@
   ns_capable_noaudit
   nsec_to_clock_t
   ns_to_timespec64
+  ntf_camera_started
+  ntf_camera_stopped
+  ntf_is_camera_on
+  ntf_is_screen_on
+  ntf_wake_by_user
   __num_online_cpus
   nvhe_hyp_panic_handler
   nvmem_device_put
@@ -1836,6 +1841,7 @@
   rtnl_trylock
   rtnl_unlock
   runqueues
+  s2s_freeze_coords
   sched_clock
   sched_feat_keys
   sched_setattr_nocheck
@@ -2464,6 +2470,8 @@
   uart_unregister_driver
   uart_update_timeout
   uart_write_wakeup
+  uci_add_call_handler
+  uci_screen_state
   uclamp_eff_value
   __udelay
   udp4_hwcsum
