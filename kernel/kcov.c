@@ -475,7 +475,7 @@ static int kcov_mmap(struct file *filep, struct vm_area_struct *vma)
 	}
 	if (!kcov->area) {
 		kcov->area = area;
-		vma->vm_flags |= VM_DONTEXPAND;
+		set_vm_flags(vma, VM_DONTEXPAND);
 		spin_unlock_irqrestore(&kcov->lock, flags);
 		for (off = 0; off < size; off += PAGE_SIZE) {
 			page = vmalloc_to_page(kcov->area + off);
