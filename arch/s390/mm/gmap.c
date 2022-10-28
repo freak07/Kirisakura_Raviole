@@ -2505,8 +2505,7 @@ static inline void thp_split_mm(struct mm_struct *mm)
 	struct vm_area_struct *vma;
 
 	for (vma = mm->mmap; vma != NULL; vma = vma->vm_next) {
-		vma->vm_flags &= ~VM_HUGEPAGE;
-		vma->vm_flags |= VM_NOHUGEPAGE;
+		mod_vm_flags(vma, VM_NOHUGEPAGE, VM_HUGEPAGE);
 		walk_page_vma(vma, &thp_split_walk_ops, NULL);
 	}
 	mm->def_flags |= VM_NOHUGEPAGE;

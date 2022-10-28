@@ -164,7 +164,7 @@ static void subpage_mark_vma_nohuge(struct mm_struct *mm, unsigned long addr,
 	while (vma) {
 		if (vma->vm_start >= (addr + len))
 			break;
-		vma->vm_flags |= VM_NOHUGEPAGE;
+		set_vm_flags(vma, VM_NOHUGEPAGE);
 		walk_page_vma(vma, &subpage_walk_ops, NULL);
 		vma = vma->vm_next;
 	}
