@@ -17,9 +17,14 @@ endif
 ifeq ($(BUILD), 32)
 	CFLAGS += -m32
 	LDFLAGS += -m32
+LONG_BIT := 32
 endif
 
-targets: generated/map-shift.h $(TARGETS)
+ifndef LONG_BIT
+LONG_BIT := $(shell getconf LONG_BIT)
+endif
+
+targets: generated/map-shift.h generated/bit-length.h $(TARGETS)
 
 main:	$(OFILES)
 
@@ -31,11 +36,11 @@ xarray: $(CORE_OFILES)
 multiorder: multiorder.o $(CORE_OFILES)
 
 clean:
-	$(RM) $(TARGETS) *.o radix-tree.c idr.c generated/map-shift.h
+	$(RM) $(TARGETS) *.o radix-tree.c idr.c generated/map-shift.h generated/bit-length.h
 
 vpath %.c ../../lib
 
-$(OFILES): Makefile *.h */*.h generated/map-shift.h \
+$(OFILES): Makefile *.h */*.h generated/map-shift.h generated/bit-length.h \
 	../../include/linux/*.h \
 	../../include/asm/*.h \
 	../../../include/linux/xarray.h \
@@ -55,3 +60,11 @@ generated/map-shift.h:
 		echo "#define XA_CHUNK_SHIFT $(SHIFT)" >		\
 				generated/map-shift.h;			\
 	fi
+
+generated/bit-length.h: FORCE
+	@if ! grep -qws CONFIG_$(LONG_BIT)BIT generated/bit-length.h; then   \
+		echo "Generating $@";                                        \
+		echo "#define CONFIG_$(LONG_BIT)BIT 1" > $@;                 \
+	fi
+
+FORCE: ;
