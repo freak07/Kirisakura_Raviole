@@ -65,9 +65,9 @@
 			1080x2400 {
 				mode-name = "1080x2400";
 				pmsk = <
-					0x2 0xB6 0x2 0x4AAB /* p m s k */
+					0x2 0xDB 0x2 0x1355 /* p m s k */
 					>;
-				hs-clk = <1120>;
+				hs-clk = <1346>;
 				esc-clk = <20>;
 			};
 			1200x1920 {
