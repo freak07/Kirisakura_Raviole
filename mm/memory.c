@@ -1249,10 +1249,11 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 	pte_t *start_pte;
 	pte_t *pte;
 	swp_entry_t entry;
+	int v_ret = 0;
 
 	tlb_change_page_size(tlb, PAGE_SIZE);
 again:
-	trace_android_vh_zap_pte_range_tlb_start(NULL);
+	trace_android_vh_zap_pte_range_tlb_start(&v_ret);
 	init_rss_vec(rss);
 	start_pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
 	pte = start_pte;
@@ -1370,7 +1371,7 @@ again:
 		tlb_flush_mmu(tlb);
 	}
 
-	trace_android_vh_zap_pte_range_tlb_end(NULL);
+	trace_android_vh_zap_pte_range_tlb_end(&v_ret);
 	if (addr != end) {
 		cond_resched();
 		goto again;
