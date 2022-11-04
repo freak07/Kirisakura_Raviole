@@ -1391,7 +1391,7 @@ void __init rcu_init_nohz(void)
 	if (!rcu_state.nocb_is_setup)
 		return;
 
-	if (register_shrinker(&lazy_rcu_shrinker, "rcu-lazy"))
+	if (register_shrinker(&lazy_rcu_shrinker))
 		pr_err("Failed to register lazy_rcu shrinker!\n");
 
 	if (!cpumask_subset(rcu_nocb_mask, cpu_possible_mask)) {
