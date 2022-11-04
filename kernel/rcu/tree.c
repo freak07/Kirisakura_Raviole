@@ -3773,9 +3773,7 @@ static int rcu_blocking_is_gp(void)
 {
 	int ret;
 
-	// Invoking preempt_model_*() too early gets a splat.
-	if (rcu_scheduler_active == RCU_SCHEDULER_INACTIVE ||
-	    preempt_model_full() || preempt_model_rt())
+	if (IS_ENABLED(CONFIG_PREEMPTION))
 		return rcu_scheduler_active == RCU_SCHEDULER_INACTIVE;
 	might_sleep();  /* Check for RCU read-side critical section. */
 	preempt_disable();
