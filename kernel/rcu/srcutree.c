@@ -1061,62 +1061,6 @@ EXPORT_SYMBOL_GPL(start_poll_synchronize_srcu);
  * get_state_synchronize_srcu() or start_poll_synchronize_srcu(), and
  * returns @true if an SRCU grace period elapsed since the time that the
  * cookie was created.
- */
-bool poll_state_synchronize_srcu(struct srcu_struct *ssp, unsigned long cookie)
-{
-	if (!rcu_seq_done(&ssp->srcu_gp_seq, cookie))
-		return false;
-	// Ensure that the end of the SRCU grace period happens before
-	// any subsequent code that the caller might execute.
-	smp_mb(); // ^^^
-	return true;
-}
-EXPORT_SYMBOL_GPL(poll_state_synchronize_srcu);
-
-/**
- * get_state_synchronize_srcu - Provide an end-of-grace-period cookie
- * @ssp: srcu_struct to provide cookie for.
- *
- * This function returns a cookie that can be passed to
- * poll_state_synchronize_srcu(), which will return true if a full grace
- * period has elapsed in the meantime.  It is the caller's responsibility
- * to make sure that grace period happens, for example, by invoking
- * call_srcu() after return from get_state_synchronize_srcu().
- */
-unsigned long get_state_synchronize_srcu(struct srcu_struct *ssp)
-{
-	// Any prior manipulation of SRCU-protected data must happen
-	// before the load from ->srcu_gp_seq.
-	smp_mb();
-	return rcu_seq_snap(&ssp->srcu_gp_seq);
-}
-EXPORT_SYMBOL_GPL(get_state_synchronize_srcu);
-
-/**
- * start_poll_synchronize_srcu - Provide cookie and start grace period
- * @ssp: srcu_struct to provide cookie for.
- *
- * This function returns a cookie that can be passed to
- * poll_state_synchronize_srcu(), which will return true if a full grace
- * period has elapsed in the meantime.  Unlike get_state_synchronize_srcu(),
- * this function also ensures that any needed SRCU grace period will be
- * started.  This convenience does come at a cost in terms of CPU overhead.
- */
-unsigned long start_poll_synchronize_srcu(struct srcu_struct *ssp)
-{
-	return srcu_gp_start_if_needed(ssp, NULL, true);
-}
-EXPORT_SYMBOL_GPL(start_poll_synchronize_srcu);
-
-/**
- * poll_state_synchronize_srcu - Has cookie's grace period ended?
- * @ssp: srcu_struct to provide cookie for.
- * @cookie: Return value from get_state_synchronize_srcu() or start_poll_synchronize_srcu().
- *
- * This function takes the cookie that was returned from either
- * get_state_synchronize_srcu() or start_poll_synchronize_srcu(), and
- * returns @true if an SRCU grace period elapsed since the time that the
- * cookie was created.
  *
  * Because cookies are finite in size, wrapping/overflow is possible.
  * This is more pronounced on 32-bit systems where cookies are 32 bits,
