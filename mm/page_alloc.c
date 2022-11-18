@@ -3608,6 +3608,8 @@ void free_unref_page_list(struct list_head *list)
 
 		struct zone *zone = page_zone(page);
 
+		list_del(&page->lru);
+
 		/* Different zone, different pcp lock. */
 		if (zone != locked_zone) {
 			if (pcp)
