@@ -3159,7 +3159,7 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 	 */
 	if (!pte_map_lock(vmf)) {
 		ret = VM_FAULT_RETRY;
-		goto out_invalidate_end;
+		goto out_free_new;
 	}
 	if (likely(pte_same(*vmf->pte, vmf->orig_pte))) {
 		if (old_page) {
@@ -3247,8 +3247,6 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 		put_page(old_page);
 	}
 	return page_copied ? VM_FAULT_WRITE : 0;
-out_invalidate_end:
-	mmu_notifier_invalidate_range_only_end(&range);
 out_free_new:
 	put_page(new_page);
 out:
