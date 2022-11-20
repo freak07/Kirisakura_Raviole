@@ -541,14 +541,14 @@ EXPORT_SYMBOL(lru_cache_add);
  * Place @page on the inactive or unevictable LRU list, depending on its
  * evictability.
  */
-void __lru_cache_add_inactive_or_unevictable(struct page *page,
-					 unsigned long vma_flags)
+void lru_cache_add_inactive_or_unevictable(struct page *page,
+					 struct vm_area_struct *vma)
 {
 	bool unevictable;
 
 	VM_BUG_ON_PAGE(PageLRU(page), page);
 
-	unevictable = (vma_flags & (VM_LOCKED | VM_SPECIAL)) == VM_LOCKED;
+	unevictable = (vma->vm_flags & (VM_LOCKED | VM_SPECIAL)) == VM_LOCKED;
 	if (unlikely(unevictable) && !TestSetPageMlocked(page)) {
 		int nr_pages = thp_nr_pages(page);
 		/*
