@@ -1015,8 +1015,6 @@ static bool __collapse_huge_page_swapin(struct mm_struct *mm,
 			.pgoff = linear_page_index(vma, haddr),
 			.flags = FAULT_FLAG_ALLOW_RETRY,
 			.pmd = pmd,
-			.vma_flags = vma->vm_flags,
-			.vma_page_prot = vma->vm_page_prot,
 		};
 
 		vmf.pte = pte_offset_map(pmd, address);

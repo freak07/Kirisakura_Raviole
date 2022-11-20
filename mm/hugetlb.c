@@ -4442,8 +4442,6 @@ static inline vm_fault_t hugetlb_handle_userfault(struct vm_area_struct *vma,
 		.vma = vma,
 		.address = haddr,
 		.flags = flags,
-		.vma_flags = vma->vm_flags,
-		.vma_page_prot = vma->vm_page_prot,
 
 		/*
 		 * Hard to debug if it ends up being
