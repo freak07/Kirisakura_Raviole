@@ -650,10 +650,6 @@ struct vm_operations_struct {
 	struct page *(*find_special_page)(struct vm_area_struct *vma,
 					  unsigned long addr);
 
-#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
-	bool (*allow_speculation)(void);
-#endif
-
 	ANDROID_KABI_RESERVE(1);
 	ANDROID_KABI_RESERVE(2);
 	ANDROID_KABI_RESERVE(3);
@@ -2794,9 +2790,6 @@ extern vm_fault_t filemap_fault(struct vm_fault *vmf);
 extern vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 		pgoff_t start_pgoff, pgoff_t end_pgoff);
 extern vm_fault_t filemap_page_mkwrite(struct vm_fault *vmf);
-#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
-extern bool filemap_allow_speculation(void);
-#endif
 
 /* mm/page-writeback.c */
 int __must_check write_one_page(struct page *page);
@@ -3389,7 +3382,6 @@ unsigned long wp_shared_mapping_range(struct address_space *mapping,
 #endif
 
 extern int sysctl_nr_trim_pages;
-extern bool pte_map_lock_addr(struct vm_fault *vmf, unsigned long addr);
 extern int reclaim_shmem_address_space(struct address_space *mapping);
 
 /**
