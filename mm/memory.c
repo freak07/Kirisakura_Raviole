@@ -2651,7 +2651,7 @@ out:
 	return ret;
 }
 
-static bool __pte_map_lock_speculative(struct vm_fault *vmf, unsigned long addr)
+static bool pte_map_lock(struct vm_fault *vmf)
 {
 	bool ret = false;
 	pte_t *pte;
@@ -2659,6 +2659,12 @@ static bool __pte_map_lock_speculative(struct vm_fault *vmf, unsigned long addr)
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	pmd_t pmdval;
 #endif
+
+	if (!(vmf->flags & FAULT_FLAG_SPECULATIVE)) {
+		vmf->pte = pte_offset_map_lock(vmf->vma->vm_mm, vmf->pmd,
+					       vmf->address, &vmf->ptl);
+		return true;
+	}
 
 	/*
 	 * The first vma_has_changed() guarantees the page-tables are still
@@ -2669,7 +2675,7 @@ static bool __pte_map_lock_speculative(struct vm_fault *vmf, unsigned long addr)
 	 */
 	local_irq_disable();
 	if (vma_has_changed(vmf)) {
-		trace_spf_vma_changed(_RET_IP_, vmf->vma, addr);
+		trace_spf_vma_changed(_RET_IP_, vmf->vma, vmf->address);
 		goto out;
 	}
 
@@ -2680,7 +2686,7 @@ static bool __pte_map_lock_speculative(struct vm_fault *vmf, unsigned long addr)
 	 */
 	pmdval = READ_ONCE(*vmf->pmd);
 	if (!pmd_same(pmdval, vmf->orig_pmd)) {
-		trace_spf_pmd_changed(_RET_IP_, vmf->vma, addr);
+		trace_spf_pmd_changed(_RET_IP_, vmf->vma, vmf->address);
 		goto out;
 	}
 #endif
@@ -2693,16 +2699,16 @@ static bool __pte_map_lock_speculative(struct vm_fault *vmf, unsigned long addr)
 	 * Since we are in a speculative patch, accept it could fail
 	 */
 	ptl = pte_lockptr(vmf->vma->vm_mm, vmf->pmd);
-	pte = pte_offset_map(vmf->pmd, addr);
+	pte = pte_offset_map(vmf->pmd, vmf->address);
 	if (unlikely(!spin_trylock(ptl))) {
 		pte_unmap(pte);
-		trace_spf_pte_lock(_RET_IP_, vmf->vma, addr);
+		trace_spf_pte_lock(_RET_IP_, vmf->vma, vmf->address);
 		goto out;
 	}
 
 	if (vma_has_changed(vmf)) {
 		pte_unmap_unlock(pte, ptl);
-		trace_spf_vma_changed(_RET_IP_, vmf->vma, addr);
+		trace_spf_vma_changed(_RET_IP_, vmf->vma, vmf->address);
 		goto out;
 	}
 
@@ -2713,82 +2719,6 @@ out:
 	local_irq_enable();
 	return ret;
 }
-
-static bool pte_map_lock(struct vm_fault *vmf)
-{
-	if (!(vmf->flags & FAULT_FLAG_SPECULATIVE)) {
-		vmf->pte = pte_offset_map_lock(vmf->vma->vm_mm, vmf->pmd,
-					       vmf->address, &vmf->ptl);
-		return true;
-	}
-
-	return __pte_map_lock_speculative(vmf, vmf->address);
-}
-
-bool pte_map_lock_addr(struct vm_fault *vmf, unsigned long addr)
-{
-	if (!(vmf->flags & FAULT_FLAG_SPECULATIVE)) {
-		vmf->pte = pte_offset_map_lock(vmf->vma->vm_mm, vmf->pmd,
-					       addr, &vmf->ptl);
-		return true;
-	}
-
-	return __pte_map_lock_speculative(vmf, addr);
-}
-
-static bool __read_mostly allow_file_spec_access;
-static int __init allow_file_spec_access_setup(char *str)
-{
-	allow_file_spec_access = true;
-	return 1;
-}
-__setup("allow_file_spec_access", allow_file_spec_access_setup);
-
-static bool vmf_allows_speculation(struct vm_fault *vmf)
-{
-	if (vma_is_anonymous(vmf->vma)) {
-		/*
-		 * __anon_vma_prepare() requires the mmap_sem to be held
-		 * because vm_next and vm_prev must be safe. This can't be
-		 * guaranteed in the speculative path.
-		 */
-		if (!vmf->vma->anon_vma) {
-			trace_spf_vma_notsup(_RET_IP_, vmf->vma, vmf->address);
-			return false;
-		}
-		return true;
-	}
-
-	if (!allow_file_spec_access) {
-		/*
-		 * Can't call vm_ops service has we don't know what they would
-		 * do with the VMA.
-		 * This include huge page from hugetlbfs.
-		 */
-		trace_spf_vma_notsup(_RET_IP_, vmf->vma, vmf->address);
-		return false;
-	}
-
-	if (!(vmf->vma->vm_flags & VM_SHARED) &&
-		(vmf->flags & FAULT_FLAG_WRITE) &&
-		!vmf->vma->anon_vma) {
-		/*
-		 * non-anonymous private COW without anon_vma.
-		 * See above.
-		 */
-		trace_spf_vma_notsup(_RET_IP_, vmf->vma, vmf->address);
-		return false;
-	}
-
-	if (vmf->vma->vm_ops->allow_speculation &&
-		vmf->vma->vm_ops->allow_speculation()) {
-		return true;
-	}
-
-	trace_spf_vma_notsup(_RET_IP_, vmf->vma, vmf->address);
-	return false;
-}
-
 #else
 static inline bool pte_spinlock(struct vm_fault *vmf)
 {
@@ -2802,18 +2732,6 @@ static inline bool pte_map_lock(struct vm_fault *vmf)
 	vmf->pte = pte_offset_map_lock(vmf->vma->vm_mm, vmf->pmd,
 				       vmf->address, &vmf->ptl);
 	return true;
-}
-
-inline bool pte_map_lock_addr(struct vm_fault *vmf, unsigned long addr)
-{
-	vmf->pte = pte_offset_map_lock(vmf->vma->vm_mm, vmf->pmd,
-					addr, &vmf->ptl);
-	return true;
-}
-
-static inline bool vmf_allows_speculation(struct vm_fault *vmf)
-{
-	return false;
 }
 #endif /* CONFIG_SPECULATIVE_PAGE_FAULT */
 
@@ -4640,7 +4558,6 @@ split:
 static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 {
 	pte_t entry;
-	vm_fault_t ret = 0;
 
 	if (unlikely(pmd_none(*vmf->pmd))) {
 		/*
@@ -4704,8 +4621,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	if (!vmf->pte) {
 		if (vma_is_anonymous(vmf->vma))
 			return do_anonymous_page(vmf);
-		else if ((vmf->flags & FAULT_FLAG_SPECULATIVE) &&
-				!vmf_allows_speculation(vmf))
+		else if (vmf->flags & FAULT_FLAG_SPECULATIVE)
 			return VM_FAULT_RETRY;
 		else
 			return do_fault(vmf);
@@ -4737,8 +4653,6 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 		/* Skip spurious TLB flush for retried page fault */
 		if (vmf->flags & FAULT_FLAG_TRIED)
 			goto unlock;
-		if (vmf->flags & FAULT_FLAG_SPECULATIVE)
-			ret = VM_FAULT_RETRY;
 		/*
 		 * This is needed only for protection faults but the arch code
 		 * is not yet telling us if this is a protection fault or not.
@@ -4750,7 +4664,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	}
 unlock:
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
-	return ret;
+	return 0;
 }
 
 /*
@@ -4967,7 +4881,6 @@ static vm_fault_t ___handle_speculative_fault(struct mm_struct *mm,
 		.pgoff = linear_page_index(vma, address),
 		.vma = vma,
 		.gfp_mask = __get_fault_gfp_mask(vma),
-		.flags = flags,
 	};
 #ifdef CONFIG_NUMA
 	struct mempolicy *pol;
@@ -4989,8 +4902,25 @@ static vm_fault_t ___handle_speculative_fault(struct mm_struct *mm,
 		return VM_FAULT_RETRY;
 	}
 
-	if (!vmf_allows_speculation(&vmf))
+	/*
+	 * Can't call vm_ops service has we don't know what they would do
+	 * with the VMA.
+	 * This include huge page from hugetlbfs.
+	 */
+	if (vmf.vma->vm_ops) {
+		trace_spf_vma_notsup(_RET_IP_, vmf.vma, address);
 		return VM_FAULT_RETRY;
+	}
+
+	/*
+	 * __anon_vma_prepare() requires the mmap_sem to be held
+	 * because vm_next and vm_prev must be safe. This can't be guaranteed
+	 * in the speculative path.
+	 */
+	if (unlikely(!vmf.vma->anon_vma)) {
+		trace_spf_vma_notsup(_RET_IP_, vmf.vma, address);
+		return VM_FAULT_RETRY;
+	}
 
 	vmf.vma_flags = READ_ONCE(vmf.vma->vm_flags);
 	vmf.vma_page_prot = READ_ONCE(vmf.vma->vm_page_prot);
@@ -5123,12 +5053,8 @@ static vm_fault_t ___handle_speculative_fault(struct mm_struct *mm,
 	lru_gen_exit_fault();
 	mem_cgroup_exit_user_fault();
 
-	if (ret != VM_FAULT_RETRY) {
-		if (vma_is_anonymous(vmf.vma))
-			count_vm_event(SPECULATIVE_PGFAULT_ANON);
-		else
-			count_vm_event(SPECULATIVE_PGFAULT_FILE);
-	}
+	if (ret != VM_FAULT_RETRY)
+		count_vm_event(SPECULATIVE_PGFAULT);
 
 	/*
 	 * The task may have entered a memcg OOM situation but
