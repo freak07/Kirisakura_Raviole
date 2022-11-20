@@ -1353,8 +1353,7 @@ retry:
 		might_sleep();
 	}
 
-	if (!vma || !can_reuse_spf_vma(vma, address))
-		vma = find_vma(mm, address);
+	vma = find_vma(mm, address);
 	if (unlikely(!vma)) {
 		bad_area(regs, hw_error_code, address);
 		return;
@@ -1411,13 +1410,6 @@ good_area:
 	if (unlikely((fault & VM_FAULT_RETRY) &&
 		     (flags & FAULT_FLAG_ALLOW_RETRY))) {
 		flags |= FAULT_FLAG_TRIED;
-
-		/*
-		 * Do not try to reuse this vma and fetch it
-		 * again since we will release the mmap_sem.
-		 */
-		vma = NULL;
-
 		goto retry;
 	}
 
