@@ -5339,6 +5339,7 @@ int mas_empty_area_rev(struct ma_state *mas, unsigned long min,
 	mas->index = mas->last - size + 1;
 	return 0;
 }
+EXPORT_SYMBOL_GPL(mas_empty_area_rev);
 
 static inline int mas_alloc(struct ma_state *mas, void *entry,
 		unsigned long size, unsigned long *index)
