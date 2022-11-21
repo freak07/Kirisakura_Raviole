@@ -2470,8 +2470,6 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 		unlock_range(vma, end);
 
 			tmp = tmp->vm_next;
-		}
-	}
 
 
 	/* Point of no return */
