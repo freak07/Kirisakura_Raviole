@@ -54,8 +54,6 @@ static struct page *has_unmovable_pages(unsigned long start_pfn, unsigned long e
 
 	for (pfn = start_pfn; pfn < end_pfn; pfn++) {
 		page = pfn_to_page(pfn);
-			if (!pfn_valid_within(pfn + iter))
-				continue;
 
 		/*
 		 * Both, bootmem allocations and memory holes are marked
@@ -425,7 +423,7 @@ static int isolate_single_pageblock(unsigned long boundary_pfn, int flags,
 				}
 
 				ret = __alloc_contig_migrate_range(&cc, head_pfn,
-							head_pfn + nr_pages);
+							head_pfn + nr_pages, 0);
 
 				/*
 				 * restore the page's migratetype so that it can
@@ -551,7 +549,6 @@ int start_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
 				pfn_to_page(isolate_end - pageblock_nr_pages),
 				migratetype);
 			return -EBUSY;
-			}
 		}
 	}
 	return 0;
