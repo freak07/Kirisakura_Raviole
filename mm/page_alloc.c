@@ -9047,7 +9047,6 @@ int __alloc_contig_migrate_range(struct compact_control *cc,
 			NULL, (unsigned long)&mtc, cc->mode, MR_CONTIG_RANGE, NULL);
 		if (!ret)
 			info->nr_migrated += cc->nr_migratepages;
-	}
 
 		/*
 		 * On -ENOMEM, migrate_pages() bails out right away. It is pointless
@@ -9055,6 +9054,7 @@ int __alloc_contig_migrate_range(struct compact_control *cc,
 		 */
 		if (ret == -ENOMEM)
 			break;
+	}
 
 	lru_cache_enable();
 	if (ret < 0) {
