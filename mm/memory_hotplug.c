@@ -1543,7 +1543,7 @@ int __ref offline_pages(unsigned long start_pfn, unsigned long nr_pages)
 	/* set above range as isolated */
 	ret = start_isolate_page_range(start_pfn, end_pfn,
 				       MIGRATE_MOVABLE,
-				       MEMORY_OFFLINE | REPORT_FAILURE, NULL);
+				       MEMORY_OFFLINE | REPORT_FAILURE);
 	if (ret) {
 		reason = "failure to isolate range";
 		goto failed_removal_pcplists_disabled;
@@ -1597,7 +1597,7 @@ int __ref offline_pages(unsigned long start_pfn, unsigned long nr_pages)
 			goto failed_removal_isolated;
 		}
 
-		ret = test_pages_isolated(start_pfn, end_pfn, MEMORY_OFFLINE, NULL);
+		ret = test_pages_isolated(start_pfn, end_pfn, MEMORY_OFFLINE);
 	} while (ret);
 
 	/* Mark all sections offline and remove free pages from the buddy. */
