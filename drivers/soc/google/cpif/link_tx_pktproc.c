@@ -335,6 +335,11 @@ static int pktproc_get_info_ul(struct pktproc_adaptor_ul *ppa_ul,
 {
 	mif_dt_read_u64(np, "pktproc_cp_base", ppa_ul->cp_base);
 	mif_dt_read_u32(np, "pktproc_ul_num_queue", ppa_ul->num_queue);
+	if (ppa_ul->num_queue == 1 && !IS_ENABLED(CONFIG_CP_PKTPROC_UL_SINGLE_QUEUE)) {
+		mif_err("Need to enable UL single queue config for single UL queue\n");
+		panic("Need to enable UL single queue config for single UL queue.\n");
+		return -EINVAL;
+	}
 	mif_dt_read_u32(np, "pktproc_ul_max_packet_size", ppa_ul->default_max_packet_size);
 	mif_dt_read_u32_noerr(np, "pktproc_ul_hiprio_ack_only", ppa_ul->hiprio_ack_only);
 	mif_dt_read_u32(np, "pktproc_ul_use_hw_iocc", ppa_ul->use_hw_iocc);
@@ -586,8 +591,8 @@ int pktproc_create_ul(struct platform_device *pdev, struct mem_link_device *mld,
 
 		last_q_desc_offset += q->desc_size;
 
-		mif_info("num_desc:%d desc_offset:0x%08llx desc_size:0x%08x\n",
-			q->num_desc, q->cp_desc_pbase, q->desc_size);
+		mif_info("num_desc:%d desc_offset:0x%08llx desc_size:0x%08x max_packet_size: %d\n",
+			q->num_desc, q->cp_desc_pbase, q->desc_size, q->max_packet_size);
 		mif_info("buff_offset:0x%08llx buff_size:0x%08x\n",
 			q->cp_buff_pbase, q->q_buff_size);
 

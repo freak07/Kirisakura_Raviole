@@ -89,11 +89,13 @@ u64 get_frc_time(void)
 }
 EXPORT_SYMBOL_GPL(get_frc_time);
 
+#define IPC_AP_FVP_CAL    0
 #define IPC_BUSY_CHK_CNT  500
 
-bool is_acpm_ipc_flushed(unsigned int channel_id)
+bool is_acpm_ipc_flushed(void)
 {
 	struct acpm_ipc_ch *channel;
+	unsigned int channel_id = IPC_AP_FVP_CAL;
 	volatile unsigned int tx_front, rx_front;
 	unsigned int wait_cnt = 0;
 	bool ret = false;
@@ -681,8 +683,6 @@ retry:
 					timeout_flag = true;
 					break;
 				} else if (retry_cnt > 0) {
-					unsigned int saved_debug_log_level =
-					    acpm_debug->debug_log_level;
 					frc = get_frc_time();
 					pr_err("acpm_ipc retry %d, now = %llu, frc = %llu, timeout = %llu",
 					       retry_cnt, now, frc, timeout);
@@ -703,13 +703,15 @@ retry:
 						__raw_readl(acpm_ipc->intr + INTMSR1));
 
 					++retry_cnt;
-					acpm_debug->debug_log_level = 2;
-					acpm_log_print();
-					acpm_debug->debug_log_level = saved_debug_log_level;
 
 					goto retry;
 				} else {
+					unsigned int saved_debug_log_level =
+					    acpm_debug->debug_log_level;
 					++retry_cnt;
+					acpm_debug->debug_log_level = 2;
+					acpm_log_print();
+					acpm_debug->debug_log_level = saved_debug_log_level;
 					continue;
 				}
 				cnt_10us = 0;

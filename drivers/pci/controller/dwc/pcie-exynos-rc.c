@@ -27,6 +27,7 @@
 #include <dt-bindings/pci/pci.h>
 #include <linux/exynos-pci-noti.h>
 #include <linux/exynos-pci-ctrl.h>
+#include <linux/soc/samsung/exynos-smc.h>
 #if IS_ENABLED(CONFIG_EXYNOS_ITMON)
 #include <soc/google/exynos-itmon.h>
 #endif
@@ -362,6 +363,24 @@ void exynos_pcie_set_perst_gpio(int ch_num, bool on)
 	}
 }
 EXPORT_SYMBOL_GPL(exynos_pcie_set_perst_gpio);
+
+void exynos_pcie_set_ready_cto_recovery(int ch_num)
+{
+	struct exynos_pcie *exynos_pcie = &g_pcie_rc[ch_num];
+	struct dw_pcie *pci = exynos_pcie->pci;
+	struct pcie_port *pp = &pci->pp;
+
+	pr_info("[%s] ch_num:%d\n", __func__, ch_num);
+
+	disable_irq(pp->irq);
+
+	exynos_pcie_set_perst_gpio(ch_num, 0);
+
+	/* LTSSM disable */
+	exynos_elbi_write(exynos_pcie, PCIE_ELBI_LTSSM_DISABLE,
+			PCIE_APP_LTSSM_ENABLE);
+}
+EXPORT_SYMBOL(exynos_pcie_set_ready_cto_recovery);
 
 static ssize_t exynos_pcie_rc_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -984,7 +1003,11 @@ static int exynos_pcie_rc_wr_own_conf(struct pcie_port *pp, int where, int size,
 								   exynos_pcie->ch_num);
 	}
 
-	ret = dw_pcie_write(exynos_pcie->rc_dbi_base + (where), size, val);
+	/* If secure ATU then make SMC call, since only TFA has write access */
+	if (exynos_pcie->use_secure_atu && where == SECURE_ATU_ENABLE)
+		ret = exynos_smc(SMC_SECURE_ATU_SETUP, 0, 0, 0);
+	else
+		ret = dw_pcie_write(exynos_pcie->rc_dbi_base + (where), size, val);
 
 	if (is_linked == 0) {
 		if (exynos_pcie->phy_ops.phy_check_rx_elecidle)
@@ -1005,6 +1028,18 @@ static void exynos_pcie_rc_prog_viewport_cfg0(struct pcie_port *pp, u32 busdev)
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 	struct exynos_pcie *exynos_pcie = to_exynos_pcie(pci);
 
+	/* ATU needs to be written just once during establish link */
+
+	if (exynos_pcie->atu_ok)
+		return;
+
+	exynos_pcie->atu_ok = 1;
+
+	if (exynos_pcie->use_secure_atu) {
+		exynos_pcie_rc_wr_own_conf(pp, SECURE_ATU_ENABLE, 0, 0);
+		return;
+	}
+
 	/* Program viewport 0 : OUTBOUND : CFG0 */
 	exynos_pcie_rc_wr_own_conf(pp, PCIE_ATU_LOWER_BASE_OUTBOUND0, 4, pp->cfg0_base);
 	exynos_pcie_rc_wr_own_conf(pp, PCIE_ATU_UPPER_BASE_OUTBOUND0, 4, (pp->cfg0_base >> 32));
@@ -1014,13 +1049,18 @@ static void exynos_pcie_rc_prog_viewport_cfg0(struct pcie_port *pp, u32 busdev)
 	exynos_pcie_rc_wr_own_conf(pp, PCIE_ATU_UPPER_TARGET_OUTBOUND0, 4, 0);
 	exynos_pcie_rc_wr_own_conf(pp, PCIE_ATU_CR1_OUTBOUND0, 4, PCIE_ATU_TYPE_CFG0);
 	exynos_pcie_rc_wr_own_conf(pp, PCIE_ATU_CR2_OUTBOUND0, 4, EXYNOS_PCIE_ATU_ENABLE);
-	exynos_pcie->atu_ok = 1;
 }
 
 static void exynos_pcie_rc_prog_viewport_mem_outbound(struct pcie_port *pp)
 {
 	struct resource_entry *entry =
 		resource_list_first_type(&pp->bridge->windows, IORESOURCE_MEM);
+	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
+	struct exynos_pcie *exynos_pcie = to_exynos_pcie(pci);
+
+	/* Secure ATU is already setup by prog_viewport_cfg0, so skip it here */
+	if (exynos_pcie->use_secure_atu)
+		return;
 
 	/* Program viewport 0 : OUTBOUND : MEM */
 	exynos_pcie_rc_wr_own_conf(pp, PCIE_ATU_CR1_OUTBOUND1, 4, EXYNOS_PCIE_ATU_TYPE_MEM);
@@ -1343,6 +1383,7 @@ static int exynos_pcie_rc_parse_dt(struct device *dev, struct exynos_pcie *exyno
 	const char *use_sysmmu;
 	const char *use_ia;
 	const char *use_l1ss;
+	const char *use_secure_atu;
 	const char *use_nclkoff_en;
 	const char *use_pcieon_sleep;
 	const char *use_phy_isol_con;
@@ -1503,6 +1544,17 @@ static int exynos_pcie_rc_parse_dt(struct device *dev, struct exynos_pcie *exyno
 		}
 	} else {
 		exynos_pcie->use_l1ss = false;
+	}
+
+	exynos_pcie->use_secure_atu = false;
+	if (!of_property_read_string(np, "use-secure-atu", &use_secure_atu)) {
+		if (!strcmp(use_secure_atu, "true")) {
+			dev_info(dev, "PCIe Secure ATU is ENABLED.\n");
+			exynos_pcie->use_secure_atu = true;
+		} else if (!strcmp(use_secure_atu, "false"))
+			dev_info(dev, "PCIe Secure ATU is DISABLED.\n");
+		else
+			dev_err(dev, "Invalid use-secure-atu value(default=false)\n");
 	}
 
 	if (!of_property_read_string(np, "use-nclkoff-en", &use_nclkoff_en)) {
@@ -3089,6 +3141,23 @@ int exynos_pcie_pm_resume(int ch_num)
 }
 EXPORT_SYMBOL_GPL(exynos_pcie_pm_resume);
 
+bool exynos_pcie_rc_get_cpl_timeout_state(int ch_num)
+{
+	struct exynos_pcie *exynos_pcie = &g_pcie_rc[ch_num];
+
+	return exynos_pcie->cpl_timeout_recovery;
+}
+EXPORT_SYMBOL(exynos_pcie_rc_get_cpl_timeout_state);
+
+void exynos_pcie_rc_set_cpl_timeout_state(int ch_num, bool recovery)
+{
+	struct exynos_pcie *exynos_pcie = &g_pcie_rc[ch_num];
+
+	pr_err("set cpl_timeout_recovery to %d for ch_num:%d\n", recovery, ch_num);
+	exynos_pcie->cpl_timeout_recovery = recovery;
+}
+EXPORT_SYMBOL(exynos_pcie_rc_set_cpl_timeout_state);
+
 /* get EP pci_dev structure of BUS */
 static struct pci_dev *exynos_pcie_get_pci_dev(struct pcie_port *pp)
 {
@@ -3526,6 +3595,7 @@ int exynos_pcie_rc_chk_link_status(int ch_num)
 	struct exynos_pcie *exynos_pcie = &g_pcie_rc[ch_num];
 	struct dw_pcie *pci;
 	struct device *dev;
+	unsigned long flags;
 
 	u32 val;
 	int link_status;
@@ -3541,6 +3611,13 @@ int exynos_pcie_rc_chk_link_status(int ch_num)
 	if (exynos_pcie->state == STATE_LINK_DOWN)
 		return 0;
 
+	if (exynos_pcie->cpl_timeout_recovery) {
+		spin_lock_irqsave(&exynos_pcie->reg_lock, flags);
+		exynos_pcie->state = STATE_LINK_DOWN;
+		spin_unlock_irqrestore(&exynos_pcie->reg_lock, flags);
+		return 0;
+	}
+
 	if (exynos_pcie->ep_device_type == EP_SAMSUNG_MODEM) {
 		val = exynos_elbi_read(exynos_pcie, PCIE_ELBI_RDLH_LINKUP)
 		      & PCIE_ELBI_LTSSM_STATE_MASK;
@@ -3549,6 +3626,9 @@ int exynos_pcie_rc_chk_link_status(int ch_num)
 		} else {
 			dev_err(dev, "Check unexpected state - H/W:0x%x, S/W:%d\n",
 				val, exynos_pcie->state);
+			spin_lock_irqsave(&exynos_pcie->reg_lock, flags);
+			exynos_pcie->state = STATE_LINK_DOWN;
+			spin_unlock_irqrestore(&exynos_pcie->reg_lock, flags);
 			link_status = 0;
 		}
 

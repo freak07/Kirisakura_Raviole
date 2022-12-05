@@ -19,7 +19,7 @@
 				<&log_arrdumpreset>, <&log_arrdumppanic>,
 				<&log_slcdump>, <&log_preslcdump>,
 				<&log_itmon>;
-		panic-action = <GO_S2D_ID>;
+		panic-action = <GO_DEFAULT_ID>;
 	};
 
 	hardlockup-debugger {
@@ -84,7 +84,7 @@
 	keydebug {
 		compatible = "keydebug";
 		key_down_delay = <6000>;
-		keys_down = <116>;
+		keys_down = <116 115>;
 		dbg_fn_delay = <2000>;
 	};
 
