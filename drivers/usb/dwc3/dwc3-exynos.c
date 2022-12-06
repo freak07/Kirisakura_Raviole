@@ -442,9 +442,6 @@ void dwc3_exynos_gadget_disconnect_proc(struct dwc3 *dwc)
 	reg &= ~DWC3_DCTL_INITU2ENA;
 	dwc3_writel(dwc->regs, DWC3_DCTL, reg);
 
-	if (dwc->gadget_driver && dwc->gadget_driver->disconnect)
-		dwc->gadget_driver->disconnect(dwc->gadget);
-
 	dwc->gadget->speed = USB_SPEED_UNKNOWN;
 	dwc->setup_packet_pending = false;
 	usb_gadget_set_state(dwc->gadget, USB_STATE_NOTATTACHED);
@@ -1186,6 +1183,9 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 
 	otg_set_peripheral(&exynos->dotg->otg, exynos->dwc->gadget);
 
+	ret = usb_gadget_deactivate(exynos->dwc->gadget);
+	if (ret < 0)
+		dev_err(dev, "USB gadget deactivate failed with %d\n", ret);
 	/*
 	 * To avoid missing notification in kernel booting check extcon
 	 * state to run state machine.

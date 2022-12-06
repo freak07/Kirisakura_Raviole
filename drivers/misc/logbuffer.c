@@ -36,6 +36,8 @@ struct logbuffer {
 
 /* Device suspended since last logged. */
 static bool suspend_since_last_logged;
+/* Log index for logbuffer_logk */
+static atomic_t log_index = ATOMIC_INIT(0);
 
 static void __logbuffer_log(struct logbuffer *instance,
 			    const char *tmpbuffer, bool record_utc)
@@ -123,6 +125,26 @@ void logbuffer_log(struct logbuffer *instance, const char *fmt, ...)
 	va_end(args);
 }
 EXPORT_SYMBOL_GPL(logbuffer_log);
+
+void logbuffer_logk(struct logbuffer *instance, int loglevel, const char *fmt, ...)
+{
+	char log[LOG_BUFFER_ENTRY_SIZE];
+	unsigned int index;
+	va_list args;
+
+	if (!fmt || !instance)
+		return;
+
+	index = atomic_inc_return(&log_index);
+
+	va_start(args, fmt);
+	scnprintf(log, LOG_BUFFER_ENTRY_SIZE, "[%5u] %s", index, fmt);
+	logbuffer_vlog(instance, log, args);
+	scnprintf(log, LOG_BUFFER_ENTRY_SIZE, "%s: [%5u] %s\n", instance->name, index, fmt);
+	vprintk_emit(0, loglevel, NULL, log, args);
+	va_end(args);
+}
+EXPORT_SYMBOL_GPL(logbuffer_logk);
 
 static int logbuffer_seq_show(struct seq_file *s, void *v)
 {
