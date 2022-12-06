@@ -330,6 +330,7 @@
   crypto_register_notifier
   crypto_register_scomp
   crypto_register_shash
+  crypto_req_done
   crypto_shash_digest
   crypto_shash_final
   crypto_shash_finup
@@ -2613,6 +2614,7 @@
   vm_map_ram
   vm_unmap_ram
   vprintk
+  vprintk_emit
   vring_del_virtqueue
   vring_interrupt
   vring_new_virtqueue
