@@ -2853,3 +2853,43 @@ void rvh_dequeue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_stru
 
 /* Resetting uclamp filter is handled in dequeue_task() */
 }
+
+void rvh_update_misfit_status_pixel_mod(void *data, struct task_struct *p,
+	struct rq *rq, bool *need_update)
+{
+	int cpu;
+	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
+	struct perf_domain *pd;
+	unsigned long task_util;
+	struct cpumask cluster = { CPU_BITS_NONE };
+
+	rcu_read_lock();
+
+	if (!p || p->nr_cpus_allowed == 1)
+		goto out;
+
+	pd = rcu_dereference(rd->pd);
+	if (!pd)
+		goto out;
+
+	task_util = uclamp_task_util(p);
+
+	for (; pd; pd = pd->next) {
+		cpumask_and(&cluster, p->cpus_ptr, perf_domain_span(pd));
+		cpu = cpumask_first(&cluster);
+
+		if (cpu >= nr_cpu_ids)
+			continue;
+
+		/* update misfit if task p fit cpu */
+		if (task_util < capacity_orig_of(cpu)) {
+			rcu_read_unlock();
+			return;
+		}
+	}
+
+out:
+	rq->misfit_task_load = 0;
+	*need_update = false;
+	rcu_read_unlock();
+}
