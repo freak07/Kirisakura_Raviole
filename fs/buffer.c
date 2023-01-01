@@ -51,8 +51,6 @@
 
 #include "internal.h"
 
-#include <trace/hooks/buffer.h>
-
 static int fsync_buffers_list(spinlock_t *lock, struct list_head *list);
 static int submit_bh_wbc(int op, int op_flags, struct buffer_head *bh,
 			 enum rw_hint hint, struct writeback_control *wbc);
@@ -1264,7 +1262,6 @@ static void bh_lru_install(struct buffer_head *bh)
 	struct buffer_head *evictee = bh;
 	struct bh_lru *b;
 	int i;
-	bool skip = false;
 
 	check_irqs_on();
 	/*
@@ -1274,10 +1271,6 @@ static void bh_lru_install(struct buffer_head *bh)
 	 * Skip putting upcoming bh into bh_lru until migration is done.
 	 */
 	if (lru_cache_disabled())
-		return;
-
-	trace_android_vh_bh_lru_install(bh->b_page, &skip);
-	if (skip)
 		return;
 
 	bh_lru_lock();
