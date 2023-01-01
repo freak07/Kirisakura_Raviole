@@ -5566,6 +5566,23 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 
 #endif /* CONFIG_SCHED_CORE */
 
+static bool __task_can_run(struct task_struct *prev)
+{
+	if (__fatal_signal_pending(prev))
+		return true;
+
+	if (!frozen_or_skipped(prev))
+		return true;
+
+	/*
+	 * We can't safely go back on the runqueue if we're an asymmetric
+	 * task skipping the freezer. Doing so can lead to migration failures
+	 * later on if there aren't any suitable CPUs left around for us to
+	 * move to.
+	 */
+	return task_cpu_possible_mask(prev) == cpu_possible_mask;
+}
+
 /*
  * __schedule() is the main scheduler function.
  *
@@ -5659,7 +5676,7 @@ static void __sched notrace __schedule(bool preempt)
 	 */
 	prev_state = prev->state;
 	if (!preempt && prev_state) {
-		if (signal_pending_state(prev_state, prev)) {
+		if (signal_pending_state(prev_state, prev) && __task_can_run(prev)) {
 			prev->state = TASK_RUNNING;
 		} else {
 			prev->sched_contributes_to_load =
