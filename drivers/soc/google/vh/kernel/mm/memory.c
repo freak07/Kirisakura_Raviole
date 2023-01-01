@@ -8,10 +8,9 @@
 
 #include <linux/mm.h>
 
-void vh_zap_pte_range_tlb_start(void *data, void *preempt_off)
+void vh_zap_pte_range_tlb_start(void *data, void *unused)
 {
 	preempt_disable();
-	*(int *)preempt_off = 1;
 }
 
 void vh_zap_pte_range_tlb_force_flush(void *data, struct page *page, bool *flush)
@@ -20,12 +19,9 @@ void vh_zap_pte_range_tlb_force_flush(void *data, struct page *page, bool *flush
 		*flush = true;
 }
 
-void vh_zap_pte_range_tlb_end(void *data, void *preempt_off)
+void vh_zap_pte_range_tlb_end(void *data, void *unused)
 {
-	if (likely(*(int *)preempt_off == 1)) {
-		preempt_enable();
-		*(int *)preempt_off = 0;
-	}
+	preempt_enable();
 }
 
 void vh_skip_lru_disable(void *data, bool *skip)
