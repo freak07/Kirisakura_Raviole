@@ -43,9 +43,6 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/pagemap.h>
 
-#undef CREATE_TRACE_POINTS
-#include <trace/hooks/mm.h>
-
 /* How many pages do we try to swap or page in/out together? */
 int page_cluster;
 
@@ -248,7 +245,6 @@ static bool pagevec_add_and_need_flush(struct pagevec *pvec, struct page *page)
 			lru_cache_disabled())
 		ret = true;
 
-	trace_android_vh_pagevec_drain(page, &ret);
 	return ret;
 }
 
