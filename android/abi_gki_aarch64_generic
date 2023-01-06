@@ -859,6 +859,7 @@
   find_pid_ns
   find_task_by_vpid
   find_vma
+  find_vma_intersection
   find_vpid
   finish_wait
   firmware_request_nowarn
@@ -1280,6 +1281,7 @@
   lzo1x_decompress_safe
   lzorle1x_1_compress
   mac_pton
+  mas_empty_area_rev
   mbox_chan_received_data
   mbox_controller_register
   mbox_controller_unregister
@@ -1564,6 +1566,7 @@
   perf_pmu_unregister
   perf_trace_buf_alloc
   perf_trace_run_bpf_submit
+  pfn_is_map_memory
   pfn_valid
   phy_init
   phy_power_off
