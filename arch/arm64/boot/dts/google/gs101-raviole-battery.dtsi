@@ -68,6 +68,7 @@
 
 				#thermal-sensor-cells = <0>;
 				#cooling-cells = <2>;
+				google,dc-irdrop;
 			};
 
 			google_bms {
