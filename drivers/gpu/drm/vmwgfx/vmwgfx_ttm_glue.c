@@ -50,7 +50,7 @@ int vmw_mmap(struct file *filp, struct vm_area_struct *vma)
 
 	/* Use VM_PFNMAP rather than VM_MIXEDMAP if not a COW mapping */
 	if ((vma->vm_flags & (VM_SHARED | VM_MAYWRITE)) != VM_MAYWRITE)
-		vma->vm_flags = (vma->vm_flags & ~VM_MIXEDMAP) | VM_PFNMAP;
+		vm_flags_mod(vma, VM_PFNMAP, VM_MIXEDMAP);
 
 	return 0;
 }

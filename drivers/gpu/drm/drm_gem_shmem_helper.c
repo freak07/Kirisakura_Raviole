@@ -627,7 +627,7 @@ int drm_gem_shmem_mmap(struct drm_gem_object *obj, struct vm_area_struct *vma)
 	if (ret)
 		return ret;
 
-	vma->vm_flags |= VM_MIXEDMAP | VM_DONTEXPAND;
+	vm_flags_set(vma, VM_DONTEXPAND | VM_DONTDUMP);
 	vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
 	if (!shmem->map_cached)
 		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);

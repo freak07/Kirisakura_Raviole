@@ -546,7 +546,7 @@ success:
 	 */
 
 	if (lock)
-		vma->vm_flags = newflags;
+		vm_flags_reset(vma, newflags);
 	else
 		munlock_vma_pages_range(vma, start, end);
 
