@@ -35,10 +35,12 @@ extern void rvh_cpu_overutilized_pixel_mod(void *data, int cpu, int *overutilize
 extern void rvh_uclamp_eff_get_pixel_mod(void *data, struct task_struct *p,
 					 enum uclamp_id clamp_id, struct uclamp_se *uclamp_max,
 					 struct uclamp_se *uclamp_eff, int *ret);
+#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 extern void rvh_util_est_update_pixel_mod(void *data, struct cfs_rq *cfs_rq, struct task_struct *p,
 					   bool task_sleep, int *ret);
-extern void rvh_post_init_entity_util_avg_pixel_mod(void *data, struct sched_entity *se);
 extern void rvh_cpu_cgroup_online_pixel_mod(void *data, struct cgroup_subsys_state *css);
+#endif
+extern void rvh_post_init_entity_util_avg_pixel_mod(void *data, struct sched_entity *se);
 extern void vh_sched_setscheduler_uclamp_pixel_mod(void *data, struct task_struct *tsk,
 						   int clamp_id, unsigned int value);
 extern void init_uclamp_stats(void);
@@ -70,7 +72,21 @@ extern void vh_sched_setaffinity_mod(void *data, struct task_struct *task,
 extern void vh_try_to_freeze_todo_logging_pixel_mod(void *data, bool *logging_on);
 extern void rvh_cpumask_any_and_distribute(void *data, struct task_struct *p,
 	const struct cpumask *cpu_valid_mask, const struct cpumask *new_mask, int *dest_cpu);
-
+#if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
+extern void rvh_attach_entity_load_avg_pixel_mod(void *data, struct cfs_rq *cfs_rq,
+						 struct sched_entity *se);
+extern void rvh_detach_entity_load_avg_pixel_mod(void *data, struct cfs_rq *cfs_rq,
+						 struct sched_entity *se);
+extern void rvh_update_load_avg_pixel_mod(void *data, u64 now, struct cfs_rq *cfs_rq,
+					  struct sched_entity *se);
+extern void rvh_remove_entity_load_avg_pixel_mod(void *data, struct cfs_rq *cfs_rq,
+						 struct sched_entity *se);
+extern void rvh_update_blocked_fair_pixel_mod(void *data, struct rq *rq);
+extern void rvh_enqueue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_struct *p,
+					    int flags);
+extern void rvh_dequeue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_struct *p,
+					    int flags);
+#endif
 void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_flags *rf,
 		int *pulled_task, int *done);
 
@@ -96,11 +112,15 @@ static int vh_sched_init(void)
 	if (ret)
 		return ret;
 
-	init_vendor_group_data();
-
 	init_vendor_rt_rq();
 
+	init_vendor_group_data();
+
 	ret = register_trace_android_vh_dup_task_struct(vh_dup_task_struct_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_sched_fork(rvh_sched_fork_pixel_mod, NULL);
 	if (ret)
 		return ret;
 
@@ -111,6 +131,40 @@ static int vh_sched_init(void)
 	ret = register_trace_android_rvh_dequeue_task(rvh_dequeue_task_pixel_mod, NULL);
 	if (ret)
 		return ret;
+
+#if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
+	ret = register_trace_android_rvh_enqueue_task_fair(rvh_enqueue_task_fair_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_dequeue_task_fair(rvh_dequeue_task_fair_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_attach_entity_load_avg(
+		rvh_attach_entity_load_avg_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_detach_entity_load_avg(
+		rvh_detach_entity_load_avg_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_update_load_avg(rvh_update_load_avg_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_remove_entity_load_avg(
+		rvh_remove_entity_load_avg_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_update_blocked_fair(
+		rvh_update_blocked_fair_pixel_mod, NULL);
+	if (ret)
+		return ret;
+#endif
 
 	ret = register_trace_android_rvh_update_rt_rq_load_avg(rvh_update_rt_rq_load_avg_pixel_mod,
 							       NULL);
@@ -137,12 +191,8 @@ static int vh_sched_init(void)
 	if (ret)
 		return ret;
 
+#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	ret = register_trace_android_rvh_util_est_update(rvh_util_est_update_pixel_mod, NULL);
-	if (ret)
-		return ret;
-
-	ret = register_trace_android_rvh_post_init_entity_util_avg(
-		rvh_post_init_entity_util_avg_pixel_mod, NULL);
 	if (ret)
 		return ret;
 
@@ -150,13 +200,16 @@ static int vh_sched_init(void)
 		rvh_cpu_cgroup_online_pixel_mod, NULL);
 	if (ret)
 		return ret;
+#endif
 
-	ret = register_trace_android_rvh_sched_newidle_balance(
-		sched_newidle_balance_pixel_mod, NULL);
+	ret = register_trace_android_rvh_post_init_entity_util_avg(
+		rvh_post_init_entity_util_avg_pixel_mod, NULL);
 	if (ret)
 		return ret;
 
-	ret = register_trace_android_rvh_sched_fork(rvh_sched_fork_pixel_mod, NULL);
+
+	ret = register_trace_android_rvh_sched_newidle_balance(
+		sched_newidle_balance_pixel_mod, NULL);
 	if (ret)
 		return ret;
 
@@ -177,10 +230,6 @@ static int vh_sched_init(void)
 		return ret;
 
 	ret = cpufreq_register_governor(&sched_pixel_gov);
-	if (ret)
-		return ret;
-
-	ret = register_trace_android_rvh_sched_fork(rvh_sched_fork_pixel_mod, NULL);
 	if (ret)
 		return ret;
 
