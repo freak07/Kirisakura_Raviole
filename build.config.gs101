@@ -37,11 +37,14 @@ ABI_DEFINITION=android/abi_gki_aarch64_generic.xml
 TIDY_ABI=1
 KMI_SYMBOL_LIST=android/abi_gki_aarch64_generic
 ADDITIONAL_KMI_SYMBOL_LISTS="
+android/abi_gki_aarch64_type_visibility
 android/abi_gki_aarch64_core
+android/abi_gki_aarch64_exynos
 android/abi_gki_aarch64_fips140
 android/abi_gki_aarch64_virtual_device
 android/abi_gki_aarch64_db845c
 android/abi_gki_aarch64_hikey960
+android/abi_gki_aarch64_rockchip
 "
 TRIM_NONLISTED_KMI=${TRIM_NONLISTED_KMI:-1}
 KMI_SYMBOL_LIST_ADD_ONLY=1
@@ -53,6 +56,7 @@ BUILD_INITRAMFS=1
 INITRAMFS_VENDOR_RAMDISK_FRAGMENT_NAME=dlkm
 LZ4_RAMDISK=1
 BOOT_IMAGE_HEADER_VERSION=4
+TRIM_UNUSED_MODULES=1
 VENDOR_DLKM_MODULES_LIST=${KERNEL_DIR}/vendor_dlkm_modules.slider
 VENDOR_DLKM_MODULES_BLOCKLIST=${KERNEL_DIR}/vendor_dlkm.blocklist.slider
 VENDOR_DLKM_PROPS=${KERNEL_DIR}/vendor_dlkm.props.slider

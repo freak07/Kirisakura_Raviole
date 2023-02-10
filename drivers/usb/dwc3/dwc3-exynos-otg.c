@@ -523,7 +523,6 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 		if (!dwc3_otg_check_usb_suspend(exynos))
 			dev_err(dev, "too long to wait for dwc3 suspended\n");
 
-		exynos->vbus_state = true;
 		while (dwc->gadget_driver == NULL) {
 			wait_counter++;
 			usleep_range(100, 200);
@@ -554,17 +553,18 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 		timer_setup(&exynos->usb_connect_timer, dwc3_otg_retry_configuration, 0);
 		mod_timer(&exynos->usb_connect_timer,
 				jiffies + CHG_CONNECTED_DELAY_TIME);
+		exynos->vbus_state = true;
 	} else {
 		exynos->vbus_state = false;
 		del_timer_sync(&exynos->usb_connect_timer);
 
+		ret = usb_gadget_deactivate(dwc->gadget);
+		if (ret < 0)
+			dev_err(dev, "USB gadget deactivate failed with %d\n", ret);
+
 		if (exynos->config.is_not_vbus_pad && exynos_usbdrd_get_ldo_status() &&
-				!dotg->in_shutdown) {
+				!dotg->in_shutdown)
 			dwc3_exynos_gadget_disconnect_proc(dwc);
-			ret = usb_gadget_deactivate(dwc->gadget);
-			if (ret < 0)
-				dev_err(dev, "USB gadget deactivate failed with %d\n", ret);
-		}
 
 		if (exynos->extra_delay)
 			msleep(100);
@@ -884,7 +884,8 @@ static int dwc3_otg_reboot_notify(struct notifier_block *nb, unsigned long event
 	case SYS_POWER_OFF:
 		exynos->dwc->current_dr_role = DWC3_EXYNOS_IGNORE_CORE_OPS;
 		dotg->in_shutdown = true;
-		del_timer_sync(&exynos->usb_connect_timer);
+		if (exynos->vbus_state)
+			del_timer_sync(&exynos->usb_connect_timer);
 		break;
 	}
 

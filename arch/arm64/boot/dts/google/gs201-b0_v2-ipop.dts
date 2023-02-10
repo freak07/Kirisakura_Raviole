@@ -1,0 +1,782 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * GS201 SoC silicon revision B0
+ *
+ * Copyright 2020-2022 Google LLC.
+ *
+ */
+
+/dts-v1/;
+/ {
+	/* List of SoCs that this device tree is compatible with */
+	soc_compatible {
+		B0_IPOP {
+			description = "B0,IPOP";
+			product_id = <0x09855>;
+			major = <0x1>;
+			minor = <0x0>;
+			pkg_mode = <0x1>;
+		};
+	};
+};
+
+#include "gs201.dtsi"
+
+&mfc {
+	ip_ver = <0x15060000>;
+	/* FW base security ctrl */
+	security_ctrl = <1>;
+};
+&mfc_core0 {
+	ip_ver = <0x15060000>;
+};
+
+&bts_smc0 {
+	reg = <0x0 0x2084F258 0x4>;
+};
+&bts_smc1 {
+	reg = <0x0 0x2094F258 0x4>;
+};
+&bts_smc2 {
+	reg = <0x0 0x20A4F258 0x4>;
+};
+&bts_smc3 {
+	reg = <0x0 0x20B4F258 0x4>;
+};
+
+/ {
+	tmuctrl_0: BIG@100A0000 {
+		compatible = "samsung,gs201-tmu-v2";
+		reg = <0x0 0x100A0000 0x800>;
+		interrupts = <GIC_SPI IRQ_TMU_TMU_TOP_MISC IRQ_TYPE_LEVEL_HIGH>;
+		tmu_name = "BIG";
+		id = <0>;
+		ect_nouse;
+		#thermal-sensor-cells = <0>;
+
+		use-pi-thermal;
+		polling_delay_on = <50>;
+		polling_delay_off = <0>;
+		k_po = <60>;
+		k_pu = <60>;
+		k_i = <50>;
+		i_max = <2>;
+		integral_cutoff = <10>;
+		sustainable_power = <2000>;
+		control_temp_step = <50>;
+
+		tmu_work_affinity = "0-7";
+		hotplug_work_affinity = "0-3";
+		has-dfs-support;
+		dfs_throttled_cpus = "4-7";
+	};
+
+	tmuctrl_1: MID@100A0000 {
+		compatible = "samsung,gs201-tmu-v2";
+		reg = <0x0 0x100A0000 0x800>;
+		interrupts = <GIC_SPI IRQ_TMU_TMU_TOP_MISC IRQ_TYPE_LEVEL_HIGH>;
+		tmu_name = "MID";
+		id = <1>;
+		ect_nouse;
+		#thermal-sensor-cells = <0>;
+
+		use-pi-thermal;
+		polling_delay_on = <50>;
+		polling_delay_off = <0>;
+		k_po = <60>;
+		k_pu = <60>;
+		k_i = <20>;
+		i_max = <5>;
+		integral_cutoff = <20>;
+		sustainable_power = <1000>;
+		control_temp_step = <50>;
+
+		tmu_work_affinity = "0-7";
+		hotplug_work_affinity = "0-3";
+		has-dfs-support;
+		dfs_throttled_cpus = "4-7";
+	};
+
+	tmuctrl_2: LITTLE@100A0000 {
+		compatible = "samsung,gs201-tmu-v2";
+		reg = <0x0 0x100A0000 0x800>;
+		interrupts = <GIC_SPI IRQ_TMU_TMU_TOP_MISC IRQ_TYPE_LEVEL_HIGH>;
+		tmu_name = "LITTLE";
+		id = <2>;
+		ect_nouse;
+		#thermal-sensor-cells = <0>;
+
+		use-pi-thermal;
+		polling_delay_on = <50>;
+		polling_delay_off = <0>;
+		k_po = <40>;
+		k_pu = <40>;
+		k_i = <0>;
+		i_max = <0>;
+		sustainable_power = <350>;
+
+		tmu_work_affinity = "0-7";
+	};
+
+	tmuctrl_3: G3D@100B0000 {
+		compatible = "samsung,gs201-tmu-v2";
+		reg = <0x0 0x100B0000 0x800>;
+		interrupts = <GIC_SPI IRQ_TMU_TMU_SUB_MISC IRQ_TYPE_LEVEL_HIGH>;
+		tmu_name = "G3D";
+		id = <3>;
+		ect_nouse;
+		#thermal-sensor-cells = <0>;
+
+		use-pi-thermal;
+		polling_delay_on = <50>;
+		polling_delay_off = <0>;
+		k_po = <60>;
+		k_pu = <60>;
+		k_i = <20>;
+		i_max = <5>;
+		integral_cutoff = <20>;
+		sustainable_power = <200>;
+		control_temp_step = <50>;
+
+		tmu_work_affinity = "0-7";
+		has-dfs-support;
+	};
+
+	tmuctrl_4: ISP@100A0000 {
+		compatible = "samsung,gs201-tmu-v2";
+		reg = <0x0 0x100A0000 0x800>;
+		interrupts = <GIC_SPI IRQ_TMU_TMU_TOP_MISC IRQ_TYPE_LEVEL_HIGH>;
+		tmu_name = "ISP";
+		id = <4>;
+		ect_nouse;
+		#thermal-sensor-cells = <0>;
+
+		tmu_work_affinity = "0-7";
+	};
+
+	tmuctrl_5: TPU@100B0000 {
+		compatible = "samsung,gs201-tmu-v2";
+		reg = <0x0 0x100B0000 0x800>;
+		interrupts = <GIC_SPI IRQ_TMU_TMU_SUB_MISC IRQ_TYPE_LEVEL_HIGH>;
+		tmu_name = "TPU";
+		id = <5>;
+		ect_nouse;
+		#thermal-sensor-cells = <0>;
+
+		use-pi-thermal;
+		polling_delay_on = <50>;
+		polling_delay_off = <0>;
+		k_po = <60>;
+		k_pu = <60>;
+		k_i = <20>;
+		i_max = <5>;
+		integral_cutoff = <20>;
+		sustainable_power = <200>;
+		control_temp_step = <50>;
+
+		tmu_work_affinity = "0-7";
+		has-dfs-support;
+	};
+
+	tmuctrl_6: AUR@100B0000 {
+		compatible = "samsung,gs201-tmu-v2";
+		reg = <0x0 0x100B0000 0x800>;
+		interrupts = <GIC_SPI IRQ_TMU_TMU_SUB_MISC IRQ_TYPE_LEVEL_HIGH>;
+		tmu_name = "AUR";
+		id = <6>;
+		ect_nouse;
+		#thermal-sensor-cells = <0>;
+		tmu_work_affinity = "0-7";
+	};
+
+	thermal_zones: thermal-zones {
+		big_thermal: BIG {
+			zone_name  = "BIG_THERMAL";
+			polling-delay-passive = <0>;
+			polling-delay = <0>;
+			thermal-sensors = <&tmuctrl_0>;
+
+			trips {
+				big_cold: big-cold {
+					temperature = <20000>;
+					hysteresis = <5000>; /* millicelsius */
+					type = "active";
+				};
+				big_switch_on: big-switch-on {
+					temperature = <70000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				big_control_temp: big-control-temp {
+					temperature = <90000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "passive";
+				};
+				big_alert1: big-alert1 {
+					temperature = <92000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				big_alert2: big-alert2 {
+					temperature = <94000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				big_alert3: big-alert3 {
+					temperature = <96000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				big_dfs: big-dfs {
+					temperature = <100000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "active";
+				};
+				big_hot: big-hot {
+					temperature = <115000>; /* millicelsius */
+					hysteresis = <3000>; /* millicelsius */
+					type = "hot";
+				};
+			};
+			cooling-maps {
+				map0 {
+					trip = <&big_control_temp>;
+					cooling-device = <&cpufreq_domain2 0 0>;
+				};
+			};
+		};
+		mid_thermal: MID {
+			zone_name  = "MID_THERMAL";
+			polling-delay-passive = <0>;
+			polling-delay = <0>;
+			thermal-sensors = <&tmuctrl_1>;
+
+			trips {
+				mid_cold: mid-cold {
+					temperature = <20000>;
+					hysteresis = <5000>; /* millicelsius */
+					type = "active";
+				};
+				mid_switch_on: mid-switch-on {
+					temperature = <70000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				mid_control_temp: mid-control-temp {
+					temperature = <90000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "passive";
+				};
+				mid_alert1: mid-alert1 {
+					temperature = <92000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				mid_alert2: mid-alert2 {
+					temperature = <94000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				mid_alert3: mid-alert3 {
+					temperature = <96000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				mid_dfs: mid-dfs {
+					temperature = <100000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "active";
+				};
+				mid_hot: mid-hot {
+					temperature = <115000>; /* millicelsius */
+					hysteresis = <3000>; /* millicelsius */
+					type = "hot";
+				};
+			};
+			cooling-maps {
+				map0 {
+				     trip = <&mid_control_temp>;
+				     cooling-device = <&cpufreq_domain1 0 0>;
+			       };
+			};
+		};
+		little_thermal: LITTLE {
+			zone_name  = "LITTLE_THERMAL";
+			polling-delay-passive = <0>;
+			polling-delay = <0>;
+			thermal-sensors = <&tmuctrl_2>;
+
+			trips {
+				little_cold: little-cold {
+					temperature = <20000>;
+					hysteresis = <5000>; /* millicelsius */
+					type = "active";
+				};
+				little_switch_on: little-switch-on {
+					temperature = <70000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				little_control_temp: little-control-temp {
+					temperature = <90000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "passive";
+				};
+				little_alert1: little-alert1 {
+					temperature = <92000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				little_alert2: little-alert2 {
+					temperature = <94000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				little_alert5: little-alert5 {
+					temperature = <96000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				little_alert6: little-alert6 {
+					temperature = <100000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "active";
+				};
+				little_hot: little-hot {
+					temperature = <115000>; /* millicelsius */
+					hysteresis = <3000>; /* millicelsius */
+					type = "hot";
+				};
+			};
+			cooling-maps {
+				map0 {
+				     trip = <&little_control_temp>;
+				     cooling-device = <&cpufreq_domain0 0 0>;
+				};
+			};
+		};
+		gpu_thermal: G3D {
+			zone_name  = "G3D_THERMAL";
+			polling-delay-passive = <0>;
+			polling-delay = <0>;
+			thermal-sensors = <&tmuctrl_3>;
+
+			trips {
+				gpu_cold: gpu-cold {
+					temperature = <20000>;
+					hysteresis = <5000>; /* millicelsius */
+					type = "active";
+				};
+				gpu_switch_on: gpu-switch-on {
+					temperature = <70000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				gpu_control_temp: gpu-control-temp {
+					temperature = <90000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "passive";
+				};
+				gpu_alert0: gpu-alert0 {
+					temperature = <92000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				gpu_alert1: gpu-alert1 {
+					temperature = <94000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				gpu_alert2: gpu-alert2 {
+					temperature = <96000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				gpu_dfs: gpu-dfs {
+					temperature = <100000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "active";
+				};
+				gpu_hot: gpu-hot {
+					temperature = <115000>; /* millicelsius */
+					hysteresis = <3000>; /* millicelsius */
+					type = "hot";
+				};
+			};
+			cooling-maps {
+				map0 {
+					trip = <&gpu_control_temp>;
+					cooling-device = <&mali
+						THERMAL_NO_LIMIT
+						THERMAL_NO_LIMIT>;
+				};
+			};
+		};
+		isp_thermal: ISP {
+			zone_name  = "ISP_THERMAL";
+			polling-delay-passive = <0>;
+			polling-delay = <0>;
+			thermal-sensors = <&tmuctrl_4>;
+
+			trips {
+				isp_alert0: isp-alert0 {
+					temperature = <20000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "active";
+				};
+				isp_alert1: isp-alert1 {
+					temperature = <70000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				isp_alert2: isp-alert2 {
+					temperature = <90000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "passive";
+				};
+				isp_alert3: isp-alert3 {
+					temperature = <92000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				isp_alert4: isp-alert4 {
+					temperature = <94000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				isp_alert5: isp-alert5 {
+					temperature = <96000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				isp_alert6: isp-alert6 {
+					temperature = <100000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "passive";
+				};
+				isp_hot: isp-hot {
+					temperature = <115000>; /* millicelsius */
+					hysteresis = <3000>; /* millicelsius */
+					type = "hot";
+				};
+			};
+		};
+		tpu_thermal: TPU {
+			zone_name  = "TPU_THERMAL";
+			polling-delay-passive = <0>;
+			polling-delay = <0>;
+			thermal-sensors = <&tmuctrl_5>;
+
+			trips {
+				tpu_cold: tpu-cold {
+					temperature = <20000>;
+					hysteresis = <5000>; /* millicelsius */
+					type = "active";
+				};
+				tpu_switch_on: tpu-switch-on {
+					temperature = <70000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				tpu_control_temp: tpu-control-temp {
+					temperature = <90000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "passive";
+				};
+				tpu_alert0: tpu-alert0 {
+					temperature = <92000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				tpu_alert1: tpu-alert1 {
+					temperature = <94000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				tpu_alert2: tpu-alert2 {
+					temperature = <96000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				tpu_dfs: tpu-dfs {
+					temperature = <100000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "active";
+				};
+				tpu_hot: tpu-hot {
+					temperature = <115000>; /* millicelsius */
+					hysteresis = <3000>; /* millicelsius */
+					type = "hot";
+				};
+			};
+			cooling-maps {
+				map0 {
+					trip = <&tpu_control_temp>;
+					cooling-device = <&tpu_cooling 0 0>;
+				};
+			};
+		};
+		aur_thermal: AUR {
+			zone_name  = "AUR_THERMAL";
+			polling-delay-passive = <0>;
+			polling-delay = <0>;
+			thermal-sensors = <&tmuctrl_6>;
+
+			trips {
+				aur_alert0: aur-alert0 {
+					temperature = <20000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "active";
+				};
+				aur_alert1: aur-alert1 {
+					temperature = <70000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				aur_alert2: aur-alert2 {
+					temperature = <90000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "passive";
+				};
+				aur_alert3: aur-alert3 {
+					temperature = <92000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				aur_alert4: aur-alert4 {
+					temperature = <94000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				aur_alert5: aur-alert5 {
+					temperature = <96000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
+				};
+				aur_alert6: aur-alert6 {
+					temperature = <100000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
+					type = "passive";
+				};
+				aur_hot: aur-hot {
+					temperature = <115000>; /* millicelsius */
+					hysteresis = <3000>; /* millicelsius */
+					type = "hot";
+				};
+			};
+		};
+	};
+};
+
+&pixel_em_table {
+	profiles =
+		"default
+			cpu0 {
+			300000 26 11
+			574000 50 21
+			738000 64 28
+			930000 81 38
+			1098000 96 54
+			1197000 104 61
+			1328000 116 70
+			1401000 122 79
+			1598000 140 103
+			1704000 149 118
+			1803000 158 131
+			}
+			cpu4 {
+			400000 129 56
+			553000 179 85
+			696000 226 114
+			799000 259 138
+			910000 295 166
+			1024000 332 203
+			1197000 388 260
+			1328000 431 308
+			1491000 484 384
+			1663000 540 510
+			1836000 596 615
+			1999000 649 757
+			2130000 692 908
+			2253000 732 1086
+			2348000 763 1262
+			}
+			cpu6 {
+			500000 179 115
+			851000 305 194
+			984000 353 237
+			1106000 397 283
+			1277000 458 371
+			1426000 512 464
+			1582000 568 556
+			1745000 626 682
+			1826000 656 755
+			2048000 735 960
+			2188000 786 1116
+			2252000 809 1219
+			2401000 862 1495
+			2507000 900 1721
+			2630000 944 2034
+			2704000 971 2247
+			2802000 1006 2598
+			2850000 1024 2774
+			}
+		",
+		"cam1
+			cpu0 {
+			300000 45 6
+			574000 73 9
+			738000 88 18
+			930000 102 36
+			1098000 109 45
+			1197000 118 56
+			1328000 127 77
+			1401000 134 80
+			1598000 141 116
+			1704000 157 138
+			1803000 166 168
+			}
+			cpu4 {
+			400000 135 41
+			553000 171 53
+			696000 191 61
+			799000 201 86
+			910000 221 99
+			1024000 239 117
+			1197000 268 145
+			1328000 299 163
+			1491000 366 209
+			1663000 405 249
+			1836000 445 294
+			1999000 497 351
+			2130000 538 387
+			2253000 578 489
+			2348000 608 556
+			}
+			cpu6 {
+			500000 204 98
+			851000 325 148
+			984000 346 165
+			1106000 365 200
+			1277000 385 245
+			1426000 399 286
+			1582000 423 322
+			1745000 456 370
+			1826000 488 399
+			2048000 511 479
+			2188000 566 551
+			2252000 612 582
+			2401000 686 689
+			2507000 766 778
+			2630000 858 899
+			2704000 914 1005
+			2802000 987 1146
+			2850000 1024 1238
+			}
+		",
+		"cam2
+			cpu0 {
+			300000 38 12
+			574000 47 18
+			738000 61 22
+			930000 77 40
+			1098000 92 77
+			1197000 101 93
+			1328000 114 112
+			1401000 121 132
+			1598000 141 171
+			1704000 153 205
+			1803000 166 239
+			}
+			cpu4 {
+			400000 165 89
+			553000 178 121
+			696000 201 154
+			799000 217 178
+			910000 238 210
+			1024000 285 240
+			1197000 327 289
+			1328000 357 334
+			1491000 380 393
+			1663000 419 466
+			1836000 460 532
+			1999000 521 633
+			2130000 568 727
+			2253000 615 841
+			2348000 662 963
+			}
+			cpu6 {
+			500000 193 208
+			851000 267 314
+			984000 295 360
+			1106000 320 403
+			1277000 357 482
+			1426000 390 549
+			1582000 419 606
+			1745000 471 691
+			1826000 497 739
+			2048000 568 877
+			2188000 620 1007
+			2252000 650 1070
+			2401000 720 1266
+			2507000 781 1414
+			2630000 842 1638
+			2704000 902 1809
+			2802000 963 2099
+			2850000 1024 2262
+			}
+		",
+		"ui
+			cpu0 {
+			300000 60 24
+			574000 114 52
+			738000 147 72
+			930000 185 101
+			1098000 218 132
+			1197000 238 155
+			1328000 264 186
+			1401000 278 204
+			1598000 317 269
+			1704000 338 309
+			1803000 358 358
+			}
+			cpu4 {
+			400000 146 85
+			553000 202 131
+			696000 254 184
+			799000 292 227
+			910000 333 278
+			1024000 374 336
+			1197000 437 440
+			1328000 485 537
+			1491000 545 658
+			1663000 608 821
+			1836000 671 1021
+			1999000 730 1247
+			2130000 778 1479
+			2253000 823 1712
+			2348000 858 1925
+			}
+			cpu6 {
+			500000 180 165
+			851000 306 340
+			984000 354 422
+			1106000 397 518
+			1277000 459 650
+			1426000 512 786
+			1582000 568 944
+			1745000 627 1157
+			1826000 656 1265
+			2048000 736 1608
+			2188000 786 1863
+			2252000 809 2019
+			2401000 863 2345
+			2507000 901 2634
+			2630000 945 3029
+			2704000 972 3326
+			2802000 1007 3797
+			2850000 1024 4064
+			}
+		";
+};
+

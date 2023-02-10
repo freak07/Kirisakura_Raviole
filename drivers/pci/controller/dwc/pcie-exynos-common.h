@@ -261,6 +261,7 @@ struct exynos_pcie {
 	bool			use_sysmmu;
 	bool			use_ia;
 	bool			use_l1ss;
+	bool			use_secure_atu;
 	bool			use_nclkoff_en;
 	bool                    cpl_timeout_recovery;
 	bool			sudden_linkdown;
@@ -316,6 +317,9 @@ struct exynos_pcie {
 	bool use_phy_isol_con;
 	int phy_control;
 	struct logbuffer *log;
+
+	bool pcie_must_resume;
+	int pcieon_sleep_enable_cnt;
 };
 
 #define PCIE_MAX_MSI_NUM	(8)

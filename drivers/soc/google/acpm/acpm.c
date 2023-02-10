@@ -35,6 +35,19 @@ static int debug_log_level_set(void *data, unsigned long long val)
 	return 0;
 }
 
+static int debug_retry_log_ctrl_get(void *data, unsigned long long *val)
+{
+	*val = acpm_fw_get_retry_log_ctrl();
+	return 0;
+}
+
+static int debug_retry_log_ctrl_set(void *data, unsigned long long val)
+{
+	acpm_fw_set_retry_log_ctrl(val);
+
+	return 0;
+}
+
 static int debug_ipc_loopback_test_get(void *data, unsigned long long *val)
 {
 	struct acpm_info *acpm = (struct acpm_info *) data;
@@ -206,6 +219,8 @@ static int debug_acpm_framework_cmd_set(void *data, u64 val)
 
 DEFINE_SIMPLE_ATTRIBUTE(debug_log_level_fops,
 		debug_log_level_get, debug_log_level_set, "0%llu\n");
+DEFINE_SIMPLE_ATTRIBUTE(debug_retry_log_ctrl_fops,
+		debug_retry_log_ctrl_get, debug_retry_log_ctrl_set, "0%llu\n");
 DEFINE_SIMPLE_ATTRIBUTE(debug_ipc_loopback_test_fops,
 		debug_ipc_loopback_test_get, NULL, "%llu\n");
 DEFINE_SIMPLE_ATTRIBUTE(debug_uart_gprio_level_fops,
@@ -229,6 +244,8 @@ static void acpm_debugfs_init(struct acpm_info *acpm)
 			    &debug_ipc_loopback_test_fops);
 	debugfs_create_file("log_level", 0644, den, acpm,
 			    &debug_log_level_fops);
+	debugfs_create_file("retry_log_ctrl", 0644, den, acpm,
+			    &debug_retry_log_ctrl_fops);
 	debugfs_create_file("uart_gprio_level", 0644, den, acpm,
 			    &debug_uart_gprio_level_fops);
 	debugfs_create_file("logb_gprio_level", 0644, den, acpm,
@@ -302,6 +319,15 @@ void acpm_prepare_reboot(void)
 }
 EXPORT_SYMBOL_GPL(acpm_prepare_reboot);
 
+static void acpm_shutdown(struct platform_device *pdev)
+{
+	pr_info("%s...\n", __func__);
+
+	acpm_framework_debug_cmd_setting(exynos_acpm, ACPM_FRAMEWORK_COMMAND_DEBUG_NOTIFY_SHUTDOWN);
+
+	acpm_prepare_reboot();
+}
+
 static int acpm_probe(struct platform_device *pdev)
 {
 	struct acpm_info *acpm;
@@ -361,6 +387,7 @@ MODULE_DEVICE_TABLE(of, acpm_match);
 static struct platform_driver samsung_acpm_driver = {
 	.probe	= acpm_probe,
 	.remove	= acpm_remove,
+	.shutdown = acpm_shutdown,
 	.driver	= {
 		.name = "gs-acpm",
 		.owner	= THIS_MODULE,

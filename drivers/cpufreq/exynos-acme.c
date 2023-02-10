@@ -33,6 +33,13 @@
 
 #include "exynos-acme.h"
 #include "../soc/google/vh/kernel/systrace.h"
+
+#if IS_ENABLED(CONFIG_PIXEL_EM)
+#include "../soc/google/vh/include/pixel_em.h"
+struct pixel_em_profile **exynos_acme_pixel_em_profile;
+EXPORT_SYMBOL_GPL(exynos_acme_pixel_em_profile);
+#endif
+
 /*
  * list head of cpufreq domain
  */
@@ -201,6 +208,11 @@ static void update_thermal_pressure(struct exynos_cpufreq_domain *domain, int df
 	cpumask_t *maskp = &domain->cpus;
 	struct cpufreq_policy *policy = cpufreq_cpu_get(cpumask_first(maskp));
 	unsigned long max_capacity, min_capacity, capacity;
+#if IS_ENABLED(CONFIG_PIXEL_EM)
+	struct pixel_em_profile **profile_ptr_snapshot, *profile = NULL;
+	struct pixel_em_cluster *em_cluster;
+	int i;
+#endif
 
 	if (!policy)
 		return;
@@ -215,7 +227,27 @@ static void update_thermal_pressure(struct exynos_cpufreq_domain *domain, int df
 	BUG_ON(domain->dfs_throttle_count < 0);
 	BUG_ON(domain->dfs_throttle_count > domain->max_dfs_count);
 
+#if IS_ENABLED(CONFIG_PIXEL_EM)
+	profile_ptr_snapshot = READ_ONCE(exynos_acme_pixel_em_profile);
+
+	if (profile_ptr_snapshot)
+		profile = READ_ONCE(*profile_ptr_snapshot);
+
+	if (profile) {
+		em_cluster = profile->cpu_to_cluster[cpumask_first(maskp)];
+		for (i = 0; i < em_cluster->num_opps - 1; i++) {
+			if (em_cluster->opps[i].freq >= policy->max)
+				break;
+		}
+		capacity = (domain->dfs_throttle_count > 0) ?
+			em_cluster->opps[0].capacity : em_cluster->opps[i].capacity;
+	} else {
+		capacity = (domain->dfs_throttle_count > 0) ? min_capacity : capacity;
+	}
+#else
 	capacity = (domain->dfs_throttle_count > 0) ? min_capacity : capacity;
+#endif
+
 	arch_set_thermal_pressure(maskp, max_capacity - capacity);
 	spin_unlock(&domain->thermal_update_lock);
 
@@ -623,8 +655,54 @@ static ssize_t freq_qos_max_store(struct device *dev,
 	return count;
 }
 
+static ssize_t min_freq_qos_list_show(struct device *dev,
+			     struct device_attribute *attr, char *buf)
+{
+	ssize_t len = 0;
+	int total_requests = 0;
+	struct exynos_cpufreq_domain *domain;
+	struct plist_node *min_freq_pos;
+
+	list_for_each_entry(domain, &domains, list) {
+		total_requests = 0;
+		list_for_each_entry(min_freq_pos,
+				    &domain->min_qos_req.qos->min_freq.list.node_list, node_list) {
+			total_requests += 1;
+			len += sysfs_emit_at(buf, len, "cpu%d: total_requests: %d,"
+					     " min_freq_qos: %d\n",
+					     cpumask_first(&domain->cpus),
+					     total_requests, min_freq_pos->prio);
+		}
+	}
+	return len;
+}
+
+static ssize_t max_freq_qos_list_show(struct device *dev,
+				      struct device_attribute *attr, char *buf)
+{
+	ssize_t len = 0;
+	int total_requests = 0;
+	struct exynos_cpufreq_domain *domain;
+	struct plist_node *max_freq_pos;
+
+	list_for_each_entry(domain, &domains, list) {
+		total_requests = 0;
+		list_for_each_entry(max_freq_pos,
+				    &domain->max_qos_req.qos->max_freq.list.node_list, node_list) {
+			total_requests += 1;
+			len += sysfs_emit_at(buf, len, "cpu%d: total_requests: %d,"
+					     " max_freq_qos: %d\n",
+					     cpumask_first(&domain->cpus),
+					     total_requests, max_freq_pos->prio);
+		}
+	}
+	return len;
+}
+
 static DEVICE_ATTR_RW(freq_qos_max);
 static DEVICE_ATTR_RW(freq_qos_min);
+static DEVICE_ATTR_RO(min_freq_qos_list);
+static DEVICE_ATTR_RO(max_freq_qos_list);
 
 /*********************************************************************
  *                       CPUFREQ DEV FOPS                            *
@@ -1354,6 +1432,18 @@ static int exynos_cpufreq_probe(struct platform_device *pdev)
 	ret = sysfs_create_file(&pdev->dev.kobj, &dev_attr_freq_qos_min.attr);
 	if (ret) {
 		pr_err("failed to create user_min node\n");
+		return ret;
+	}
+
+	ret = sysfs_create_file(&pdev->dev.kobj, &dev_attr_min_freq_qos_list.attr);
+	if (ret) {
+		pr_err("failed to create min_freq_qos_list node\n");
+		return ret;
+	}
+
+	ret = sysfs_create_file(&pdev->dev.kobj, &dev_attr_max_freq_qos_list.attr);
+	if (ret) {
+		pr_err("failed to create max_freq_qos_list node\n");
 		return ret;
 	}
 

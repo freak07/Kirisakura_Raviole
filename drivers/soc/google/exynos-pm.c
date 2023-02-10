@@ -21,6 +21,7 @@
 #define SHARED_SR0 0x80
 #define WS_BIT_MAILBOX_AOC2AP		(7)
 #define WS2_BIT_MAILBOX_AOCA322AP	(5)
+#define WS2_BIT_VGPIO2PMU_EINT		(13)
 
 static struct exynos_pm_info *pm_info;
 static struct exynos_pm_dbg *pm_dbg;
@@ -115,6 +116,14 @@ static void exynos_show_wakeup_reason_sysint(unsigned int stat,
 	for_each_set_bit(bit, &lstat, 32) {
 		if (!ws_names->name[bit])
 			continue;
+
+		/*
+		 * Ignore logging VGPIO2PMU_EINT wakeup reasons because they
+		 * will get logged in "drivers/mfd/s2mpg12-irq.c".
+		 */
+		if (wakeup_stat_id == 1 && bit == WS2_BIT_VGPIO2PMU_EINT)
+			continue;
+
 		if (str_idx) {
 			str_idx += strscpy(wake_reason + str_idx, ",",
 					   MAX_SUSPEND_ABORT_LEN - str_idx);
@@ -306,14 +315,18 @@ static void exynos_pm_syscore_resume(void)
 	if (pm_dbg->mifdn_early_wakeup_cnt != pm_dbg->mifdn_early_wakeup_prev)
 		pr_debug("%s: Sequence early wakeup\n", EXYNOS_PM_PREFIX);
 
-	if (pm_dbg->mifdn_cnt == pm_dbg->mifdn_cnt_prev)
+	if (pm_dbg->mifdn_cnt == pm_dbg->mifdn_cnt_prev) {
 		pr_info("%s: MIF blocked. MIF request Mster was  0x%x\n",
 			EXYNOS_PM_PREFIX, pm_dbg->mif_req);
-	else
+#ifdef CONFIG_SUSPEND
+		log_abnormal_wakeup_reason("MIF request 0x%x", pm_dbg->mif_req);
+#endif
+	} else {
 		pr_info("%s: MIF down. cur_count: %d, acc_count: %d\n",
 			EXYNOS_PM_PREFIX,
 			pm_dbg->mifdn_cnt - pm_dbg->mifdn_cnt_prev,
 			pm_dbg->mifdn_cnt);
+	}
 
 	if (pm_info->is_pcieon_suspend || pm_dbg->test_pcieon_suspend)
 		exynos_wakeup_sys_powerdown(pm_info->pcieon_suspend_mode_idx,

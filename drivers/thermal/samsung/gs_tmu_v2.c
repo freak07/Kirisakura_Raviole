@@ -57,8 +57,10 @@ enum tmu_type_t {
 	TMU_TYPE_GPU = 1,
 	TMU_TYPE_ISP = 2,
 	TMU_TYPE_TPU = 3,
-	TMU_TYPE_AUR = 4,
-	TMU_TYPE_END = 5,
+#if defined(CONFIG_SOC_GS201)
+	TMU_TYPE_AUR,
+#endif
+	TMU_TYPE_END,
 };
 
 enum tmu_grp_idx_t {
@@ -68,8 +70,10 @@ enum tmu_grp_idx_t {
 	TZ_GPU = 3,
 	TZ_ISP = 4,
 	TZ_TPU = 5,
-	TZ_AUR = 6,
-	TZ_END = 7,
+#if defined(CONFIG_SOC_GS201)
+	TZ_AUR,
+#endif
+	TZ_END,
 };
 
 #if defined(CONFIG_SOC_GS101)
@@ -498,6 +502,8 @@ static int gs_get_temp(void *p, int *temp)
 	}
 
 	data->temperature = *temp / 1000;
+	if (data->tr_handle >= 0)
+		temp_residency_stats_update(data->tr_handle, *temp);
 
 	if (data->has_dfs_support &&
 		thermal_dfs_throttle_cb &&
@@ -505,6 +511,8 @@ static int gs_get_temp(void *p, int *temp)
 		 (!data->is_dfs_throttled && (data->temperature >= data->dfs_trig_threshold)))) {
 		data->is_dfs_throttled = !data->is_dfs_throttled;
 		thermal_dfs_throttle_cb(&data->dfs_throttled_cpus, data->is_dfs_throttled);
+		pr_info_ratelimited("%s: dfs throttling status: %d \n", data->tmu_name,
+				data->is_dfs_throttled);
 	}
 
 	if (data->hotplug_enable &&
@@ -3353,6 +3361,9 @@ static int gs_tmu_probe(struct platform_device *pdev)
 
 	thermal_zone_device_enable(data->tzd);
 
+	data->tr_handle = register_temp_residency_stats(data->tzd->type);
+	if (data->tr_handle < 0)
+		dev_err(&pdev->dev, "failed to get a handle\n");
 	if (list_is_singular(&dtm_dev_list)) {
 		register_pm_notifier(&gs_tmu_pm_nb);
 	}
@@ -3394,6 +3405,8 @@ static int gs_tmu_remove(struct platform_device *pdev)
 		}
 	}
 	mutex_unlock(&data->lock);
+
+	unregister_temp_residency_stats(data->tr_handle);
 
 	return 0;
 }

@@ -234,6 +234,8 @@ source "drivers/soc/google/s2mpu/Kconfig"
 
 source "drivers/soc/google/vh/kernel/Kconfig"
 
+source "drivers/soc/google/boot_control/Kconfig"
+
 config HARDLOCKUP_DEBUG
 	tristate "Hardlockup Debugging"
 	depends on ARM64
@@ -263,5 +265,19 @@ config PKVM_S2MPU
 	default n
 	help
 	This module is a driver for the stage-2 IOMMU controlled by hypervisor.
+
+config WLAN_TRACKER
+	bool "WiFi performance tracker driver"
+	depends on SOC_GS201
+	default n
+	help
+	Module for wlan performance tracker.
+
+config KERNEL_TOP
+	tristate "Display processes statistic"
+	default n
+	help
+	  This module exposes kernel function for modules to debugging
+	  processes statistic.
 
 endmenu

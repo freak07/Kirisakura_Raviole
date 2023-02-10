@@ -15,6 +15,7 @@
 &google_charger {
 	google,thermal-mitigation = <4300000 3680000 2300000 1000000>;
 	google,wlc-fcc-thermal-mitigation = <4300000 4300000 2300000 1150000 1000000>;
+	google,thermal-stats-lvl-map = <0 3 5 8>;
 };
 
 &google_cpm {
@@ -33,5 +34,5 @@
 	// PPS_CP+pca94xx-mains, // WLC_CP+pca94xx-mains
 	google,mdis-out1-limits =
 		<4500000  4500000 4000000 3500000 3500000 3000000 2500000 2000000 1000000
-		 4500000  4000000 3500000 3000000 2500000 2000000 1500000 1000000       0>;
+		 4500000  3500000 3000000 3000000 2500000 2000000 1500000 1000000       0>;
 };

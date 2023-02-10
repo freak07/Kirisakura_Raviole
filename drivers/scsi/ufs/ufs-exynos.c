@@ -502,6 +502,11 @@ static int exynos_ufs_init(struct ufs_hba *hba)
 
 	pixel_init_slowio(hba);
 
+	pixel_init_io_stats(hba);
+
+	// disable hpb1.0 support
+	hba->ufshpb_dev.hpb_disabled = true;
+
 	return 0;
 }
 

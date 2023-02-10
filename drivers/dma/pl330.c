@@ -1982,6 +1982,7 @@ static int pl330_update(struct pl330_dmac *pl330)
 
 			if (!descdone->infiniteloop) {
 				thrd->req[active].desc = NULL;
+				thrd->req_running = -1;
 
 				/* Get going again ASAP */
 				_start(thrd);
@@ -2890,7 +2891,7 @@ static struct dma_pl330_desc *pl330_get_desc(struct dma_pl330_chan *pch)
 
 	/* If the DMAC pool is empty, alloc new */
 	if (!desc) {
-		DEFINE_SPINLOCK(lock);
+		static DEFINE_SPINLOCK(lock);
 		LIST_HEAD(pool);
 
 		if (!add_desc(&pool, &lock, GFP_ATOMIC, 1))

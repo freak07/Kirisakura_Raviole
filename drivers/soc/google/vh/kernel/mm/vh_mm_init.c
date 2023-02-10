@@ -9,7 +9,11 @@
 #include <linux/kobject.h>
 #include <linux/module.h>
 #include <trace/hooks/gup.h>
+#include <trace/hooks/mm.h>
+#include <trace/hooks/buffer.h>
 #include "../../include/gup.h"
+#include "../../include/mm.h"
+#include "../../include/buffer.h"
 
 struct kobject *vendor_mm_kobj;
 EXPORT_SYMBOL_GPL(vendor_mm_kobj);
@@ -52,6 +56,55 @@ static int vh_mm_init(void)
 		return ret;
 	ret = register_trace_android_vh_pin_user_pages(
 				vh_pin_user_pages, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_vh_pagevec_drain(
+			vh_pagevec_drain, NULL);
+	if (ret)
+		return ret;
+
+	/*
+	 * Do not reorder pte_range_tlb_end and pte_range_tlb_start
+	 * Otherwise, depending on module load timing, the pair can
+	 * be broken.
+	 */
+	ret = register_trace_android_vh_zap_pte_range_tlb_end(
+			vh_zap_pte_range_tlb_end, NULL);
+	if (ret)
+		return ret;
+	ret = register_trace_android_vh_zap_pte_range_tlb_force_flush(
+			vh_zap_pte_range_tlb_force_flush, NULL);
+	if (ret)
+		return ret;
+	ret = register_trace_android_vh_zap_pte_range_tlb_start(
+			vh_zap_pte_range_tlb_start, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_vh_skip_lru_disable(
+			vh_skip_lru_disable, NULL);
+	if (ret)
+		return ret;
+	ret = register_trace_android_vh_bh_lru_install(
+			vh_bh_lru_install, NULL);
+	if (ret)
+		return ret;
+	ret = register_trace_android_vh_do_madvise_blk_plug(
+			vh_do_madvise_blk_plug, NULL);
+	if (ret)
+		return ret;
+	ret = register_trace_android_vh_shrink_inactive_list_blk_plug(
+			vh_shrink_inactive_list_blk_plug, NULL);
+	if (ret)
+		return ret;
+	ret = register_trace_android_vh_shrink_lruvec_blk_plug(
+			vh_shrink_lruvec_blk_plug, NULL);
+	if (ret)
+		return ret;
+	ret = register_trace_android_vh_reclaim_pages_plug(
+			vh_reclaim_pages_plug, NULL);
+
 	return ret;
 }
 module_init(vh_mm_init);

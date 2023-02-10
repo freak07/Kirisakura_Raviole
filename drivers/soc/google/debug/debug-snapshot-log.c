@@ -15,6 +15,7 @@
 #include <linux/irqnr.h>
 #include <linux/irq.h>
 #include <linux/irqdesc.h>
+#include <linux/sysfs.h>
 
 #include <asm/stacktrace.h>
 #include <soc/google/debug-snapshot.h>
@@ -43,6 +44,8 @@ struct dbg_snapshot_log_item dss_log_items[] = {
 struct dbg_snapshot_log_misc dss_log_misc;
 static char dss_freq_name[SZ_32][SZ_8];
 static unsigned int dss_freq_size;
+
+static struct dbg_snapshot_suspend_diag suspend_diag;
 
 #define dss_get_log(item)						\
 long dss_get_len_##item##_log(void) {					\
@@ -210,6 +213,12 @@ int dbg_snapshot_get_freq_idx(const char *name)
 }
 EXPORT_SYMBOL_GPL(dbg_snapshot_get_freq_idx);
 
+void *dbg_snapshot_get_suspend_diag(void)
+{
+	return (void *)&suspend_diag;
+}
+EXPORT_SYMBOL_GPL(dbg_snapshot_get_suspend_diag);
+
 void dbg_snapshot_log_output(void)
 {
 	unsigned long i;
@@ -244,7 +253,46 @@ void dbg_snapshot_set_enable_log_item(const char *name, int en)
 	}
 }
 
-static void dbg_snapshot_suspend(const char *log, struct device *dev,
+static void dbg_snapshot_handle_suspend_diag(unsigned long last_idx, unsigned long curr_idx)
+{
+	unsigned long idx = (last_idx + 1) & (dss_get_len_suspend_log() - 1);
+	bool has_dev_pm_cb = (idx == curr_idx) ? false : true;
+	long long delta_time = 0;
+
+	if (!has_dev_pm_cb) {
+		delta_time = dss_log->suspend[curr_idx].time - dss_log->suspend[last_idx].time;
+	} else {
+		/* dev_pm_cb have been run by multi cores between last_idx and curr_idx
+		 * so we can't use dss_log->suspend[curr_idx].time - dss_log->suspend[last_idx].time
+		 * directly to determine delta time */
+		while (idx != curr_idx) {
+			delta_time += (((long long)dss_log->suspend[idx].delta_time_h << 32) |
+					(long long)dss_log->suspend[idx].delta_time_l);
+			idx = (idx + 1) & (dss_get_len_suspend_log() - 1);
+		}
+	}
+
+	if (delta_time < suspend_diag.timeout)
+		return;
+
+	if (strlen(suspend_diag.action) == 0)
+		goto crash;
+
+	if (strcmp(suspend_diag.action, dss_log->suspend[curr_idx].log))
+		return;
+
+crash:
+	suspend_diag.force_panic = 0x1;
+	panic("%s: %s%s(%ld) to %s%s(%ld) %stake %lld ns\n", __func__,
+	      dss_log->suspend[last_idx].log ? dss_log->suspend[last_idx].log : "",
+	      dss_log->suspend[last_idx].en == DSS_FLAG_IN ? " IN" : " OUT", last_idx,
+	      dss_log->suspend[curr_idx].log ? dss_log->suspend[curr_idx].log : "",
+	      dss_log->suspend[curr_idx].en == DSS_FLAG_IN ? " IN" : " OUT", curr_idx,
+	      has_dev_pm_cb ? "callbacks " : "",
+	      delta_time);
+}
+
+static unsigned long dbg_snapshot_suspend(const char *log, struct device *dev,
 				int event, int en)
 {
 	unsigned long i = atomic_fetch_inc(&dss_log_misc.suspend_log_idx) &
@@ -256,13 +304,28 @@ static void dbg_snapshot_suspend(const char *log, struct device *dev,
 	dss_log->suspend[i].dev = dev ? dev_name(dev) : "";
 	dss_log->suspend[i].core = raw_smp_processor_id();
 	dss_log->suspend[i].en = en;
+	dss_log->suspend[i].delta_time_h = 0x0;
+	dss_log->suspend[i].delta_time_l = 0x0;
+
+	return i;
 }
 
 static void dbg_snapshot_suspend_resume(void *ignore, const char *action,
 					int event, bool start)
 {
-	dbg_snapshot_suspend(action, NULL, event,
-			start ? DSS_FLAG_IN : DSS_FLAG_OUT);
+	suspend_diag.curr_index =
+		dbg_snapshot_suspend(action, NULL, event, start ? DSS_FLAG_IN : DSS_FLAG_OUT);
+
+	if (!suspend_diag.enable || !suspend_diag.timeout)
+		return;
+
+	if (start || !action)
+		goto backup;
+
+	dbg_snapshot_handle_suspend_diag(suspend_diag.last_index, suspend_diag.curr_index);
+
+backup:
+	suspend_diag.last_index = suspend_diag.curr_index;
 }
 
 void dbg_snapshot_dev_pm_cb_start(void *ignore, struct device *dev,
@@ -273,7 +336,28 @@ void dbg_snapshot_dev_pm_cb_start(void *ignore, struct device *dev,
 
 void dbg_snapshot_dev_pm_cb_end(void *ignore, struct device *dev, int error)
 {
-	dbg_snapshot_suspend(NULL, dev, error, DSS_FLAG_OUT);
+	unsigned long i;
+	unsigned long long end_time;
+	long long delta_time;
+
+	if (!suspend_diag.enable || !suspend_diag.timeout) {
+		dbg_snapshot_suspend(NULL, dev, error, DSS_FLAG_OUT);
+		return;
+	}
+
+	end_time = local_clock();
+
+	i = dss_get_last_suspend_log_idx();
+	while(i != dss_get_first_suspend_log_idx()) {
+		if (dev && end_time >= dss_log->suspend[i].time &&
+			dss_log->suspend[i].dev == dev_name(dev)) {
+			delta_time = end_time - dss_log->suspend[i].time;
+			dss_log->suspend[i].delta_time_h = (delta_time >> 32) & 0xFFFF;
+			dss_log->suspend[i].delta_time_l = delta_time & 0xFFFFFFFF;
+			break;
+		}
+		i = (i - 1) & (dss_get_len_suspend_log() - 1);
+	}
 }
 
 void dbg_snapshot_cpuidle_mod(char *modes, unsigned int state, s64 diff, int en)
@@ -691,10 +775,6 @@ void dbg_snapshot_init_log(void)
 {
 	struct dbg_snapshot_item *item = &dss_items[DSS_ITEM_KEVENTS_ID];
 	struct dbg_snapshot_log_item *log_item;
-	struct device_node *np = dss_desc.dev->of_node;
-	struct property *prop;
-	const char *str;
-	unsigned int i = 0;
 
 	log_item_set_filed(TASK, task);
 	log_item_set_filed(WORK, work);
@@ -710,11 +790,111 @@ void dbg_snapshot_init_log(void)
 	log_item_set_filed(THERMAL, thermal);
 	log_item_set_filed(ACPM, acpm);
 	log_item_set_filed(PRINTK, print);
+}
+
+static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr,
+					const char *buf, size_t count)
+{
+	unsigned long val;
+	int ret;
+
+	ret = kstrtoul(buf, 10, &val);
+
+	if (!ret)
+		suspend_diag.enable = val;
+
+	return count;
+}
+
+static ssize_t enable_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%sable\n", !!suspend_diag.enable ? "en" : "dis");
+}
+
+static struct kobj_attribute suspend_diag_attr_enable = __ATTR_RW_MODE(enable, 0660);
+
+static ssize_t timeout_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf,
+					size_t count)
+{
+	unsigned long long val;
+	int ret;
+
+	ret = kstrtoll(buf, 10, &val);
+
+	if (!ret)
+		suspend_diag.timeout = val;
+
+	return count;
+}
+
+static ssize_t timeout_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%llu(ns)\n", suspend_diag.timeout);
+}
+
+static struct kobj_attribute suspend_diag_attr_timeout = __ATTR_RW_MODE(timeout, 0660);
+
+static ssize_t action_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf,
+					size_t count)
+{
+	char *newline = NULL;
+
+	strlcpy(suspend_diag.action, buf, sizeof(suspend_diag.action));
+	newline = strchr(suspend_diag.action, '\n');
+	if (newline)
+		*newline = '\0';
+
+	return count;
+}
+
+static ssize_t action_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%s\n", suspend_diag.action);
+}
+
+static struct kobj_attribute suspend_diag_attr_action = __ATTR_RW_MODE(action, 0660);
+
+static struct attribute *suspend_diag_attrs[] = {
+	&suspend_diag_attr_enable.attr,
+	&suspend_diag_attr_timeout.attr,
+	&suspend_diag_attr_action.attr,
+	NULL
+};
+
+static const struct attribute_group suspend_diag_attr_group = {
+	.attrs = suspend_diag_attrs,
+	.name = "suspend_diag"
+};
+
+static void dbg_snapshot_add_suspend_diag_attributes(void)
+{
+	struct kobject *dbg_snapshot_kobj;
+
+	dbg_snapshot_kobj = kobject_create_and_add("dbg_snapshot", kernel_kobj);
+	if (!dbg_snapshot_kobj) {
+		dev_emerg(dss_desc.dev, "cannot create kobj for dbg_snapshot!\n");
+		return;
+	}
+
+	if (sysfs_create_group(dbg_snapshot_kobj, &suspend_diag_attr_group)) {
+		dev_emerg(dss_desc.dev, "cannot create files in ../dbg_snapshot/suspend_diag!\n");
+		kobject_put(dbg_snapshot_kobj);
+	}
+}
+
+void dbg_snapshot_start_log(void)
+{
+	struct property *prop;
+	const char *str;
+	unsigned int i = 0;
+
+	struct device_node *np = dss_desc.dev->of_node;
 
 	if (dbg_snapshot_is_log_item_enabled(DSS_LOG_SUSPEND_ID)) {
 		register_trace_suspend_resume(dbg_snapshot_suspend_resume, NULL);
 		register_trace_device_pm_callback_start(dbg_snapshot_dev_pm_cb_start, NULL);
 		register_trace_device_pm_callback_end(dbg_snapshot_dev_pm_cb_end, NULL);
+		dbg_snapshot_add_suspend_diag_attributes();
 	}
 	dss_freq_size = of_property_count_strings(np, "freq_names");
 	of_property_for_each_string(np, "freq_names", prop, str) {

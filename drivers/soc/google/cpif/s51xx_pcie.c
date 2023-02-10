@@ -39,8 +39,6 @@
 #include "modem_ctrl.h"
 #include "s51xx_pcie.h"
 
-#define to_pci_dev_from_dev(dev) container_of((dev), struct pci_dev, dev)
-
 static int s51xx_pcie_read_procmem(struct seq_file *m, void *v)
 {
 	mif_info("Procmem READ!\n");
@@ -79,6 +77,8 @@ void s51xx_pcie_chk_ep_conf(struct pci_dev *pdev)
 inline int s51xx_pcie_send_doorbell_int(struct pci_dev *pdev, int int_num)
 {
 	struct s51xx_pcie *s51xx_pcie = pci_get_drvdata(pdev);
+	struct pci_driver *driver = pdev->driver;
+	struct modem_ctl *mc = container_of(driver, struct modem_ctl, pci_driver);
 	u32 reg, count = 0;
 	int cnt = 0;
 	u16 cmd;
@@ -88,9 +88,15 @@ inline int s51xx_pcie_send_doorbell_int(struct pci_dev *pdev, int int_num)
 		return -EAGAIN;
 	}
 
+	if (exynos_pcie_rc_get_cpl_timeout_state(s51xx_pcie->pcie_channel_num)) {
+		mif_err_limited("Can't send Interrupt(cto_retry_cnt: %d)!!!\n",
+				mc->pcie_cto_retry_cnt);
+		return 0;
+	}
+
 	if (s51xx_check_pcie_link_status(s51xx_pcie->pcie_channel_num) == 0) {
 		mif_err_limited("Can't send Interrupt(not linked)!!!\n");
-		return -EAGAIN;
+		goto check_cpl_timeout;
 	}
 
 	pci_read_config_word(pdev, PCI_COMMAND, &cmd);
@@ -123,7 +129,7 @@ inline int s51xx_pcie_send_doorbell_int(struct pci_dev *pdev, int int_num)
 			mif_err_limited("BME is not set(cnt=%d)\n", cnt);
 			exynos_pcie_rc_register_dump(
 					s51xx_pcie->pcie_channel_num);
-			return -EAGAIN;
+			goto check_cpl_timeout;
 		}
 	}
 
@@ -156,10 +162,19 @@ send_doorbell_again:
 		mif_err("Check BAR0 register : %#x\n", reg);
 		exynos_pcie_rc_register_dump(s51xx_pcie->pcie_channel_num);
 
-		return -EAGAIN;
+		goto check_cpl_timeout;
 	}
 
 	return 0;
+
+check_cpl_timeout:
+	if (exynos_pcie_rc_get_cpl_timeout_state(s51xx_pcie->pcie_channel_num)) {
+		mif_err_limited("Can't send Interrupt(cto_retry_cnt: %d)!!!\n",
+				mc->pcie_cto_retry_cnt);
+		return 0;
+	}
+
+	return -EAGAIN;
 }
 
 void first_save_s51xx_status(struct pci_dev *pdev)
@@ -325,11 +340,33 @@ static void s51xx_pcie_event_cb(struct exynos_pcie_notify *noti)
 
 	mif_err("0x%X pcie event received!\n", event);
 
-	if (event & (EXYNOS_PCIE_EVENT_LINKDOWN | EXYNOS_PCIE_EVENT_CPL_TIMEOUT)) {
+	if (event & EXYNOS_PCIE_EVENT_LINKDOWN) {
 		if (mc->pcie_powered_on == false) {
 			mif_info("skip cp crash during dislink sequence\n");
 			exynos_pcie_set_perst_gpio(mc->pcie_ch_num, 0);
+			return;
+		}
+
+		mif_err("s51xx LINK_DOWN notification callback function!!!\n");
+		mif_err("LINK_DOWN: a=%d c=%d\n", mc->pcie_linkdown_retry_cnt_all++,
+				mc->pcie_linkdown_retry_cnt);
+
+		if (mc->pcie_linkdown_retry_cnt++ < 10) {
+			mif_err("[%d] retry pcie poweron !!!\n", mc->pcie_linkdown_retry_cnt);
+			queue_work_on(2, mc->wakeup_wq, &mc->wakeup_work);
 		} else {
+			mif_err("[%d] force crash !!!\n", mc->pcie_linkdown_retry_cnt);
+			s5100_force_crash_exit_ext();
+		}
+	} else if (event & EXYNOS_PCIE_EVENT_CPL_TIMEOUT) {
+		mif_err("s51xx CPL_TIMEOUT notification callback function!!!\n");
+		mif_err("CPL: a=%d c=%d\n", mc->pcie_cto_retry_cnt_all++, mc->pcie_cto_retry_cnt);
+
+		if (mc->pcie_cto_retry_cnt++ < 10) {
+			mif_err("[%d] retry pcie poweron !!!\n", mc->pcie_cto_retry_cnt);
+			queue_work_on(2, mc->wakeup_wq, &mc->wakeup_work);
+		} else {
+			mif_err("[%d] force crash !!!\n", mc->pcie_cto_retry_cnt);
 			s5100_force_crash_exit_ext();
 		}
 	}
@@ -475,38 +512,6 @@ static void s51xx_pcie_remove(struct pci_dev *pdev)
 	pci_release_regions(pdev);
 }
 
-static void s51xx_pcie_resume_complete(struct device *dev)
-{
-	struct pci_dev *pdev = to_pci_dev_from_dev(dev);
-	u16 cmd;
-
-	mif_info("+++\n");
-	if (pcie_linkup_stat()) {
-		pci_read_config_word(pdev, PCI_COMMAND, &cmd);
-		if ((((cmd & PCI_COMMAND_MEMORY) == 0) ||
-					(cmd & PCI_COMMAND_MASTER) == 0) || (cmd == 0xffff)) {
-			mif_err_limited("Can't send Interrupt(not bme_en, 0x%04x)!\n", cmd);
-
-			/* set bme bit */
-			pci_set_master(pdev);
-
-			pci_read_config_word(pdev, PCI_COMMAND, &cmd);
-			mif_info("cmd reg = 0x%04x\n", cmd);
-
-			/* set mse bit */
-			cmd |= PCI_COMMAND_MEMORY;
-			pci_write_config_word(pdev, PCI_COMMAND, cmd);
-
-			pci_read_config_word(pdev, PCI_COMMAND, &cmd);
-			mif_info("cmd reg = 0x%04x\n", cmd);
-		}
-	}
-}
-
-static const struct dev_pm_ops s51xx_pcie_rc_pm_ops = {
-	.complete       = s51xx_pcie_resume_complete,
-};
-
 /* For Test */
 static struct pci_device_id s51xx_pci_id_tbl[] = {
 	{ PCI_VENDOR_ID_SAMSUNG, PCI_ANY_ID, PCI_ANY_ID, PCI_ANY_ID, },   // SC Basic
@@ -520,11 +525,6 @@ static struct pci_driver s51xx_driver = {
 	.id_table = s51xx_pci_id_tbl,
 	.probe = s51xx_pcie_probe,
 	.remove = s51xx_pcie_remove,
-	.driver = {
-		.name           = "s51xx-pcie-rc",
-		.owner          = THIS_MODULE,
-		.pm             = &s51xx_pcie_rc_pm_ops,
-	},
 };
 
 /*
