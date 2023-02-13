@@ -1699,7 +1699,7 @@ struct obj_cgroup *get_obj_cgroup_from_current(void);
 int obj_cgroup_charge(struct obj_cgroup *objcg, gfp_t gfp, size_t size);
 void obj_cgroup_uncharge(struct obj_cgroup *objcg, size_t size);
 
-extern struct static_key_false memcg_kmem_enabled_key;
+extern struct static_key_false memcg_kmem_online_key;
 
 extern int memcg_nr_cache_ids;
 void memcg_get_cache_ids(void);
@@ -1713,29 +1713,29 @@ void memcg_put_cache_ids(void);
 #define for_each_memcg_cache_index(_idx)	\
 	for ((_idx) = 0; (_idx) < memcg_nr_cache_ids; (_idx)++)
 
-static inline bool memcg_kmem_enabled(void)
+static inline bool memcg_kmem_online(void)
 {
-	return static_branch_likely(&memcg_kmem_enabled_key);
+	return static_branch_likely(&memcg_kmem_online_key);
 }
 
 static inline int memcg_kmem_charge_page(struct page *page, gfp_t gfp,
 					 int order)
 {
-	if (memcg_kmem_enabled())
+	if (memcg_kmem_online())
 		return __memcg_kmem_charge_page(page, gfp, order);
 	return 0;
 }
 
 static inline void memcg_kmem_uncharge_page(struct page *page, int order)
 {
-	if (memcg_kmem_enabled())
+	if (memcg_kmem_online())
 		__memcg_kmem_uncharge_page(page, order);
 }
 
 static inline int memcg_kmem_charge(struct mem_cgroup *memcg, gfp_t gfp,
 				    unsigned int nr_pages)
 {
-	if (memcg_kmem_enabled())
+	if (memcg_kmem_online())
 		return __memcg_kmem_charge(memcg, gfp, nr_pages);
 	return 0;
 }
@@ -1743,7 +1743,7 @@ static inline int memcg_kmem_charge(struct mem_cgroup *memcg, gfp_t gfp,
 static inline void memcg_kmem_uncharge(struct mem_cgroup *memcg,
 				       unsigned int nr_pages)
 {
-	if (memcg_kmem_enabled())
+	if (memcg_kmem_online())
 		__memcg_kmem_uncharge(memcg, nr_pages);
 }
 
@@ -1784,7 +1784,7 @@ static inline void __memcg_kmem_uncharge_page(struct page *page, int order)
 #define for_each_memcg_cache_index(_idx)	\
 	for (; NULL; )
 
-static inline bool memcg_kmem_enabled(void)
+static inline bool memcg_kmem_online(void)
 {
 	return false;
 }
