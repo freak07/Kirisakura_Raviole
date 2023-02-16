@@ -1379,7 +1379,7 @@ xfs_file_mmap(
 	file_accessed(file);
 	vma->vm_ops = &xfs_file_vm_ops;
 	if (IS_DAX(inode))
-		set_vm_flags(vma, VM_HUGEPAGE);
+		vma->vm_flags |= VM_HUGEPAGE;
 	return 0;
 }
 

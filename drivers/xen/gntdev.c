@@ -1045,10 +1045,10 @@ static int gntdev_mmap(struct file *flip, struct vm_area_struct *vma)
 
 	vma->vm_ops = &gntdev_vmops;
 
-	set_vm_flags(vma, VM_DONTEXPAND | VM_DONTDUMP | VM_MIXEDMAP);
+	vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP | VM_MIXEDMAP;
 
 	if (use_ptemod)
-		set_vm_flags(vma, VM_DONTCOPY);
+		vma->vm_flags |= VM_DONTCOPY;
 
 	vma->vm_private_data = map;
 	if (map->flags) {

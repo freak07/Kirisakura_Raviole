@@ -253,7 +253,7 @@ static int ringbuf_map_mmap(struct bpf_map *map, struct vm_area_struct *vma)
 		if (vma->vm_pgoff != 0 || vma->vm_end - vma->vm_start != PAGE_SIZE)
 			return -EPERM;
 	} else {
-		clear_vm_flags(vma, VM_MAYWRITE);
+		vma->vm_flags &= ~VM_MAYWRITE;
 	}
 	/* remap_vmalloc_range() checks size and offset constraints */
 	return remap_vmalloc_range(vma, rb_map->rb,

@@ -1770,10 +1770,10 @@ int tcp_mmap(struct file *file, struct socket *sock,
 {
 	if (vma->vm_flags & (VM_WRITE | VM_EXEC))
 		return -EPERM;
-	clear_vm_flags(vma, VM_MAYWRITE | VM_MAYEXEC);
+	vma->vm_flags &= ~(VM_MAYWRITE | VM_MAYEXEC);
 
 	/* Instruct vm_insert_page() to not mmap_read_lock(mm) */
-	set_vm_flags(vma, VM_MIXEDMAP);
+	vma->vm_flags |= VM_MIXEDMAP;
 
 	vma->vm_ops = &tcp_vm_ops;
 	return 0;

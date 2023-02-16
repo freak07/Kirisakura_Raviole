@@ -96,13 +96,13 @@ static int open_dice_mmap(struct file *filp, struct vm_area_struct *vma)
 
 	/* Ensure userspace cannot acquire VM_WRITE + VM_SHARED later. */
 	if (vma->vm_flags & VM_WRITE)
-		clear_vm_flags(vma, VM_MAYSHARE);
+		vma->vm_flags &= ~VM_MAYSHARE;
 	else if (vma->vm_flags & VM_SHARED)
-		clear_vm_flags(vma, VM_MAYWRITE);
+		vma->vm_flags &= ~VM_MAYWRITE;
 
 	/* Create write-combine mapping so all clients observe a wipe. */
 	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
-	set_vm_flags(vma, VM_DONTCOPY | VM_DONTDUMP);
+	vma->vm_flags |= VM_DONTCOPY | VM_DONTDUMP;
 	return vm_iomap_memory(vma, drvdata->rmem->base, drvdata->rmem->size);
 }
 
