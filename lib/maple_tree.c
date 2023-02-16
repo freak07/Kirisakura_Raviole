@@ -179,7 +179,7 @@ static void mt_free_rcu(struct rcu_head *head)
  */
 static void ma_free_rcu(struct maple_node *node)
 {
-	WARN_ON(node->parent != ma_parent_ptr(node));
+	node->parent = ma_parent_ptr(node);
 	call_rcu(&node->rcu, mt_free_rcu);
 }
 
@@ -1775,10 +1775,8 @@ static inline void mas_replace(struct ma_state *mas, bool advanced)
 		rcu_assign_pointer(slots[offset], mas->node);
 	}
 
-	if (!advanced) {
-		mte_set_node_dead(old_enode);
+	if (!advanced)
 		mas_free(mas, old_enode);
-	}
 }
 
 /*
@@ -4219,7 +4217,6 @@ static inline bool mas_wr_node_store(struct ma_wr_state *wr_mas)
 done:
 	mas_leaf_set_meta(mas, newnode, dst_pivots, maple_leaf_64, new_end);
 	if (in_rcu) {
-		mte_set_node_dead(mas->node);
 		mas->node = mt_mk_node(newnode, wr_mas->type);
 		mas_replace(mas, false);
 	} else {
