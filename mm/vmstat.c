@@ -1309,12 +1309,6 @@ const char * const vmstat_text[] = {
 	"swap_ra",
 	"swap_ra_hit",
 #endif
-#ifdef CONFIG_PER_VMA_LOCK_STATS
-	"vma_lock_success",
-	"vma_lock_abort",
-	"vma_lock_retry",
-	"vma_lock_miss",
-#endif
 #endif /* CONFIG_VM_EVENT_COUNTERS || CONFIG_MEMCG */
 };
 #endif /* CONFIG_PROC_FS || CONFIG_SYSFS || CONFIG_NUMA || CONFIG_MEMCG */
