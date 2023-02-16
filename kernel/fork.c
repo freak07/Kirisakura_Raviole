@@ -360,8 +360,9 @@ static bool vma_init_lock(struct vm_area_struct *vma)
 	vma->vm_lock = kmem_cache_alloc(vma_lock_cachep, GFP_KERNEL);
 	if (!vma->vm_lock)
 		return false;
-	atomic_set(&vma->vm_lock->count, 0);
-	vma->vm_lock->lock_seq = -1;
+
+	init_rwsem(&vma->vm_lock->lock);
+	vma->vm_lock_seq = -1;
 
 	return true;
 }
@@ -1134,7 +1135,6 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	mmap_init_lock(mm);
 	INIT_LIST_HEAD(&mm->mmlist);
 #ifdef CONFIG_PER_VMA_LOCK
-	init_waitqueue_head(&mm->vma_writer_wait);
 	WRITE_ONCE(mm->mm_lock_seq, 0);
 	INIT_LIST_HEAD(&mm->vma_free_list.head);
 	spin_lock_init(&mm->vma_free_list.lock);

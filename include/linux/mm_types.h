@@ -308,13 +308,7 @@ struct anon_vma_name {
 };
 
 struct vma_lock {
-	/*
-	 * count > 0 ==> read-locked with 'count' number of readers
-	 * count < 0 ==> write-locked
-	 * count = 0 ==> unlocked
-	 */
-	atomic_t count;
-	int lock_seq;
+	struct rw_semaphore lock;
 };
 
 /*
@@ -353,6 +347,7 @@ struct vm_area_struct {
 	unsigned long vm_flags;
 
 #ifdef CONFIG_PER_VMA_LOCK
+	int vm_lock_seq;
 	struct vma_lock *vm_lock;
 #endif
 
@@ -520,7 +515,6 @@ struct mm_struct {
 					  * by mmlist_lock
 					  */
 #ifdef CONFIG_PER_VMA_LOCK
-		struct wait_queue_head vma_writer_wait;
 		int mm_lock_seq;
 		struct {
 			struct list_head head;
