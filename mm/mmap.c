@@ -886,6 +886,7 @@ int __vma_adjust(struct vm_area_struct *vma, unsigned long start,
 
 	if (remove_next) {
 again:
+		vma_mark_detached(vp->remove, true);
 		if (file) {
 			uprobe_munmap(next, next->vm_start, next->vm_end);
 			fput(file);
@@ -2358,6 +2359,7 @@ static inline int munmap_sidetree(struct vm_area_struct *vma,
 	if (mas_store_gfp(mas_detach, vma, GFP_KERNEL))
 		return -ENOMEM;
 
+	vma_mark_detached(vma, true);
 	if (vma->vm_flags & VM_LOCKED)
 		vma->vm_mm->locked_vm -= vma_pages(vma);
 
