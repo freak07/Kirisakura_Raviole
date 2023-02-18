@@ -784,38 +784,38 @@ static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
 
 /* Use when VMA is not part of the VMA tree and needs no locking */
 static inline void vm_flags_init(struct vm_area_struct *vma,
-				 vm_flags_t flags)
+				unsigned long flags)
 {
-	ACCESS_PRIVATE(vma, __vm_flags) = flags;
+	ACCESS_PRIVATE(vma, vm_flags) = flags;
 }
 
 /* Use when VMA is part of the VMA tree and modifications need coordination */
 static inline void vm_flags_reset(struct vm_area_struct *vma,
-				  vm_flags_t flags)
+				  unsigned long flags)
 {
 	vma_start_write(vma);
 	vm_flags_init(vma, flags);
 }
 
 static inline void vm_flags_reset_once(struct vm_area_struct *vma,
-				       vm_flags_t flags)
+				       unsigned long flags)
 {
 	vma_start_write(vma);
-	WRITE_ONCE(ACCESS_PRIVATE(vma, __vm_flags), flags);
+	WRITE_ONCE(ACCESS_PRIVATE(vma, vm_flags), flags);
 }
 
 static inline void vm_flags_set(struct vm_area_struct *vma,
-				vm_flags_t flags)
+				unsigned long flags)
 {
 	vma_start_write(vma);
-	ACCESS_PRIVATE(vma, __vm_flags) |= flags;
+	ACCESS_PRIVATE(vma, vm_flags) |= flags;
 }
 
 static inline void vm_flags_clear(struct vm_area_struct *vma,
-				  vm_flags_t flags)
+				  unsigned long flags)
 {
 	vma_start_write(vma);
-	ACCESS_PRIVATE(vma, __vm_flags) &= ~flags;
+	ACCESS_PRIVATE(vma, vm_flags) &= ~flags;
 }
 
 /*
@@ -823,7 +823,7 @@ static inline void vm_flags_clear(struct vm_area_struct *vma,
  * therefore needs no locking.
  */
 static inline void __vm_flags_mod(struct vm_area_struct *vma,
-				  vm_flags_t set, vm_flags_t clear)
+				  unsigned long set, unsigned long clear)
 {
 	vm_flags_init(vma, (vma->vm_flags | set) & ~clear);
 }
