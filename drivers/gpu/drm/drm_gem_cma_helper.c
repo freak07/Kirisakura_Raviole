@@ -276,7 +276,7 @@ static int drm_gem_cma_mmap_obj(struct drm_gem_cma_object *cma_obj,
 	 * vm_pgoff (used as a fake buffer offset by DRM) to 0 as we want to map
 	 * the whole buffer.
 	 */
-	vma->vm_flags &= ~VM_PFNMAP;
+	vm_flags_clear(vma, VM_PFNMAP);
 	vma->vm_pgoff = 0;
 
 	ret = dma_mmap_wc(cma_obj->base.dev->dev, vma, cma_obj->vaddr,
