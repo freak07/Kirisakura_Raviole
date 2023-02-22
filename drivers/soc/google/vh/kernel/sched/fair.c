@@ -1291,6 +1291,9 @@ inline void uclamp_rq_inc_id(struct rq *rq, struct task_struct *p,
 
 	lockdep_assert_rq_held(rq);
 
+	if(SCHED_WARN_ON(!uclamp_is_used()))
+		return;
+
 	/* Update task effective clamp */
 	p->uclamp[clamp_id] = uclamp_eff_get(p, clamp_id);
 
@@ -1330,6 +1333,9 @@ inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
 	unsigned int rq_clamp;
 
 	lockdep_assert_rq_held(rq);
+
+	if(SCHED_WARN_ON(!uclamp_is_used()))
+		return;
 
 	/*
 	 * If sched_uclamp_used was enabled after task @p was enqueued,
