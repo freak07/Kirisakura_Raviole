@@ -637,14 +637,14 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 		if (vma->vm_ops && vma->vm_ops->mprotect) {
 			error = vma->vm_ops->mprotect(vma, nstart, tmp, newflags);
 			if (error)
-				goto out;
+				break;
 		}
 
 		error = mprotect_fixup(&vmi, &tlb, vma, &prev, nstart, tmp, newflags);
 		if (error)
 			break;
 
-
+		tmp = vma_iter_end(&vmi);
 		nstart = tmp;
 		prot = reqprot;
 	}
