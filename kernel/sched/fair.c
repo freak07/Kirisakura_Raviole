@@ -673,6 +673,14 @@ int sched_proc_update_handler(struct ctl_table *table, int write,
 }
 #endif
 
+long calc_latency_offset(int prio)
+{
+	u32 weight = sched_prio_to_weight[prio];
+	u64 base = sysctl_sched_min_granularity;
+
+	return div_u64(base << SCHED_FIXEDPOINT_SHIFT, weight);
+}
+
 /*
  * delta /= w
  */
