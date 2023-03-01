@@ -61,7 +61,9 @@ struct suspend_log {
 	const char *dev;
 	int en;
 	int event;
-	int core;
+	short core;
+	short delta_time_h;
+	int delta_time_l;
 };
 
 struct irq_log {
@@ -186,4 +188,13 @@ struct dbg_snapshot_log_misc {
 	atomic_t print_log_idx;
 	atomic_t acpm_log_idx;
 };
+
+struct dbg_snapshot_suspend_diag {
+	unsigned int enable;
+	unsigned int force_panic;
+	unsigned long last_index;
+	unsigned long curr_index;
+	unsigned long long timeout;
+	char action[32];
+} __packed;
 #endif

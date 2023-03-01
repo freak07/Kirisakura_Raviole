@@ -824,6 +824,7 @@ static void enable_vbus_work(struct kthread_work *work)
 	enum gbms_charger_modes vote = 0xff;
 	int ret;
 
+	logbuffer_log(chip->log, "%s", __func__);
 	if (IS_ERR_OR_NULL(chip->charger_mode_votable)) {
 		chip->charger_mode_votable = gvotable_election_get_handle(GBMS_MODE_VOTABLE);
 		if (IS_ERR_OR_NULL(chip->charger_mode_votable)) {
@@ -1331,8 +1332,10 @@ static irqreturn_t _max77759_irq_locked(struct max77759_plat *chip, u16 status,
 		if (chip->contaminant_detection && tcpm_is_toggling(tcpci->port)) {
 			ret = process_contaminant_alert(chip->contaminant, false, true,
 							&contaminant_cc_update_handled);
-			if (ret < 0)
+			if (ret < 0) {
+				mutex_unlock(&chip->rc_lock);
 				goto reschedule;
+			}
 			/*
 			 * Invoke TCPM when CC update not related to contaminant
 			 * detection.

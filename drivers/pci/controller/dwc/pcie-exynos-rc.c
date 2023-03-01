@@ -89,6 +89,9 @@ static struct device fake_dma_dev;
 static void exynos_d3_sleep_hook(void *unused, struct pci_dev *dev,
 				 unsigned int *delay);
 
+#define MODEM_CH_NUM    0
+#define WIFI_CH_NUM     1
+
 #if IS_ENABLED(CONFIG_GS_S2MPU)
 struct phys_mem {
 	struct list_head list;
@@ -97,7 +100,6 @@ struct phys_mem {
 	unsigned char *refcnt_array;
 };
 
-#define WIFI_CH_NUM     1
 #define ALIGN_SIZE	0x1000UL
 #define REF_COUNT_UNDERFLOW 255
 
@@ -222,13 +224,23 @@ void s2mpu_update_refcnt(struct device *dev,
 	spin_unlock_irqrestore(&exynos_pcie->s2mpu_refcnt_lock, flags);
 }
 #endif
+
+static int get_ch_num(struct pci_dev *epdev)
+{
+	int ch_num = WIFI_CH_NUM;
+	if (epdev->vendor == PCI_VENDOR_ID_SAMSUNG)
+		ch_num = MODEM_CH_NUM;
+
+	return ch_num;
+}
+
 static void *pcie_dma_alloc_attrs(struct device *dev, size_t size,
 				  dma_addr_t *dma_handle, gfp_t flag,
 				  unsigned long attrs)
 {
 	void *cpu_addr;
 	struct pci_dev *epdev = to_pci_dev_from_dev(dev);
-	int ch_num = pci_domain_nr(epdev->bus);
+	int ch_num = get_ch_num(epdev);
 	struct exynos_pcie *exynos_pcie = &g_pcie_rc[ch_num];
 	int ret;
 
@@ -255,7 +267,7 @@ static void pcie_dma_free_attrs(struct device *dev, size_t size,
 				unsigned long attrs)
 {
 	struct pci_dev *epdev = to_pci_dev_from_dev(dev);
-	int ch_num = pci_domain_nr(epdev->bus);
+	int ch_num = get_ch_num(epdev);
 	struct exynos_pcie *exynos_pcie = &g_pcie_rc[ch_num];
 
 	dma_free_attrs(&fake_dma_dev, size, cpu_addr, dma_addr, attrs);
@@ -271,7 +283,7 @@ static dma_addr_t pcie_dma_map_page(struct device *dev, struct page *page,
 				    unsigned long attrs)
 {
 	struct pci_dev *epdev = to_pci_dev_from_dev(dev);
-	int ch_num = pci_domain_nr(epdev->bus);
+	int ch_num = get_ch_num(epdev);
 	struct exynos_pcie *exynos_pcie = &g_pcie_rc[ch_num];
 	dma_addr_t dma_addr;
 	int ret;
@@ -296,7 +308,7 @@ static void pcie_dma_unmap_page(struct device *dev, dma_addr_t dma_addr,
 				unsigned long attrs)
 {
 	struct pci_dev *epdev = to_pci_dev_from_dev(dev);
-	int ch_num = pci_domain_nr(epdev->bus);
+	int ch_num = get_ch_num(epdev);
 	struct exynos_pcie *exynos_pcie = &g_pcie_rc[ch_num];
 
 	dma_unmap_page_attrs(&fake_dma_dev, dma_addr, size, dir, attrs);
@@ -1363,7 +1375,9 @@ static void exynos_pcie_rc_set_iocc(struct pcie_port *pp, int enable)
 		exynos_sysreg_write(exynos_pcie, val, sysreg_sharability);
 	}
 
+#if IS_ENABLED(CONFIG_EXYNOS_PCIE_IOMMU)
 	pcie_sysmmu_set_use_iocc(pcie_ch_to_hsi(exynos_pcie->ch_num));
+#endif
 
 	exynos_pcie_rc_rd_own_conf(pp, PCIE_COHERENCY_CONTROL_3_OFF, 4, &val);
 	dev_dbg(pci->dev, "PCIe Axcache[1] = 0x%x\n", val);
@@ -3141,6 +3155,23 @@ int exynos_pcie_pm_resume(int ch_num)
 }
 EXPORT_SYMBOL_GPL(exynos_pcie_pm_resume);
 
+bool exynos_pcie_rc_get_sudden_linkdown_state(int ch_num)
+{
+	struct exynos_pcie *exynos_pcie = &g_pcie_rc[ch_num];
+
+	return exynos_pcie->sudden_linkdown;
+}
+EXPORT_SYMBOL(exynos_pcie_rc_get_sudden_linkdown_state);
+
+void exynos_pcie_rc_set_sudden_linkdown_state(int ch_num, bool recovery)
+{
+	struct exynos_pcie *exynos_pcie = &g_pcie_rc[ch_num];
+
+	pr_err("[%s] set sudden_linkdown_state to recovery_on\n", __func__);
+	exynos_pcie->sudden_linkdown = recovery;
+}
+EXPORT_SYMBOL(exynos_pcie_rc_set_sudden_linkdown_state);
+
 bool exynos_pcie_rc_get_cpl_timeout_state(int ch_num)
 {
 	struct exynos_pcie *exynos_pcie = &g_pcie_rc[ch_num];
@@ -3748,6 +3779,9 @@ int exynos_pcie_rc_chk_link_status(int ch_num)
 		} else {
 			dev_err(dev, "Check unexpected state - H/W:0x%x, S/W:%d\n",
 				val, exynos_pcie->state);
+
+			exynos_pcie_rc_print_link_history(&pci->pp);
+
 			spin_lock_irqsave(&exynos_pcie->reg_lock, flags);
 			exynos_pcie->state = STATE_LINK_DOWN;
 			spin_unlock_irqrestore(&exynos_pcie->reg_lock, flags);

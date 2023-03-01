@@ -118,9 +118,12 @@ static void cp2ap_wakeup_work(struct work_struct *work)
 	cp2ap_wakeup_time = ktime_get_boottime();
 
 	spin_lock_irqsave(&mc->power_stats_lock, flags);
-	mc->cp_power_stats.last_exit_timestamp_usec = ktime_to_us(cp2ap_wakeup_time);
-	mc->cp_power_stats.duration_usec += (mc->cp_power_stats.last_exit_timestamp_usec -
-			mc->cp_power_stats.last_entry_timestamp_usec);
+	if (mc->cp_power_stats.suspended) {
+		mc->cp_power_stats.last_exit_timestamp_usec = ktime_to_us(cp2ap_wakeup_time);
+		mc->cp_power_stats.duration_usec += (mc->cp_power_stats.last_exit_timestamp_usec -
+				mc->cp_power_stats.last_entry_timestamp_usec);
+	}
+	mc->cp_power_stats.suspended = false;
 	spin_unlock_irqrestore(&mc->power_stats_lock, flags);
 
 	s5100_poweron_pcie(mc, false);
@@ -138,8 +141,11 @@ static void cp2ap_suspend_work(struct work_struct *work)
 	cp2ap_suspend_time = ktime_get_boottime();
 
 	spin_lock_irqsave(&mc->power_stats_lock, flags);
-	mc->cp_power_stats.last_entry_timestamp_usec = ktime_to_us(cp2ap_suspend_time);
-	mc->cp_power_stats.count++;
+	if (!mc->cp_power_stats.suspended) {
+		mc->cp_power_stats.last_entry_timestamp_usec = ktime_to_us(cp2ap_suspend_time);
+		mc->cp_power_stats.count++;
+	}
+	mc->cp_power_stats.suspended = true;
 	spin_unlock_irqrestore(&mc->power_stats_lock, flags);
 
 	s5100_poweroff_pcie(mc, false);
@@ -154,8 +160,7 @@ static ssize_t power_stats_show(struct device *dev,
 	u64 adjusted_duration_usec = mc->cp_power_stats.duration_usec;
 
 	spin_lock_irqsave(&mc->power_stats_lock, flags);
-	if (mc->cp_power_stats.last_entry_timestamp_usec >
-			mc->cp_power_stats.last_exit_timestamp_usec) {
+	if (mc->cp_power_stats.suspended) {
 		u64 now_usec = ktime_to_us(ktime_get_boottime());
 		adjusted_duration_usec += now_usec -
 			mc->cp_power_stats.last_entry_timestamp_usec;
@@ -1394,9 +1399,19 @@ static int s5100_poweroff_pcie(struct modem_ctl *mc, bool force_off)
 	}
 
 	/* recovery status is not valid after PCI link down requests from CP */
+	if (mc->pcie_linkdown_retry_cnt > 0) {
+		mif_info("clear linkdown_retry_cnt(%d)..!!!\n", mc->pcie_linkdown_retry_cnt);
+		mc->pcie_linkdown_retry_cnt = 0;
+	}
+
 	if (mc->pcie_cto_retry_cnt > 0) {
 		mif_info("clear cto_retry_cnt(%d)..!!!\n", mc->pcie_cto_retry_cnt);
 		mc->pcie_cto_retry_cnt = 0;
+	}
+
+	if (exynos_pcie_rc_get_sudden_linkdown_state(mc->pcie_ch_num)) {
+		exynos_pcie_rc_set_sudden_linkdown_state(mc->pcie_ch_num, false);
+		in_pcie_recovery = true;
 	}
 
 	if (exynos_pcie_rc_get_cpl_timeout_state(mc->pcie_ch_num)) {
@@ -1500,6 +1515,9 @@ int s5100_poweron_pcie(struct modem_ctl *mc, bool boot_on)
 	spin_lock_irqsave(&mc->pcie_tx_lock, flags);
 	/* wait Tx done if it is running */
 	spin_unlock_irqrestore(&mc->pcie_tx_lock, flags);
+
+	if (exynos_pcie_rc_get_sudden_linkdown_state(mc->pcie_ch_num))
+		exynos_pcie_set_ready_cto_recovery(mc->pcie_ch_num);
 
 	if (exynos_pcie_rc_get_cpl_timeout_state(mc->pcie_ch_num))
 		exynos_pcie_set_ready_cto_recovery(mc->pcie_ch_num);
@@ -1895,14 +1913,16 @@ int s5100_init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	s5100_get_ops(mc);
 	if (s5100_get_pdata(mc, pdata)) {
 		mif_err("DT error: failed to parse\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err_dt_parse;
 	}
 	dev_set_drvdata(mc->dev, mc);
 
 	mc->ws = cpif_wake_lock_register(&pdev->dev, "s5100_wake_lock");
 	if (mc->ws == NULL) {
 		mif_err("s5100_wake_lock: wakeup_source_register fail\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err_wake_lock_register;
 	}
 	mutex_init(&mc->pcie_onoff_lock);
 	mutex_init(&mc->pcie_check_lock);
@@ -1919,13 +1939,15 @@ int s5100_init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	mc->apwake_irq_chip = irq_get_chip(mc->cp_gpio_irq[CP_GPIO_IRQ_CP2AP_WAKEUP].num);
 	if (mc->apwake_irq_chip == NULL) {
 		mif_err("Can't get irq_chip structure!!!!\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err_irq_get_chip;
 	}
 
 	mc->wakeup_wq = create_singlethread_workqueue("cp2ap_wakeup_wq");
 	if (!mc->wakeup_wq) {
 		mif_err("%s: ERR! fail to create wakeup_wq\n", mc->name);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err_irq_get_chip;
 	}
 	INIT_WORK(&mc->wakeup_work, cp2ap_wakeup_work);
 	INIT_WORK(&mc->suspend_work, cp2ap_suspend_work);
@@ -1933,7 +1955,8 @@ int s5100_init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	mc->crash_wq = create_singlethread_workqueue("trigger_cp_crash_wq");
 	if (!mc->crash_wq) {
 		mif_err("%s: ERR! fail to create crash_wq\n", mc->name);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err_crash_wq;
 	}
 	INIT_WORK(&mc->crash_work, trigger_cp_crash_work);
 
@@ -1945,19 +1968,27 @@ int s5100_init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	ret = register_pm_notifier(&mc->pm_notifier);
 	if (ret) {
 		mif_err("failed to register PM notifier_call\n");
-		return ret;
+		goto err_pm_notifier;
 	}
 
 	/* Register panic notifier_call*/
 	mc->send_panic_nb.notifier_call = send_panic_to_cp_notifier;
-	atomic_notifier_chain_register(&panic_notifier_list, &mc->send_panic_nb);
+	ret = atomic_notifier_chain_register(&panic_notifier_list, &mc->send_panic_nb);
+	if (ret < 0) {
+		mif_err("failed to register panic notifier_call\n");
+		goto err_panic_notifier;
+	}
 
 #if IS_ENABLED(CONFIG_SUSPEND_DURING_VOICE_CALL)
 	INIT_WORK(&mc->call_on_work, voice_call_on_work);
 	INIT_WORK(&mc->call_off_work, voice_call_off_work);
 
 	mc->call_state_nb.notifier_call = s5100_call_state_notifier;
-	register_modem_voice_call_event_notifier(&mc->call_state_nb);
+	ret = register_modem_voice_call_event_notifier(&mc->call_state_nb);
+	if (ret < 0) {
+		mif_err("failed to register modem voice call event notifier_call\n");
+		goto err_modem_vce_notifier;
+	}
 #endif
 
 	if (sysfs_create_group(&pdev->dev.kobj, &sim_group))
@@ -1969,8 +2000,51 @@ int s5100_init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	ret = device_create_file(&pdev->dev, &dev_attr_s5100_wake_lock);
 	if (ret) {
 		mif_err("%s: couldn't create s5100_wake_lock(%d)\n", __func__, ret);
-		return ret;
+		goto err_dev_create_file;
 	}
 
 	return 0;
+
+err_dev_create_file:
+	sysfs_remove_group(&pdev->dev.kobj, &modem_group);
+	sysfs_remove_group(&pdev->dev.kobj, &sim_group);
+#if IS_ENABLED(CONFIG_SUSPEND_DURING_VOICE_CALL)
+	unregister_modem_voice_call_event_notifier(&mc->call_state_nb);
+err_modem_vce_notifier:
+#endif
+	atomic_notifier_chain_unregister(&panic_notifier_list, &mc->send_panic_nb);
+err_panic_notifier:
+	unregister_pm_notifier(&mc->pm_notifier);
+err_pm_notifier:
+	unregister_reboot_notifier(&mc->reboot_nb);
+	destroy_workqueue(mc->crash_wq);
+err_crash_wq:
+	destroy_workqueue(mc->wakeup_wq);
+err_irq_get_chip:
+	cpif_wake_lock_unregister(mc->ws);
+err_wake_lock_register:
+err_dt_parse:
+	g_mc = NULL;
+	return ret;
+}
+
+void s5100_uninit_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
+{
+	struct device *dev = mc->dev;
+
+	device_remove_file(dev, &dev_attr_s5100_wake_lock);
+	sysfs_remove_group(&dev->kobj, &modem_group);
+	sysfs_remove_group(&dev->kobj, &sim_group);
+#if IS_ENABLED(CONFIG_SUSPEND_DURING_VOICE_CALL)
+	unregister_modem_voice_call_event_notifier(&mc->call_state_nb);
+#endif
+	atomic_notifier_chain_unregister(&panic_notifier_list, &mc->send_panic_nb);
+	unregister_pm_notifier(&mc->pm_notifier);
+	unregister_reboot_notifier(&mc->reboot_nb);
+	destroy_workqueue(mc->crash_wq);
+	destroy_workqueue(mc->wakeup_wq);
+	mutex_destroy(&mc->pcie_check_lock);
+	mutex_destroy(&mc->pcie_onoff_lock);
+	cpif_wake_lock_unregister(mc->ws);
+	g_mc = NULL;
 }
