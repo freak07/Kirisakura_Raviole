@@ -8,8 +8,8 @@
 #include <linux/module.h>
 #include <linux/kobject.h>
 
-extern perf_metrics_init(struct kobject *metrics_kobj);
-extern thermal_metrics_init(struct kobject *metrics_kobj);
+extern int perf_metrics_init(struct kobject *metrics_kobj);
+extern int thermal_metrics_init(struct kobject *metrics_kobj);
 
 struct kobject *metrics_kobj;
 
