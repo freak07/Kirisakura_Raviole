@@ -145,6 +145,9 @@ extern unsigned int vendor_sched_uclamp_threshold;
 extern bool vendor_sched_reduce_prefer_idle;
 extern struct vendor_group_property vg[VG_MAX];
 
+DECLARE_STATIC_KEY_FALSE(uclamp_min_filter_enable);
+DECLARE_STATIC_KEY_FALSE(uclamp_max_filter_enable);
+
 #define SCHED_PIXEL_BLOCK_UPDATES		BIT(8)
 #define SCHED_PIXEL_RESUME_UPDATES		BIT(9)
 
