@@ -1260,9 +1260,9 @@ struct vm_area_struct *vma_merge_legacy(struct mm_struct *mm,
  * vma, PPPPPP is the prev vma specified, and NNNNNN the next vma after:
  *
  *     AAAA             AAAA                   AAAA
- *    PPPPPPNNNNNN    PPPPPPNNNNNN       PPPPPPNNNNNN
+ *    PPPPPPNNNNNN    PPPPPPXXXXXX       PPPPPPNNNNNN
  *    cannot merge    might become       might become
- *                    PPNNNNNNNNNN       PPPPPPPPPPNN
+ *                    PPXXXXXXXXXX       PPPPPPPPPPNN
  *    mmap, brk or    case 4 below       case 5 below
  *    mremap move:
  *                        AAAA               AAAA
@@ -1380,9 +1380,9 @@ struct vm_area_struct *vma_merge(struct vma_iterator *vmi, struct mm_struct *mm,
 		res = next;
 		if (prev && addr < prev->vm_end) {	/* case 4 */
 			vma_end = addr;
-			adjust = mid;
+			adjust = next;
 			adj_next = -(prev->vm_end - addr);
-			err = dup_anon_vma(mid, prev);
+			err = dup_anon_vma(next, prev);
 		} else {
 			vma = next;			/* case 3 */
 			vma_start = addr;
