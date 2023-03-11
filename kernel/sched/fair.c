@@ -43,9 +43,9 @@ enum sched_tunable_scaling sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_L
  *
  * (default: 0.75 msec * (1 + ilog(ncpus)), units: nanoseconds)
  */
-unsigned int sysctl_sched_min_granularity			= 750000ULL;
-EXPORT_SYMBOL_GPL(sysctl_sched_min_granularity);
-static unsigned int normalized_sysctl_sched_min_granularity	= 750000ULL;
+unsigned int sysctl_sched_base_slice			= 750000ULL;
+EXPORT_SYMBOL_GPL(sysctl_sched_base_slice);
+static unsigned int normalized_sysctl_sched_base_slice	= 750000ULL;
 
 /*
  * After fork, child runs first. If set to 0 (default) then
@@ -154,7 +154,7 @@ static void update_sysctl(void)
 
 #define SET_SYSCTL(name) \
 	(sysctl_##name = (factor) * normalized_sysctl_##name)
-	SET_SYSCTL(sched_min_granularity);
+	SET_SYSCTL(sched_base_slice);
 #undef SET_SYSCTL
 }
 
@@ -908,7 +908,7 @@ int sched_proc_update_handler(struct ctl_table *table, int write,
 
 #define WRT_SYSCTL(name) \
 	(normalized_sysctl_##name = sysctl_##name / (factor))
-	WRT_SYSCTL(sched_min_granularity);
+	WRT_SYSCTL(sched_base_slice);
 #undef WRT_SYSCTL
 
 	return 0;
@@ -918,7 +918,7 @@ int sched_proc_update_handler(struct ctl_table *table, int write,
 long calc_latency_offset(int prio)
 {
 	u32 weight = sched_prio_to_weight[prio];
-	u64 base = sysctl_sched_min_granularity;
+	u64 base = sysctl_sched_base_slice;
 
 	return div_u64(base << SCHED_FIXEDPOINT_SHIFT, weight);
 }
