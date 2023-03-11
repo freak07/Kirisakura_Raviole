@@ -489,8 +489,6 @@ struct sched_entity {
 	/* cached value of my_q->h_nr_running */
 	unsigned long			runnable_weight;
 #endif
-	/* preemption offset in ns */
-	long				latency_offset;
 
 #ifdef CONFIG_SMP
 	/*
