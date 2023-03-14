@@ -159,8 +159,8 @@ static int get_s2s_y_above(void) {
 }
 #endif
 
+#ifdef CONFIG_SOC_GS201
 extern bool machine_is_cheetah(void);
-
 // device specifics
 static void s2s_setup_values(void) {
 	if (machine_is_cheetah()) {
@@ -174,6 +174,24 @@ static void s2s_setup_values(void) {
 		S2S_X_RIGHT_CORNER_START = 1080-100;
 	}
 }
+#endif
+
+#ifdef CONFIG_SOC_GS101
+extern bool machine_is_raven(void);
+// device specifics
+static void s2s_setup_values(void) {
+	if (machine_is_raven()) {
+		pr_info("%s hw raven\n",__func__);
+		// leave original values
+	} else {
+                pr_info("%s hw oriole\n",__func__);
+		S2S_Y_MAX = 2400;
+		S2S_X_MAX = 1080;
+		S2S_X_LEFT_CORNER_END = 100;
+		S2S_X_RIGHT_CORNER_START = 1080-100;
+	}
+}
+#endif
 
 #define HZ_300
 //#define HZ_250
