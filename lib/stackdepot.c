@@ -169,6 +169,7 @@ int __init stack_depot_init(void)
 		int i;
 
 		stack_table = memblock_alloc(size, size);
+		pr_info("Stack Depot is enabled\n");
 		for (i = 0; i < STACK_HASH_SIZE;  i++)
 			stack_table[i] = NULL;
 	}
