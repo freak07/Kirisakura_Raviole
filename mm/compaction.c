@@ -592,6 +592,7 @@ static unsigned long isolate_freepages_block(struct compact_control *cc,
 			if (likely(order < MAX_ORDER)) {
 				blockpfn += (1UL << order) - 1;
 				cursor += (1UL << order) - 1;
+				nr_scanned += (1UL << order) - 1;
 			}
 			goto isolate_fail;
 		}
@@ -934,6 +935,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 				if (ret == -EBUSY)
 					ret = 0;
 				low_pfn += compound_nr(page) - 1;
+				nr_scanned += compound_nr(page) - 1;
 				goto isolate_fail;
 			}
 
@@ -968,8 +970,10 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 			 * a valid page order. Consider only values in the
 			 * valid order range to prevent low_pfn overflow.
 			 */
-			if (freepage_order > 0 && freepage_order < MAX_ORDER)
+			if (freepage_order > 0 && freepage_order < MAX_ORDER) {
 				low_pfn += (1UL << freepage_order) - 1;
+				nr_scanned += (1UL << freepage_order) - 1;
+			}
 			continue;
 		}
 
@@ -984,8 +988,10 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		if (PageCompound(page) && !cc->alloc_contig) {
 			const unsigned int order = compound_order(page);
 
-			if (likely(order < MAX_ORDER))
+			if (likely(order < MAX_ORDER)) {
 				low_pfn += (1UL << order) - 1;
+				nr_scanned += (1UL << order) - 1;
+			}
 			goto isolate_fail;
 		}
 
@@ -1070,6 +1076,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 			 */
 			if (unlikely(PageCompound(page) && !cc->alloc_contig)) {
 				low_pfn += compound_nr(page) - 1;
+				nr_scanned += compound_nr(page) - 1;
 				SetPageLRU(page);
 				goto isolate_fail_put;
 			}
