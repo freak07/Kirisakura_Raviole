@@ -474,7 +474,6 @@
   dev_pm_opp_set_regulators
   dev_pm_opp_set_sharing_cpus
   get_cpu_device
-  nr_cpu_ids
   policy_has_boost_freq
 
 # required by dw_mmc.ko
@@ -759,7 +758,6 @@
   downgrade_write
   down_trylock
   dump_stack
-  failure_tracking
   fd_install
   find_vma
   fput

@@ -93,7 +93,6 @@
   ethtool_op_get_link
   eth_validate_addr
   event_triggers_call
-  failure_tracking
   fd_install
   finish_wait
   flush_work
@@ -196,10 +195,8 @@
   nf_conntrack_destroy
   no_llseek
   nonseekable_open
-  nr_cpu_ids
   __num_online_cpus
   of_property_read_variable_u32_array
-  __page_pinner_put_page
   param_ops_bool
   param_ops_int
   param_ops_uint

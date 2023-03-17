@@ -328,7 +328,6 @@
   netif_napi_add
   __netif_napi_del
   no_llseek
-  nr_cpu_ids
   nvmem_cell_get
   nvmem_cell_put
   nvmem_cell_read

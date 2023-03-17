@@ -843,7 +843,6 @@
   extcon_set_property_capability
   extcon_set_state_sync
   extcon_unregister_notifier
-  failure_tracking
   fasync_helper
   __fdget
   fd_install
@@ -1385,7 +1384,6 @@
   no_llseek
   nonseekable_open
   noop_llseek
-  nr_cpu_ids
   nr_irqs
   ns_capable
   ns_capable_noaudit
@@ -1492,7 +1490,6 @@
   __page_frag_cache_drain
   page_frag_free
   page_mapping
-  __page_pinner_put_page
   panic
   panic_notifier_list
   param_array_ops

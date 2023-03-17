@@ -114,7 +114,6 @@
   __mutex_init
   mutex_lock
   mutex_unlock
-  nr_cpu_ids
   nvmem_cell_put
   nvmem_cell_read
   of_clk_add_provider
