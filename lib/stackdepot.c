@@ -165,13 +165,8 @@ early_param("stack_depot_disable", is_stack_depot_disabled);
 int __init stack_depot_init(void)
 {
 	if (!stack_depot_disable) {
-		size_t size = (STACK_HASH_SIZE * sizeof(struct stack_record *));
-		int i;
-
-		stack_table = memblock_alloc(size, size);
-		pr_info("Stack Depot is enabled\n");
-		for (i = 0; i < STACK_HASH_SIZE;  i++)
-			stack_table[i] = NULL;
+		pr_info("Stack Depot is disabled\n");
+		stack_table = NULL;
 	}
 	return 0;
 }
