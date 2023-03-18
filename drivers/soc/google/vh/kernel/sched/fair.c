@@ -48,7 +48,7 @@ unsigned int map_scaling_freq(int cpu, unsigned int freq);
 
 static void attach_task(struct rq *rq, struct task_struct *p)
 {
-	lockdep_assert_held(&rq->lock);
+	lockdep_assert_rq_held(rq);
 
 	BUG_ON(task_rq(p) != rq);
 	activate_task(rq, p, ENQUEUE_NOCLOCK);
@@ -1363,7 +1363,7 @@ static struct task_struct *detach_important_task(struct rq *src_rq, int dst_cpu)
 	struct task_struct *p = NULL, *best_task = NULL, *backup = NULL;
 	unsigned int task_util;
 
-	lockdep_assert_held(&src_rq->lock);
+	lockdep_assert_rq_held(src_rq);
 
 	rcu_read_lock();
 
@@ -1444,7 +1444,7 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 	 * re-start the picking loop.
 	 */
 	rq_unpin_lock(this_rq, rf);
-	raw_spin_unlock(&this_rq->lock);
+	raw_spin_rq_unlock(this_rq);
 
 	this_cpu = this_rq->cpu;
 	for_each_cpu(cpu, cpu_active_mask) {
@@ -1483,7 +1483,7 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 		}
 	}
 
-	raw_spin_lock(&this_rq->lock);
+	raw_spin_rq_lock(this_rq);
 	/*
 	 * While browsing the domains, we released the rq lock, a task could
 	 * have been enqueued in the meantime. Since we're not going idle,
