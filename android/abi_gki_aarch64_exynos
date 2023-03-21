@@ -5,7 +5,6 @@
   adjust_managed_page_count
   alloc_chrdev_region
   alloc_netdev_mqs
-  __alloc_pages_nodemask
   __alloc_percpu
   __alloc_skb
   alloc_workqueue
@@ -188,7 +187,6 @@
   dump_stack
   enable_irq
   event_triggers_call
-  failure_tracking
   fd_install
   find_last_bit
   find_next_bit
@@ -381,7 +379,6 @@
   no_llseek
   nonseekable_open
   noop_llseek
-  nr_cpu_ids
   ns_to_kernel_old_timeval
   ns_to_timespec64
   __num_online_cpus
@@ -425,7 +422,6 @@
   of_reserved_mem_device_release
   of_reserved_mem_lookup
   of_root
-  __page_pinner_put_page
   panic
   panic_notifier_list
   param_array_ops
