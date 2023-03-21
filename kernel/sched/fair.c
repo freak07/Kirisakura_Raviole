@@ -3787,16 +3787,11 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
  * attach_entity_load_avg - attach this entity to its cfs_rq load avg
  * @cfs_rq: cfs_rq to attach to
  * @se: sched_entity to attach
- * @update_cpufreq: should we trigger cpufreq update if anything changed?
- *                  in some code paths the request could be premature as other
- *                  things could have an impact on cpufreq selection, like
- *                  uclamp.
  *
  * Must call update_cfs_rq_load_avg() before this, since we rely on
  * cfs_rq->avg.last_update_time being current.
  */
-static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se,
-				   bool update_cpufreq)
+static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	/*
 	 * cfs_rq->avg.period_contrib can be used for both cfs_rq and se.
@@ -3842,8 +3837,7 @@ static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 
 	add_tg_cfs_propagate(cfs_rq, se->avg.load_sum);
 
-	if (update_cpufreq)
-		cfs_rq_util_change(cfs_rq, 0);
+	cfs_rq_util_change(cfs_rq, 0);
 
 	trace_pelt_cfs_tp(cfs_rq);
 }
@@ -3879,13 +3873,11 @@ static void detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 #define UPDATE_TG	0x1
 #define SKIP_AGE_LOAD	0x2
 #define DO_ATTACH	0x4
-#define SKIP_CPUFREQ	0x8
 
 /* Update task and its cfs_rq load average */
 static inline void update_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 {
 	u64 now = cfs_rq_clock_pelt(cfs_rq);
-	bool update_cpufreq = !(flags & SKIP_CPUFREQ);
 	int decayed;
 
 	trace_android_vh_prepare_update_load_avg_se(se, flags);
@@ -3912,12 +3904,11 @@ static inline void update_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 		 *
 		 * IOW we're enqueueing a task on a new CPU.
 		 */
-		attach_entity_load_avg(cfs_rq, se, update_cpufreq);
+		attach_entity_load_avg(cfs_rq, se);
 		update_tg_load_avg(cfs_rq);
 
 	} else if (decayed) {
-		if (update_cpufreq)
-			cfs_rq_util_change(cfs_rq, 0);
+		cfs_rq_util_change(cfs_rq, 0);
 
 		if (flags & UPDATE_TG)
 			update_tg_load_avg(cfs_rq);
@@ -4015,201 +4006,26 @@ static inline unsigned long task_util_est(struct task_struct *p)
 }
 
 #ifdef CONFIG_UCLAMP_TASK
-static inline unsigned long uclamp_task_util(struct task_struct *p)
+static inline unsigned long uclamp_task_util(struct task_struct *p,
+					     unsigned long uclamp_min,
+					     unsigned long uclamp_max)
 {
-	unsigned long min_util = uclamp_eff_value(p, UCLAMP_MIN);
-	unsigned long max_util = uclamp_eff_value(p, UCLAMP_MAX);
 	unsigned long task_util = task_util_est(p);
 	unsigned long ret = 0;
 
-	trace_android_rvh_uclamp_task_util(task_util, min_util, max_util, &ret);
+	trace_android_rvh_uclamp_task_util(task_util, uclamp_min, uclamp_max, &ret);
 	if (ret)
 		return ret;
 
-	return clamp(task_util, min_util, max_util);
-}
-
-/*
- * Check if we can ignore uclamp_min requirement of a task. The goal is to
- * prevent small transient tasks from boosting frequency unnecessarily.
- *
- * Returns true if a task can finish its work within a
- * policy->cpuinfo.transition_latency * multiplier.
- *
- * We look at the immediate history of how long the task ran previously.
- * Converting task util_avg into runtime is not trivial and expensive
- * operations.
- */
-static inline bool uclamp_can_ignore_uclamp_min(struct rq *rq,
-						struct task_struct *p)
-{
-	unsigned long runtime, rate_limit;
-	struct cpufreq_policy *policy;
-	struct sched_entity *se;
-
-	if (SCHED_WARN_ON(!uclamp_is_used()))
-		return false;
-
-	if (task_on_rq_migrating(p))
-		return false;
-
-	/*
-	 * Based on previous runtime, we check that runtime is sufficiently
-	 * larger than policy->cpuinfo.transition_latency
-	 *
-	 *
-	 *	runtime >= policy->cpuinfo->transition_latency * multiplier
-	 *
-	 * There are 2 caveats:
-	 *
-	 * 1- When a task migrates on big.LITTLE system, the runtime will not
-	 *    be representative then. But this would be one time off error.
-	 *
-	 * 2. runtime is not frequency invariant. See comment in
-	 *    uclamp_can_ignore_uclamp_max()
-	 *
-	 */
-	se = &p->se;
-	runtime = se->sum_exec_runtime - se->prev_sum_exec_runtime;
-	if (!runtime)
-		return false;
-
-	/*
-	 * XXX: This can explode if the governor changes in the wrong moment.
-	 * We need to create per cpu variables and access those instead. This
-	 * will be addressed in the future.
-	 */
-	policy = cpufreq_cpu_get_raw(cpu_of(rq));
-	if (!policy)
-		return 0;
-
-	rate_limit = policy->cpuinfo.transition_latency;
-	rate_limit *= sysctl_sched_uclamp_min_filter_multiplier;
-
-	if (runtime >= rate_limit)
-		return false;
-
-	return true;
-}
-
-/*
- * Check if we can ignore uclamp_max requirement of a task. The goal is to
- * prevent small transient tasks that share the rq with other tasks that are
- * capped to lift the capping easily/unnecessarily, hence increase power
- * consumption.
- *
- * Returns true if a task can finish its work within a sched_slice() / divider.
- *
- * We look at the immediate history of how long the task ran previously.
- * Converting task util_avg into runtime or sched_slice() into capacity is not
- * trivial and is an expensive operations. In practice this simple approach
- * proved effective to address the common source of noise. If a task suddenly
- * becomes a busy task, we should detect that and lift the capping at tick, see
- * task_tick_uclamp().
- */
-static inline bool uclamp_can_ignore_uclamp_max(struct rq *rq,
-						struct task_struct *p)
-{
-	unsigned long uclamp_max, util;
-	unsigned long runtime, slice;
-	struct sched_entity *se;
-	struct cfs_rq *cfs_rq;
-
-	if (SCHED_WARN_ON(!uclamp_is_used()))
-		return false;
-
-	if (task_on_rq_migrating(p))
-		return false;
-
-	/*
-	 * If util has crossed uclamp_max threshold, then we have to ensure
-	 * this is always enforced.
-	 */
-	util = task_util_est(p);
-	uclamp_max = uclamp_eff_value(p, UCLAMP_MAX);
-	if (util >= uclamp_max)
-		return false;
-
-	/*
-	 * Based on previous runtime, we check the allowed sched_slice() of the
-	 * task is large enough for this task to run without preemption.
-	 *
-	 *
-	 *	runtime < sched_slice() / divider
-	 *
-	 * ==>
-	 *
-	 *	runtime * divider < sched_slice()
-	 *
-	 * There are 2 caveats:
-	 *
-	 * 1- When a task migrates on big.LITTLE system, the runtime will not
-	 *    be representative then (not capacity invariant). But this would
-	 *    be one time off error.
-	 *
-	 * 2. runtime is not frequency invariant either. If the
-	 *    divider >= fmax/fmin we should be okay in general because that's
-	 *    the worst case scenario of how much the runtime will be stretched
-	 *    due to it being capped to minimum frequency but the rq should run
-	 *    at max. The rule here is that the task should finish its work
-	 *    within its sched_slice(). Without this runtime scaling there's a
-	 *    small opportunity for the task to ping-pong between capped and
-	 *    uncapped state.
-	 *
-	 */
-	se = &p->se;
-
-	runtime = se->sum_exec_runtime - se->prev_sum_exec_runtime;
-	if (!runtime)
-		return false;
-
-	cfs_rq = cfs_rq_of(se);
-	slice = sched_slice(cfs_rq, se);
-	runtime *= sysctl_sched_uclamp_max_filter_divider;
-
-	if (runtime >= slice)
-		return false;
-
-	return true;
-}
-
-static inline void uclamp_set_ignore_uclamp_min(struct task_struct *p)
-{
-	p->uclamp_req[UCLAMP_MIN].ignored= 1;
-}
-static inline void uclamp_reset_ignore_uclamp_min(struct task_struct *p)
-{
-	p->uclamp_req[UCLAMP_MIN].ignored= 0;
-}
-static inline void uclamp_set_ignore_uclamp_max(struct task_struct *p)
-{
-	p->uclamp_req[UCLAMP_MAX].ignored= 1;
-}
-static inline void uclamp_reset_ignore_uclamp_max(struct task_struct *p)
-{
-	p->uclamp_req[UCLAMP_MAX].ignored= 0;
+	return clamp(task_util, uclamp_min, uclamp_max);
 }
 #else
-static inline unsigned long uclamp_task_util(struct task_struct *p)
+static inline unsigned long uclamp_task_util(struct task_struct *p,
+					     unsigned long uclamp_min,
+					     unsigned long uclamp_max)
 {
 	return task_util_est(p);
 }
-
-static inline bool uclamp_can_ignore_uclamp_min(struct rq *rq,
-						struct task_struct *p)
-{
-	return false;
-}
-
-static inline bool uclamp_can_ignore_uclamp_max(struct rq *rq,
-						struct task_struct *p)
-{
-	return false;
-}
-static inline void uclamp_set_ignore_uclamp_min(struct task_struct *p) {}
-static inline void uclamp_reset_ignore_uclamp_min(struct task_struct *p) {}
-static inline void uclamp_set_ignore_uclamp_max(struct task_struct *p) {}
-static inline void uclamp_reset_ignore_uclamp_max(struct task_struct *p) {}
 #endif
 
 static inline void util_est_enqueue(struct cfs_rq *cfs_rq,
@@ -4350,10 +4166,139 @@ done:
 	trace_sched_util_est_se_tp(&p->se);
 }
 
-static inline int task_fits_capacity(struct task_struct *p,
-				     unsigned long capacity)
+static inline int util_fits_cpu(unsigned long util,
+				unsigned long uclamp_min,
+				unsigned long uclamp_max,
+				int cpu)
 {
-	return fits_capacity(uclamp_task_util(p), capacity);
+	unsigned long capacity_orig, capacity_orig_thermal;
+	unsigned long capacity = capacity_of(cpu);
+	bool fits, uclamp_max_fits;
+
+	/*
+	 * Check if the real util fits without any uclamp boost/cap applied.
+	 */
+	fits = fits_capacity(util, capacity);
+
+	if (!uclamp_is_used())
+		return fits;
+
+	/*
+	 * We must use capacity_orig_of() for comparing against uclamp_min and
+	 * uclamp_max. We only care about capacity pressure (by using
+	 * capacity_of()) for comparing against the real util.
+	 *
+	 * If a task is boosted to 1024 for example, we don't want a tiny
+	 * pressure to skew the check whether it fits a CPU or not.
+	 *
+	 * Similarly if a task is capped to capacity_orig_of(little_cpu), it
+	 * should fit a little cpu even if there's some pressure.
+	 *
+	 * Only exception is for thermal pressure since it has a direct impact
+	 * on available OPP of the system.
+	 *
+	 * We honour it for uclamp_min only as a drop in performance level
+	 * could result in not getting the requested minimum performance level.
+	 *
+	 * For uclamp_max, we can tolerate a drop in performance level as the
+	 * goal is to cap the task. So it's okay if it's getting less.
+	 *
+	 * In case of capacity inversion we should honour the inverted capacity
+	 * for both uclamp_min and uclamp_max all the time.
+	 */
+	capacity_orig = cpu_in_capacity_inversion(cpu);
+	if (capacity_orig) {
+		capacity_orig_thermal = capacity_orig;
+	} else {
+		capacity_orig = capacity_orig_of(cpu);
+		capacity_orig_thermal = capacity_orig - arch_scale_thermal_pressure(cpu);
+	}
+
+	/*
+	 * We want to force a task to fit a cpu as implied by uclamp_max.
+	 * But we do have some corner cases to cater for..
+	 *
+	 *
+	 *                                 C=z
+	 *   |                             ___
+	 *   |                  C=y       |   |
+	 *   |_ _ _ _ _ _ _ _ _ ___ _ _ _ | _ | _ _ _ _ _  uclamp_max
+	 *   |      C=x        |   |      |   |
+	 *   |      ___        |   |      |   |
+	 *   |     |   |       |   |      |   |    (util somewhere in this region)
+	 *   |     |   |       |   |      |   |
+	 *   |     |   |       |   |      |   |
+	 *   +----------------------------------------
+	 *         cpu0        cpu1       cpu2
+	 *
+	 *   In the above example if a task is capped to a specific performance
+	 *   point, y, then when:
+	 *
+	 *   * util = 80% of x then it does not fit on cpu0 and should migrate
+	 *     to cpu1
+	 *   * util = 80% of y then it is forced to fit on cpu1 to honour
+	 *     uclamp_max request.
+	 *
+	 *   which is what we're enforcing here. A task always fits if
+	 *   uclamp_max <= capacity_orig. But when uclamp_max > capacity_orig,
+	 *   the normal upmigration rules should withhold still.
+	 *
+	 *   Only exception is when we are on max capacity, then we need to be
+	 *   careful not to block overutilized state. This is so because:
+	 *
+	 *     1. There's no concept of capping at max_capacity! We can't go
+	 *        beyond this performance level anyway.
+	 *     2. The system is being saturated when we're operating near
+	 *        max capacity, it doesn't make sense to block overutilized.
+	 */
+	uclamp_max_fits = (capacity_orig == SCHED_CAPACITY_SCALE) && (uclamp_max == SCHED_CAPACITY_SCALE);
+	uclamp_max_fits = !uclamp_max_fits && (uclamp_max <= capacity_orig);
+	fits = fits || uclamp_max_fits;
+
+	/*
+	 *
+	 *                                 C=z
+	 *   |                             ___       (region a, capped, util >= uclamp_max)
+	 *   |                  C=y       |   |
+	 *   |_ _ _ _ _ _ _ _ _ ___ _ _ _ | _ | _ _ _ _ _ uclamp_max
+	 *   |      C=x        |   |      |   |
+	 *   |      ___        |   |      |   |      (region b, uclamp_min <= util <= uclamp_max)
+	 *   |_ _ _|_ _|_ _ _ _| _ | _ _ _| _ | _ _ _ _ _ uclamp_min
+	 *   |     |   |       |   |      |   |
+	 *   |     |   |       |   |      |   |      (region c, boosted, util < uclamp_min)
+	 *   +----------------------------------------
+	 *         cpu0        cpu1       cpu2
+	 *
+	 * a) If util > uclamp_max, then we're capped, we don't care about
+	 *    actual fitness value here. We only care if uclamp_max fits
+	 *    capacity without taking margin/pressure into account.
+	 *    See comment above.
+	 *
+	 * b) If uclamp_min <= util <= uclamp_max, then the normal
+	 *    fits_capacity() rules apply. Except we need to ensure that we
+	 *    enforce we remain within uclamp_max, see comment above.
+	 *
+	 * c) If util < uclamp_min, then we are boosted. Same as (b) but we
+	 *    need to take into account the boosted value fits the CPU without
+	 *    taking margin/pressure into account.
+	 *
+	 * Cases (a) and (b) are handled in the 'fits' variable already. We
+	 * just need to consider an extra check for case (c) after ensuring we
+	 * handle the case uclamp_min > uclamp_max.
+	 */
+	uclamp_min = min(uclamp_min, uclamp_max);
+	if (util < uclamp_min && capacity_orig != SCHED_CAPACITY_SCALE)
+		fits = fits && (uclamp_min <= capacity_orig_thermal);
+
+	return fits;
+}
+
+static inline int task_fits_cpu(struct task_struct *p, int cpu)
+{
+	unsigned long uclamp_min = uclamp_eff_value(p, UCLAMP_MIN);
+	unsigned long uclamp_max = uclamp_eff_value(p, UCLAMP_MAX);
+	unsigned long util = task_util_est(p);
+	return util_fits_cpu(util, uclamp_min, uclamp_max, cpu);
 }
 
 static inline void update_misfit_status(struct task_struct *p, struct rq *rq)
@@ -4369,7 +4314,7 @@ static inline void update_misfit_status(struct task_struct *p, struct rq *rq)
 		return;
 	}
 
-	if (task_fits_capacity(p, capacity_of(cpu_of(rq)))) {
+	if (task_fits_cpu(p, cpu_of(rq))) {
 		rq->misfit_task_load = 0;
 		return;
 	}
@@ -4400,7 +4345,7 @@ static inline void update_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 static inline void remove_entity_load_avg(struct sched_entity *se) {}
 
 static inline void
-attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se, bool update_cpufreq) {}
+attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se) {}
 static inline void
 detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se) {}
 
@@ -4525,7 +4470,6 @@ static void
 enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 {
 	bool renorm = !(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_MIGRATED);
-	int skip_cpufreq = flags & ENQUEUE_SKIP_CPUFREQ ? SKIP_CPUFREQ : 0;
 	bool curr = cfs_rq->curr == se;
 
 	/*
@@ -4554,7 +4498,7 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 	 *     its group cfs_rq
 	 *   - Add its new weight to cfs_rq->load.weight
 	 */
-	update_load_avg(cfs_rq, se, UPDATE_TG | DO_ATTACH | skip_cpufreq);
+	update_load_avg(cfs_rq, se, UPDATE_TG | DO_ATTACH);
 	se_update_runnable(se);
 	update_cfs_group(se);
 	account_entity_enqueue(cfs_rq, se);
@@ -5797,13 +5741,15 @@ static inline unsigned long cpu_util(int cpu);
 
 static inline bool cpu_overutilized(int cpu)
 {
+	unsigned long rq_util_min = uclamp_rq_get(cpu_rq(cpu), UCLAMP_MIN);
+	unsigned long rq_util_max = uclamp_rq_get(cpu_rq(cpu), UCLAMP_MAX);
 	int overutilized = -1;
 
 	trace_android_rvh_cpu_overutilized(cpu, &overutilized);
 	if (overutilized != -1)
 		return overutilized;
 
-	return !fits_capacity(cpu_util(cpu), capacity_of(cpu));
+	return !util_fits_cpu(cpu_util(cpu), rq_util_min, rq_util_max, cpu);
 }
 
 static inline void update_overutilized_status(struct rq *rq)
@@ -5853,11 +5799,21 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	 */
 	util_est_enqueue(&rq->cfs, p);
 
+	/*
+	 * If in_iowait is set, the code below may not trigger any cpufreq
+	 * utilization updates, so do it here explicitly with the IOWAIT flag
+	 * passed.
+	 */
+	should_iowait_boost = p->in_iowait;
+	trace_android_rvh_set_iowait(p, &should_iowait_boost);
+	if (should_iowait_boost)
+		cpufreq_update_util(rq, SCHED_CPUFREQ_IOWAIT);
+
 	for_each_sched_entity(se) {
 		if (se->on_rq)
 			break;
 		cfs_rq = cfs_rq_of(se);
-		enqueue_entity(cfs_rq, se, flags | ENQUEUE_SKIP_CPUFREQ);
+		enqueue_entity(cfs_rq, se, flags);
 
 		cfs_rq->h_nr_running++;
 		cfs_rq->idle_h_nr_running += idle_h_nr_running;
@@ -5868,23 +5824,6 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		flags = ENQUEUE_WAKEUP;
 	}
-
-	/* Can only process uclamp after sched_slice() was updated */
-	if (uclamp_is_used()) {
-		if (uclamp_can_ignore_uclamp_max(rq, p))
-			uclamp_set_ignore_uclamp_max(p);
-		else
-			uclamp_rq_inc_id(rq, p, UCLAMP_MAX);
-
-		if (uclamp_can_ignore_uclamp_min(rq, p))
-			uclamp_set_ignore_uclamp_min(p);
-		else
-			uclamp_rq_inc_id(rq, p, UCLAMP_MIN);
-	}
-
-	should_iowait_boost = p->in_iowait;
-	trace_android_rvh_set_iowait(p, &should_iowait_boost);
-	cfs_rq_util_change(cfs_rq, should_iowait_boost ? SCHED_CPUFREQ_IOWAIT : 0);
 
 	trace_android_rvh_enqueue_task_fair(rq, p, flags);
 	for_each_sched_entity(se) {
@@ -5991,19 +5930,6 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 			break;
 		}
 		flags |= DEQUEUE_SLEEP;
-	}
-
-	/* Done here for symmetry with enqueue, but could be done earlier too */
-	if (uclamp_is_used()) {
-		if (uclamp_is_ignore_uclamp_max(p))
-			uclamp_reset_ignore_uclamp_max(p);
-		else
-			uclamp_rq_dec_id(rq, p, UCLAMP_MAX);
-
-		if (uclamp_is_ignore_uclamp_min(p))
-			uclamp_reset_ignore_uclamp_min(p);
-		else
-			uclamp_rq_dec_id(rq, p, UCLAMP_MIN);
 	}
 
 	trace_android_rvh_dequeue_task_fair(rq, p, flags);
@@ -6616,21 +6542,23 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, bool 
 static int
 select_idle_capacity(struct task_struct *p, struct sched_domain *sd, int target)
 {
-	unsigned long task_util, best_cap = 0;
+	unsigned long task_util, util_min, util_max, best_cap = 0;
 	int cpu, best_cpu = -1;
 	struct cpumask *cpus;
 
 	cpus = this_cpu_cpumask_var_ptr(select_idle_mask);
 	cpumask_and(cpus, sched_domain_span(sd), p->cpus_ptr);
 
-	task_util = uclamp_task_util(p);
+	task_util = task_util_est(p);
+	util_min = uclamp_eff_value(p, UCLAMP_MIN);
+	util_max = uclamp_eff_value(p, UCLAMP_MAX);
 
 	for_each_cpu_wrap(cpu, cpus, target) {
 		unsigned long cpu_cap = capacity_of(cpu);
 
 		if (!available_idle_cpu(cpu) && !sched_idle_cpu(cpu))
 			continue;
-		if (fits_capacity(task_util, cpu_cap))
+		if (util_fits_cpu(task_util, util_min, util_max, cpu))
 			return cpu;
 
 		if (cpu_cap > best_cap) {
@@ -6642,10 +6570,13 @@ select_idle_capacity(struct task_struct *p, struct sched_domain *sd, int target)
 	return best_cpu;
 }
 
-static inline bool asym_fits_capacity(unsigned long task_util, int cpu)
+static inline bool asym_fits_cpu(unsigned long util,
+				 unsigned long util_min,
+				 unsigned long util_max,
+				 int cpu)
 {
 	if (static_branch_unlikely(&sched_asym_cpucapacity))
-		return fits_capacity(task_util, capacity_of(cpu));
+		return util_fits_cpu(util, util_min, util_max, cpu);
 
 	return true;
 }
@@ -6657,7 +6588,7 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 {
 	bool has_idle_core = false;
 	struct sched_domain *sd;
-	unsigned long task_util;
+	unsigned long task_util, util_min, util_max;
 	int i, recent_used_cpu;
 
 	/*
@@ -6666,11 +6597,13 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 	 */
 	if (static_branch_unlikely(&sched_asym_cpucapacity)) {
 		sync_entity_load_avg(&p->se);
-		task_util = uclamp_task_util(p);
+		task_util = task_util_est(p);
+		util_min = uclamp_eff_value(p, UCLAMP_MIN);
+		util_max = uclamp_eff_value(p, UCLAMP_MAX);
 	}
 
 	if ((available_idle_cpu(target) || sched_idle_cpu(target)) &&
-	    asym_fits_capacity(task_util, target))
+	    asym_fits_cpu(task_util, util_min, util_max, target))
 		return target;
 
 	/*
@@ -6678,7 +6611,7 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 	 */
 	if (prev != target && cpus_share_cache(prev, target) &&
 	    (available_idle_cpu(prev) || sched_idle_cpu(prev)) &&
-	    asym_fits_capacity(task_util, prev))
+	    asym_fits_cpu(task_util, util_min, util_max, prev))
 		return prev;
 
 	/*
@@ -6693,7 +6626,7 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 	    in_task() &&
 	    prev == smp_processor_id() &&
 	    this_rq()->nr_running <= 1 &&
-	    asym_fits_capacity(task_util, prev)) {
+	    asym_fits_cpu(task_util, util_min, util_max, prev)) {
 		return prev;
 	}
 
@@ -6705,7 +6638,7 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 	    cpus_share_cache(recent_used_cpu, target) &&
 	    (available_idle_cpu(recent_used_cpu) || sched_idle_cpu(recent_used_cpu)) &&
 	    cpumask_test_cpu(p->recent_used_cpu, p->cpus_ptr) &&
-	    asym_fits_capacity(task_util, recent_used_cpu)) {
+	    asym_fits_cpu(task_util, util_min, util_max, recent_used_cpu)) {
 		return recent_used_cpu;
 	}
 
@@ -7028,6 +6961,8 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
 static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, int sync)
 {
 	unsigned long prev_delta = ULONG_MAX, best_delta = ULONG_MAX;
+	unsigned long p_util_min = uclamp_is_used() ? uclamp_eff_value(p, UCLAMP_MIN) : 0;
+	unsigned long p_util_max = uclamp_is_used() ? uclamp_eff_value(p, UCLAMP_MAX) : 1024;
 	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
 	int max_spare_cap_cpu_ls = prev_cpu, best_idle_cpu = -1;
 	unsigned long max_spare_cap_ls = 0, target_cap;
@@ -7053,7 +6988,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, int sy
 	cpu = smp_processor_id();
 	if (sync && cpu_rq(cpu)->nr_running == 1 &&
 	    cpumask_test_cpu(cpu, p->cpus_ptr) &&
-	    task_fits_capacity(p, capacity_of(cpu))) {
+	    task_fits_cpu(p, cpu)) {
 		rcu_read_unlock();
 		return cpu;
 	}
@@ -7068,7 +7003,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, int sy
 	if (!sd)
 		goto fail;
 
-	if (!task_util_est(p))
+	if (!uclamp_task_util(p, p_util_min, p_util_max))
 		goto unlock;
 
 	latency_sensitive = uclamp_latency_sensitive(p);
@@ -7076,7 +7011,9 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, int sy
 	target_cap = boosted ? 0 : ULONG_MAX;
 
 	for (; pd; pd = pd->next) {
+		unsigned long util_min = p_util_min, util_max = p_util_max;
 		unsigned long cur_delta, spare_cap, max_spare_cap = 0;
+		unsigned long rq_util_min, rq_util_max;
 		unsigned long base_energy_pd;
 		int max_spare_cap_cpu = -1;
 
@@ -7085,6 +7022,8 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, int sy
 		base_energy += base_energy_pd;
 
 		for_each_cpu_and(cpu, perf_domain_span(pd), sched_domain_span(sd)) {
+			struct rq *rq = cpu_rq(cpu);
+
 			if (!cpumask_test_cpu(cpu, p->cpus_ptr))
 				continue;
 
@@ -7099,15 +7038,22 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, int sy
 			 * overutilized. Take uclamp into account to see how
 			 * much capacity we can get out of the CPU; this is
 			 * aligned with schedutil_cpu_util().
-			 *
-			 * When the task is enqueued, the uclamp_max of the
-			 * task could be ignored, but it's hard for us to know
-			 * this now since we can only know the sched_slice()
-			 * after the task was enqueued. So we do the energy
-			 * calculation based on worst case scenario.
 			 */
-			util = uclamp_rq_util_with(cpu_rq(cpu), util, p);
-			if (!fits_capacity(util, cpu_cap))
+			if (uclamp_is_used() && !uclamp_rq_is_idle(rq)) {
+				/*
+				 * Open code uclamp_rq_util_with() except for
+				 * the clamp() part. Ie: apply max aggregation
+				 * only. util_fits_cpu() logic requires to
+				 * operate on non clamped util but must use the
+				 * max-aggregated uclamp_{min, max}.
+				 */
+				rq_util_min = uclamp_rq_get(rq, UCLAMP_MIN);
+				rq_util_max = uclamp_rq_get(rq, UCLAMP_MAX);
+
+				util_min = max(rq_util_min, p_util_min);
+				util_max = max(rq_util_max, p_util_max);
+			}
+			if (!util_fits_cpu(util, util_min, util_max, cpu))
 				continue;
 
 			/* Always use prev_cpu as a candidate. */
@@ -8313,7 +8259,7 @@ static int detach_tasks(struct lb_env *env)
 
 		case migrate_misfit:
 			/* This is not a misfit task */
-			if (task_fits_capacity(p, capacity_of(env->src_cpu)))
+			if (task_fits_cpu(p, env->src_cpu))
 				goto next;
 
 			env->imbalance = 0;
@@ -8701,16 +8647,82 @@ static unsigned long scale_rt_capacity(int cpu)
 
 static void update_cpu_capacity(struct sched_domain *sd, int cpu)
 {
+	unsigned long capacity_orig = arch_scale_cpu_capacity(cpu);
 	unsigned long capacity = scale_rt_capacity(cpu);
 	struct sched_group *sdg = sd->groups;
+	struct rq *rq = cpu_rq(cpu);
 
-	cpu_rq(cpu)->cpu_capacity_orig = arch_scale_cpu_capacity(cpu);
+	rq->cpu_capacity_orig = capacity_orig;
 
 	if (!capacity)
 		capacity = 1;
 
-	cpu_rq(cpu)->cpu_capacity = capacity;
-	trace_sched_cpu_capacity_tp(cpu_rq(cpu));
+	rq->cpu_capacity = capacity;
+
+	/*
+	 * Detect if the performance domain is in capacity inversion state.
+	 *
+	 * Capacity inversion happens when another perf domain with equal or
+	 * lower capacity_orig_of() ends up having higher capacity than this
+	 * domain after subtracting thermal pressure.
+	 *
+	 * We only take into account thermal pressure in this detection as it's
+	 * the only metric that actually results in *real* reduction of
+	 * capacity due to performance points (OPPs) being dropped/become
+	 * unreachable due to thermal throttling.
+	 *
+	 * We assume:
+	 *   * That all cpus in a perf domain have the same capacity_orig
+	 *     (same uArch).
+	 *   * Thermal pressure will impact all cpus in this perf domain
+	 *     equally.
+	 */
+	if (sched_energy_enabled()) {
+		unsigned long inv_cap = capacity_orig - thermal_load_avg(rq);
+		struct perf_domain *pd;
+
+		rcu_read_lock();
+
+		pd = rcu_dereference(rq->rd->pd);
+		rq->cpu_capacity_inverted = 0;
+
+		for (; pd; pd = pd->next) {
+			struct cpumask *pd_span = perf_domain_span(pd);
+			unsigned long pd_cap_orig, pd_cap;
+
+			/* We can't be inverted against our own pd */
+			if (cpumask_test_cpu(cpu_of(rq), pd_span))
+				continue;
+
+			cpu = cpumask_any(pd_span);
+			pd_cap_orig = arch_scale_cpu_capacity(cpu);
+
+			if (capacity_orig < pd_cap_orig)
+				continue;
+
+			/*
+			 * handle the case of multiple perf domains have the
+			 * same capacity_orig but one of them is under higher
+			 * thermal pressure. We record it as capacity
+			 * inversion.
+			 */
+			if (capacity_orig == pd_cap_orig) {
+				pd_cap = pd_cap_orig - thermal_load_avg(cpu_rq(cpu));
+
+				if (pd_cap > inv_cap) {
+					rq->cpu_capacity_inverted = inv_cap;
+					break;
+				}
+			} else if (pd_cap_orig > inv_cap) {
+				rq->cpu_capacity_inverted = inv_cap;
+				break;
+			}
+		}
+
+		rcu_read_unlock();
+	}
+
+	trace_sched_cpu_capacity_tp(rq);
 
 	sdg->sgc->capacity = capacity;
 	sdg->sgc->min_capacity = capacity;
@@ -9220,6 +9232,10 @@ static inline void update_sg_wakeup_stats(struct sched_domain *sd,
 
 	memset(sgs, 0, sizeof(*sgs));
 
+	/* Assume that task can't fit any CPU of the group */
+	if (sd->flags & SD_ASYM_CPUCAPACITY)
+		sgs->group_misfit_task_load = 1;
+
 	for_each_cpu(i, sched_group_span(group)) {
 		struct rq *rq = cpu_rq(i);
 		unsigned int local;
@@ -9239,12 +9255,12 @@ static inline void update_sg_wakeup_stats(struct sched_domain *sd,
 		if (!nr_running && idle_cpu_without(i, p))
 			sgs->idle_cpus++;
 
-	}
+		/* Check if task fits in the CPU */
+		if (sd->flags & SD_ASYM_CPUCAPACITY &&
+		    sgs->group_misfit_task_load &&
+		    task_fits_cpu(p, i))
+			sgs->group_misfit_task_load = 0;
 
-	/* Check if task fits in the group */
-	if (sd->flags & SD_ASYM_CPUCAPACITY &&
-	    !task_fits_capacity(p, group->sgc->max_capacity)) {
-		sgs->group_misfit_task_load = 1;
 	}
 
 	sgs->group_capacity = group->sgc->capacity;
@@ -11187,39 +11203,6 @@ static inline bool nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle
 static inline void nohz_newidle_balance(struct rq *this_rq) { }
 #endif /* CONFIG_NO_HZ_COMMON */
 
-#ifdef CONFIG_UCLAMP_TASK
-static inline void task_tick_uclamp(struct rq *rq, struct task_struct *curr)
-{
-	bool can_ignore;
-	bool is_ignored;
-
-	if (!uclamp_is_used())
-		return;
-
-	/*
-	 * Condition might have changed since we enqueued the task.
-	 */
-
-	can_ignore = uclamp_can_ignore_uclamp_max(rq, curr);
-	is_ignored = uclamp_is_ignore_uclamp_max(curr);
-
-	if (is_ignored && !can_ignore) {
-		uclamp_reset_ignore_uclamp_max(curr);
-		uclamp_rq_inc_id(rq, curr, UCLAMP_MAX);
-	}
-
-	can_ignore = uclamp_can_ignore_uclamp_min(rq, curr);
-	is_ignored = uclamp_is_ignore_uclamp_min(curr);
-
-	if (is_ignored && !can_ignore) {
-		uclamp_reset_ignore_uclamp_min(curr);
-		uclamp_rq_inc_id(rq, curr, UCLAMP_MIN);
-	}
-}
-#else
-static inline void task_tick_uclamp(struct rq *rq, struct task_struct *curr) {}
-#endif
-
 /*
  * idle_balance is called by schedule() if this_cpu is about to become
  * idle. Attempts to pull tasks from other CPUs.
@@ -11550,7 +11533,6 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 	update_overutilized_status(task_rq(curr));
 
 	task_tick_core(rq, curr);
-	task_tick_uclamp(rq, curr);
 }
 
 /*
@@ -11698,7 +11680,7 @@ static void attach_entity_cfs_rq(struct sched_entity *se)
 
 	/* Synchronize entity with its cfs_rq */
 	update_load_avg(cfs_rq, se, sched_feat(ATTACH_AGE_LOAD) ? 0 : SKIP_AGE_LOAD);
-	attach_entity_load_avg(cfs_rq, se, true);
+	attach_entity_load_avg(cfs_rq, se);
 	update_tg_load_avg(cfs_rq);
 	propagate_entity_cfs_rq(se);
 }
@@ -12070,6 +12052,10 @@ const struct sched_class fair_sched_class
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	.task_change_group	= task_change_group_fair,
+#endif
+
+#ifdef CONFIG_UCLAMP_TASK
+	.uclamp_enabled		= 1,
 #endif
 };
 

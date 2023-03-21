@@ -41,7 +41,7 @@ static void apply_uclamp_change(enum vendor_group group, enum uclamp_id clamp_id
 static struct uclamp_se uclamp_default[UCLAMP_CNT];
 unsigned int pmu_poll_time_ms = 10;
 bool pmu_poll_enabled;
-extern void pmu_poll_enable(void);
+extern int pmu_poll_enable(void);
 extern void pmu_poll_disable(void);
 
 #define MAX_PROC_SIZE 128
@@ -345,13 +345,13 @@ static inline unsigned int
 uclamp_idle_value(struct rq *rq, enum uclamp_id clamp_id,
 		  unsigned int clamp_value)
 {
-	uclamp_rq_set_idle(rq, clamp_id);
 	/*
 	 * Avoid blocked utilization pushing up the frequency when we go
 	 * idle (which drops the max-clamp) by retaining the last known
 	 * max-clamp.
 	 */
 	if (clamp_id == UCLAMP_MAX) {
+		rq->uclamp_flags |= UCLAMP_FLAG_IDLE;
 		return clamp_value;
 	}
 
@@ -361,9 +361,10 @@ uclamp_idle_value(struct rq *rq, enum uclamp_id clamp_id,
 static inline void uclamp_idle_reset(struct rq *rq, enum uclamp_id clamp_id,
 				     unsigned int clamp_value)
 {
-	if (!uclamp_rq_is_idle(rq, clamp_id))
+	/* Reset max-clamp retention only on idle exit */
+	if (!(rq->uclamp_flags & UCLAMP_FLAG_IDLE))
 		return;
-	uclamp_rq_reset_idle(rq, clamp_id);
+
 	WRITE_ONCE(rq->uclamp[clamp_id].value, clamp_value);
 }
 
@@ -588,6 +589,9 @@ uclamp_update_active(struct task_struct *p, enum uclamp_id clamp_id)
 	if (p->uclamp[clamp_id].active) {
 		uclamp_rq_dec_id(rq, p, clamp_id);
 		uclamp_rq_inc_id(rq, p, clamp_id);
+
+		if (rq->uclamp_flags & UCLAMP_FLAG_IDLE)
+			rq->uclamp_flags &= ~UCLAMP_FLAG_IDLE;
 	}
 
 	task_rq_unlock(rq, p, &rf);
@@ -1259,6 +1263,7 @@ static ssize_t pmu_poll_enable_store(struct file *filp,
 {
 	bool enable;
 	char buf[MAX_PROC_SIZE];
+	int ret = 0;
 
 	if (count >= sizeof(buf))
 		return -EINVAL;
@@ -1271,13 +1276,13 @@ static ssize_t pmu_poll_enable_store(struct file *filp,
 	if (kstrtobool(buf, &enable))
 		return -EINVAL;
 
-	if (pmu_poll_enabled == enable)
-		return count;
-
 	if (enable)
-		pmu_poll_enable();
+		ret = pmu_poll_enable();
 	else
 		pmu_poll_disable();
+
+	if (ret)
+		return ret;
 
 	return count;
 }
