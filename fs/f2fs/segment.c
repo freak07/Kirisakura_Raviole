@@ -3315,10 +3315,10 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 		struct f2fs_bio_info *io;
 
 		if (F2FS_IO_ALIGNED(sbi))
-			fio->retry = 0;
+			fio->retry = false;
 
 		INIT_LIST_HEAD(&fio->list);
-		fio->in_list = 1;
+		fio->in_list = true;
 		io = sbi->write_io[fio->type] + fio->temp;
 		spin_lock(&io->io_lock);
 		list_add_tail(&fio->list, &io->io_list);
@@ -3399,7 +3399,7 @@ void f2fs_do_write_meta_page(struct f2fs_sb_info *sbi, struct page *page,
 		.new_blkaddr = page->index,
 		.page = page,
 		.encrypted_page = NULL,
-		.in_list = 0,
+		.in_list = false,
 	};
 
 	if (unlikely(page->index >= MAIN_BLKADDR(sbi)))

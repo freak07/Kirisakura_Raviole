@@ -991,7 +991,7 @@ next:
 		bio_page = fio->page;
 
 	/* set submitted = true as a return value */
-	fio->submitted = 1;
+	fio->submitted = true;
 
 	inc_page_count(sbi, WB_DATA_TYPE(bio_page));
 
@@ -1007,7 +1007,7 @@ alloc_new:
 				(fio->type == DATA || fio->type == NODE) &&
 				fio->new_blkaddr & F2FS_IO_SIZE_MASK(sbi)) {
 			dec_page_count(sbi, WB_DATA_TYPE(bio_page));
-			fio->retry = 1;
+			fio->retry = true;
 			goto skip;
 		}
 		io->bio = __bio_alloc(fio, BIO_MAX_PAGES);
@@ -2790,10 +2790,10 @@ int f2fs_write_single_data_page(struct page *page, int *submitted,
 		.old_blkaddr = NULL_ADDR,
 		.page = page,
 		.encrypted_page = NULL,
-		.submitted = 0,
+		.submitted = false,
 		.compr_blocks = compr_blocks,
 		.need_lock = LOCK_RETRY,
-		.post_read = f2fs_post_read_required(inode) ? 1 : 0,
+		.post_read = f2fs_post_read_required(inode),
 		.io_type = io_type,
 		.io_wbc = wbc,
 		.bio = bio,
@@ -2914,7 +2914,7 @@ out:
 	}
 
 	if (submitted)
-		*submitted = fio.submitted;
+		*submitted = fio.submitted ? 1 : 0;
 
 	return 0;
 
