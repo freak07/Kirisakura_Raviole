@@ -1380,6 +1380,8 @@ enum {
 	MEMORY_MODE_LOW,	/* memory mode for low memry devices */
 };
 
+
+
 static inline int f2fs_test_bit(unsigned int nr, char *addr);
 static inline void f2fs_set_bit(unsigned int nr, char *addr);
 static inline void f2fs_clear_bit(unsigned int nr, char *addr);
