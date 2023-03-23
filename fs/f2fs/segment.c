@@ -200,12 +200,9 @@ void f2fs_abort_atomic_write(struct inode *inode, bool clean)
 	clear_inode_flag(inode, FI_ATOMIC_FILE);
 	stat_dec_atomic_inode(inode);
 
-	F2FS_I(inode)->atomic_write_task = NULL;
-
 	if (clean) {
 		truncate_inode_pages_final(inode->i_mapping);
 		f2fs_i_size_write(inode, fi->original_i_size);
-		fi->original_i_size = 0;
 	}
 }
 
