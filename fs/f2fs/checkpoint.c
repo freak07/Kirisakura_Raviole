@@ -1471,18 +1471,20 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	ckpt->elapsed_time = cpu_to_le64(get_mtime(sbi, true));
 	ckpt->free_segment_count = cpu_to_le32(free_segments(sbi));
 	for (i = 0; i < NR_CURSEG_NODE_TYPE; i++) {
-		struct curseg_info *curseg = CURSEG_I(sbi, i + CURSEG_HOT_NODE);
-
-		ckpt->cur_node_segno[i] = cpu_to_le32(curseg->segno);
-		ckpt->cur_node_blkoff[i] = cpu_to_le16(curseg->next_blkoff);
-		ckpt->alloc_type[i + CURSEG_HOT_NODE] = curseg->alloc_type;
+		ckpt->cur_node_segno[i] =
+			cpu_to_le32(curseg_segno(sbi, i + CURSEG_HOT_NODE));
+		ckpt->cur_node_blkoff[i] =
+			cpu_to_le16(curseg_blkoff(sbi, i + CURSEG_HOT_NODE));
+		ckpt->alloc_type[i + CURSEG_HOT_NODE] =
+				curseg_alloc_type(sbi, i + CURSEG_HOT_NODE);
 	}
 	for (i = 0; i < NR_CURSEG_DATA_TYPE; i++) {
-		struct curseg_info *curseg = CURSEG_I(sbi, i + CURSEG_HOT_DATA);
-
-		ckpt->cur_data_segno[i] = cpu_to_le32(curseg->segno);
-		ckpt->cur_data_blkoff[i] = cpu_to_le16(curseg->next_blkoff);
-		ckpt->alloc_type[i + CURSEG_HOT_DATA] = curseg->alloc_type;
+		ckpt->cur_data_segno[i] =
+			cpu_to_le32(curseg_segno(sbi, i + CURSEG_HOT_DATA));
+		ckpt->cur_data_blkoff[i] =
+			cpu_to_le16(curseg_blkoff(sbi, i + CURSEG_HOT_DATA));
+		ckpt->alloc_type[i + CURSEG_HOT_DATA] =
+				curseg_alloc_type(sbi, i + CURSEG_HOT_DATA);
 	}
 
 	/* 2 cp + n data seg summary + orphan inode blocks */
