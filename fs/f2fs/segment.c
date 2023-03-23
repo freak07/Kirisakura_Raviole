@@ -1094,8 +1094,9 @@ static void __update_discard_tree_range(struct f2fs_sb_info *sbi,
 				block_t start, block_t len);
 /* this function is copied from blkdev_issue_discard from block/blk-lib.c */
 static int __submit_discard_cmd(struct f2fs_sb_info *sbi,
-				struct discard_policy *dpolicy,
-				struct discard_cmd *dc, int *issued)
+						struct discard_policy *dpolicy,
+						struct discard_cmd *dc,
+						unsigned int *issued)
 {
 	struct block_device *bdev = dc->bdev;
 	struct request_queue *q = bdev_get_queue(bdev);
@@ -1378,8 +1379,8 @@ static void __queue_discard_cmd(struct f2fs_sb_info *sbi,
 	mutex_unlock(&SM_I(sbi)->dcc_info->cmd_lock);
 }
 
-static void __issue_discard_cmd_orderly(struct f2fs_sb_info *sbi,
-		struct discard_policy *dpolicy, int *issued)
+static unsigned int __issue_discard_cmd_orderly(struct f2fs_sb_info *sbi,
+					struct discard_policy *dpolicy)
 {
 	struct discard_cmd_control *dcc = SM_I(sbi)->dcc_info;
 	struct discard_cmd *prev_dc = NULL, *next_dc = NULL;
@@ -1387,6 +1388,7 @@ static void __issue_discard_cmd_orderly(struct f2fs_sb_info *sbi,
 	struct discard_cmd *dc;
 	struct blk_plug plug;
 	unsigned int pos = dcc->next_pos;
+	unsigned int issued = 0;
 	bool io_interrupted = false;
 
 	mutex_lock(&dcc->cmd_lock);
@@ -1413,9 +1415,9 @@ static void __issue_discard_cmd_orderly(struct f2fs_sb_info *sbi,
 		}
 
 		dcc->next_pos = dc->lstart + dc->len;
-		err = __submit_discard_cmd(sbi, dpolicy, dc, issued);
+		err = __submit_discard_cmd(sbi, dpolicy, dc, &issued);
 
-		if (*issued >= dpolicy->max_requests)
+		if (issued >= dpolicy->max_requests)
 			break;
 next:
 		node = rb_next(&dc->rb_node);
@@ -1431,8 +1433,10 @@ next:
 
 	mutex_unlock(&dcc->cmd_lock);
 
-	if (!(*issued) && io_interrupted)
-		*issued = -1;
+	if (!issued && io_interrupted)
+		issued = -1;
+
+	return issued;
 }
 static unsigned int __wait_all_discard_cmd(struct f2fs_sb_info *sbi,
 					struct discard_policy *dpolicy);
@@ -1460,10 +1464,8 @@ retry:
 		if (i + 1 < dpolicy->granularity)
 			break;
 
-		if (i + 1 < dcc->max_ordered_discard && dpolicy->ordered) {
-			__issue_discard_cmd_orderly(sbi, dpolicy, &issued);
-			return issued;
-		}
+		if (i + 1 < dcc->max_ordered_discard && dpolicy->ordered)
+			return __issue_discard_cmd_orderly(sbi, dpolicy);
 
 		pend_list = &dcc->pend_list[i];
 
