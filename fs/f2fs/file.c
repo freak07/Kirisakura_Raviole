@@ -1848,10 +1848,7 @@ static int f2fs_release_file(struct inode *inode, struct file *filp)
 			atomic_read(&inode->i_writecount) != 1)
 		return 0;
 
-	inode_lock(inode);
 	f2fs_abort_atomic_write(inode, true);
-	inode_unlock(inode);
-
 	return 0;
 }
 
@@ -1866,12 +1863,8 @@ static int f2fs_file_flush(struct file *file, fl_owner_t id)
 	 * before dropping file lock, it needs to do in ->flush.
 	 */
 	if (F2FS_I(inode)->atomic_write_task == current &&
-				(current->flags & PF_EXITING)) {
-		inode_lock(inode);
+				(current->flags & PF_EXITING))
 		f2fs_abort_atomic_write(inode, true);
-		inode_unlock(inode);
-	}
-
 	return 0;
 }
 
@@ -2134,28 +2127,19 @@ static int f2fs_ioc_start_atomic_write(struct file *filp, bool truncate)
 		goto out;
 	}
 
-	/* Check if the inode already has a COW inode */
-	if (fi->cow_inode == NULL) {
-		/* Create a COW inode for atomic write */
-		pinode = f2fs_iget(inode->i_sb, fi->i_pino);
-		if (IS_ERR(pinode)) {
-			f2fs_up_write(&fi->i_gc_rwsem[WRITE]);
-			ret = PTR_ERR(pinode);
-			goto out;
-		}
+	/* Create a COW inode for atomic write */
+	pinode = f2fs_iget(inode->i_sb, fi->i_pino);
+	if (IS_ERR(pinode)) {
+		f2fs_up_write(&fi->i_gc_rwsem[WRITE]);
+		ret = PTR_ERR(pinode);
+		goto out;
+	}
 
-		ret = f2fs_get_tmpfile(pinode, &fi->cow_inode);
-		iput(pinode);
-		if (ret) {
-			f2fs_up_write(&fi->i_gc_rwsem[WRITE]);
-			goto out;
-		}
-
-		set_inode_flag(fi->cow_inode, FI_COW_FILE);
-		clear_inode_flag(fi->cow_inode, FI_INLINE_DATA);
-	} else {
-		/* Reuse the already created COW inode */
-		f2fs_do_truncate_blocks(fi->cow_inode, 0, true);
+	ret = f2fs_get_tmpfile(pinode, &fi->cow_inode);
+	iput(pinode);
+	if (ret) {
+		f2fs_up_write(&fi->i_gc_rwsem[WRITE]);
+		goto out;
 	}
 
 	f2fs_write_inode(inode, NULL);
@@ -2163,6 +2147,8 @@ static int f2fs_ioc_start_atomic_write(struct file *filp, bool truncate)
 	stat_inc_atomic_inode(inode);
 
 	set_inode_flag(inode, FI_ATOMIC_FILE);
+	set_inode_flag(fi->cow_inode, FI_COW_FILE);
+	clear_inode_flag(fi->cow_inode, FI_INLINE_DATA);
 
 	isize = i_size_read(inode);
 	fi->original_i_size = isize;
