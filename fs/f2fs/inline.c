@@ -65,6 +65,7 @@ bool f2fs_may_inline_dentry(struct inode *inode)
 void f2fs_do_read_inline_data(struct page *page, struct page *ipage)
 {
 	struct inode *inode = page->mapping->host;
+	void *src_addr, *dst_addr;
 
 	if (PageUptodate(page))
 		return;
@@ -74,8 +75,11 @@ void f2fs_do_read_inline_data(struct page *page, struct page *ipage)
 	zero_user_segment(page, MAX_INLINE_DATA(inode), PAGE_SIZE);
 
 	/* Copy the whole inline data block */
-	memcpy_to_page(page, 0, inline_data_addr(inode, ipage),
-		       MAX_INLINE_DATA(inode));
+	src_addr = inline_data_addr(inode, ipage);
+	dst_addr = kmap_atomic(page);
+	memcpy(dst_addr, src_addr, MAX_INLINE_DATA(inode));
+	flush_dcache_page(page);
+	kunmap_atomic(dst_addr);
 	if (!PageUptodate(page))
 		SetPageUptodate(page);
 }
@@ -260,6 +264,7 @@ out:
 
 int f2fs_write_inline_data(struct inode *inode, struct page *page)
 {
+	void *src_addr, *dst_addr;
 	struct dnode_of_data dn;
 	int err;
 
@@ -276,8 +281,10 @@ int f2fs_write_inline_data(struct inode *inode, struct page *page)
 	f2fs_bug_on(F2FS_I_SB(inode), page->index);
 
 	f2fs_wait_on_page_writeback(dn.inode_page, NODE, true, true);
-	memcpy_from_page(inline_data_addr(inode, dn.inode_page),
-			 page, 0, MAX_INLINE_DATA(inode));
+	src_addr = kmap_atomic(page);
+	dst_addr = inline_data_addr(inode, dn.inode_page);
+	memcpy(dst_addr, src_addr, MAX_INLINE_DATA(inode));
+	kunmap_atomic(src_addr);
 	set_page_dirty(dn.inode_page);
 
 	f2fs_clear_page_cache_dirty_tag(page);
