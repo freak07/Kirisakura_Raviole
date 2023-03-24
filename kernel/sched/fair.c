@@ -597,6 +597,7 @@ avg_vruntime_add(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	s64 key = entity_key(cfs_rq, se);
 
 	cfs_rq->avg_vruntime += key * weight;
+	cfs_rq->avg_slice += se->slice * weight;
 	cfs_rq->avg_load += weight;
 }
 
@@ -607,6 +608,7 @@ avg_vruntime_sub(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	s64 key = entity_key(cfs_rq, se);
 
 	cfs_rq->avg_vruntime -= key * weight;
+	cfs_rq->avg_slice -= se->slice * weight;
 	cfs_rq->avg_load -= weight;
 }
 
@@ -4603,6 +4605,18 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 		unsigned long load;
 
 		lag = se->vlag;
+
+		/*
+		 * For latency sensitive tasks; those that have a shorter than
+		 * average slice and do not fully consume the slice, transition
+		 * to EEVDF placement strategy #2.
+		 */
+		if (sched_feat(PLACE_FUDGE) &&
+		    cfs_rq->avg_slice > se->slice * cfs_rq->avg_load) {
+			lag += vslice;
+			if (lag > 0)
+				lag = 0;
+		}
 
 		/*
 		 * If we want to place a task and preserve lag, we have to
