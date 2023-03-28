@@ -333,15 +333,7 @@ struct vm_area_struct {
 	 * See vmf_insert_mixed_prot() for discussion.
 	 */
 	pgprot_t vm_page_prot;
-
-	/*
-	 * Flags, see mm.h.
-	 * To modify use vm_flags_{init|reset|set|clear|mod} functions.
-	 */
-	union {
-		const vm_flags_t vm_flags;
-		vm_flags_t __private __vm_flags;
-	};
+	unsigned long vm_flags;		/* Flags, see mm.h. */
 
 	/*
 	 * For areas with an address space and backing store,
