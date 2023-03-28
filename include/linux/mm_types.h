@@ -349,7 +349,10 @@ struct vm_area_struct {
 	 * Flags, see mm.h.
 	 * To modify use vm_flags_{init|reset|set|clear|mod} functions.
 	 */
-	unsigned long vm_flags;
+	union {
+		const vm_flags_t vm_flags;
+		vm_flags_t __private __vm_flags;
+	};
 
 #ifdef CONFIG_PER_VMA_LOCK
 	int vm_lock_seq;
