@@ -1577,10 +1577,6 @@ int vma_wants_writenotify(struct vm_area_struct *vma, pgprot_t vm_page_prot)
 	if (IS_ENABLED(CONFIG_MEM_SOFT_DIRTY) && !(vm_flags & VM_SOFTDIRTY) &&
 	    !is_vm_hugetlb_page(vma))
 		return 1;
-		
-	/* Do we need write faults for uffd-wp tracking? */
-	if (userfaultfd_wp(vma))
-		return 1;
 
 	/* Specialty mapping? */
 	if (vm_flags & VM_PFNMAP)
@@ -2658,7 +2654,7 @@ cannot_expand:
 
 	vma->vm_start = addr;
 	vma->vm_end = end;
-	vm_flags_init(vma, vm_flags);
+	vma->vm_flags = vm_flags;
 	vma->vm_page_prot = vm_get_page_prot(vm_flags);
 	vma->vm_pgoff = pgoff;
 
@@ -2784,7 +2780,7 @@ expanded:
 	 * then new mapped in-place (which must be aimed as
 	 * a completely new data area).
 	 */
-	vm_flags_set(vma, VM_SOFTDIRTY);
+	vma->vm_flags |= VM_SOFTDIRTY;
 
 	vma_set_page_prot(vma);
 
@@ -3009,7 +3005,7 @@ static int do_brk_flags(struct ma_state *mas, struct vm_area_struct *vma,
 			anon_vma_interval_tree_pre_update_vma(vma);
 		}
 		vma->vm_end = addr + len;
-		vm_flags_set(vma, VM_SOFTDIRTY);
+		vma->vm_flags |= VM_SOFTDIRTY;
 		mas_store_prealloc(mas, vma);
 
 		if (vma->anon_vma) {
@@ -3029,7 +3025,7 @@ static int do_brk_flags(struct ma_state *mas, struct vm_area_struct *vma,
 	vma->vm_start = addr;
 	vma->vm_end = addr + len;
 	vma->vm_pgoff = addr >> PAGE_SHIFT;
-	vm_flags_init(vma, flags);
+	vma->vm_flags = flags;
 	vma->vm_page_prot = vm_get_page_prot(flags);
 	mas_set_range(mas, vma->vm_start, addr + len - 1);
 	if (mas_store_gfp(mas, vma, GFP_KERNEL))
@@ -3042,7 +3038,7 @@ out:
 	mm->data_vm += len >> PAGE_SHIFT;
 	if (flags & VM_LOCKED)
 		mm->locked_vm += (len >> PAGE_SHIFT);
-	vm_flags_set(vma, VM_SOFTDIRTY);
+	vma->vm_flags |= VM_SOFTDIRTY;
 	validate_mm(mm);
 	return 0;
 

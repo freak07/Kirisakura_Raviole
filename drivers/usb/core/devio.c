@@ -266,7 +266,8 @@ static int usbdev_mmap(struct file *file, struct vm_area_struct *vma)
 		}
 	}
 
-	vm_flags_set(vma, VM_IO | VM_DONTEXPAND | VM_DONTDUMP);
+	vma->vm_flags |= VM_IO;
+	vma->vm_flags |= (VM_DONTEXPAND | VM_DONTDUMP);
 	vma->vm_ops = &usbdev_vm_ops;
 	vma->vm_private_data = usbm;
 

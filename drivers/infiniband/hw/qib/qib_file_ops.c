@@ -733,7 +733,7 @@ static int qib_mmap_mem(struct vm_area_struct *vma, struct qib_ctxtdata *rcd,
 		}
 
 		/* don't allow them to later change with mprotect */
-		vm_flags_clear(vma, VM_MAYWRITE);
+		vma->vm_flags &= ~VM_MAYWRITE;
 	}
 
 	pfn = virt_to_phys(kvaddr) >> PAGE_SHIFT;
@@ -769,7 +769,7 @@ static int mmap_ureg(struct vm_area_struct *vma, struct qib_devdata *dd,
 		phys = dd->physaddr + ureg;
 		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
-		vm_flags_set(vma, VM_DONTCOPY | VM_DONTEXPAND);
+		vma->vm_flags |= VM_DONTCOPY | VM_DONTEXPAND;
 		ret = io_remap_pfn_range(vma, vma->vm_start,
 					 phys >> PAGE_SHIFT,
 					 vma->vm_end - vma->vm_start,
@@ -810,7 +810,8 @@ static int mmap_piobufs(struct vm_area_struct *vma,
 	 * don't allow them to later change to readable with mprotect (for when
 	 * not initially mapped readable, as is normally the case)
 	 */
-	vm_flags_mod(vma, VM_DONTCOPY | VM_DONTEXPAND, VM_MAYREAD);
+	vma->vm_flags &= ~VM_MAYREAD;
+	vma->vm_flags |= VM_DONTCOPY | VM_DONTEXPAND;
 
 	/* We used PAT if wc_cookie == 0 */
 	if (!dd->wc_cookie)
@@ -851,7 +852,7 @@ static int mmap_rcvegrbufs(struct vm_area_struct *vma,
 		goto bail;
 	}
 	/* don't allow them to later change to writeable with mprotect */
-	vm_flags_clear(vma, VM_MAYWRITE);
+	vma->vm_flags &= ~VM_MAYWRITE;
 
 	start = vma->vm_start;
 
@@ -943,7 +944,7 @@ static int mmap_kvaddr(struct vm_area_struct *vma, u64 pgaddr,
 		 * Don't allow permission to later change to writeable
 		 * with mprotect.
 		 */
-		vm_flags_clear(vma, VM_MAYWRITE);
+		vma->vm_flags &= ~VM_MAYWRITE;
 	} else
 		goto bail;
 	len = vma->vm_end - vma->vm_start;
@@ -954,7 +955,7 @@ static int mmap_kvaddr(struct vm_area_struct *vma, u64 pgaddr,
 
 	vma->vm_pgoff = (unsigned long) addr >> PAGE_SHIFT;
 	vma->vm_ops = &qib_file_vm_ops;
-	vm_flags_set(vma, VM_DONTEXPAND | VM_DONTDUMP);
+	vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP;
 	ret = 1;
 
 bail:

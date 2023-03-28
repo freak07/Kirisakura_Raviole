@@ -418,7 +418,7 @@ static int cramfs_physmem_mmap(struct file *file, struct vm_area_struct *vma)
 		 * unpopulated ptes via cramfs_readpage().
 		 */
 		int i;
-		vm_flags_set(vma, VM_MIXEDMAP);
+		vma->vm_flags |= VM_MIXEDMAP;
 		for (i = 0; i < pages && !ret; i++) {
 			vm_fault_t vmf;
 			unsigned long off = i * PAGE_SIZE;

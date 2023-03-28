@@ -376,7 +376,7 @@ static int erofs_file_mmap(struct file *file, struct vm_area_struct *vma)
 		return -EINVAL;
 
 	vma->vm_ops = &erofs_dax_vm_ops;
-	vm_flags_set(vma, VM_HUGEPAGE);
+	vma->vm_flags |= VM_HUGEPAGE;
 	return 0;
 }
 #else

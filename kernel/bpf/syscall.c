@@ -656,10 +656,10 @@ static int bpf_map_mmap(struct file *filp, struct vm_area_struct *vma)
 	/* set default open/close callbacks */
 	vma->vm_ops = &bpf_map_default_vmops;
 	vma->vm_private_data = map;
-	vm_flags_clear(vma, VM_MAYEXEC);
+	vma->vm_flags &= ~VM_MAYEXEC;
 	if (!(vma->vm_flags & VM_WRITE))
 		/* disallow re-mapping with PROT_WRITE */
-		vm_flags_clear(vma, VM_MAYWRITE);
+		vma->vm_flags &= ~VM_MAYWRITE;
 
 	err = map->ops->map_mmap(map, vma);
 	if (err)

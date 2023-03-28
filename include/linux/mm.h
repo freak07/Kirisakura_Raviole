@@ -3393,7 +3393,7 @@ static inline int seal_check_future_write(int seals, struct vm_area_struct *vma)
 		 * VM_MAYWRITE as we still want them to be COW-writable.
 		 */
 		if (vma->vm_flags & VM_SHARED)
-			vm_flags_clear(vma, VM_MAYWRITE);
+			vma->vm_flags &= ~(VM_MAYWRITE);
 	}
 
 	return 0;

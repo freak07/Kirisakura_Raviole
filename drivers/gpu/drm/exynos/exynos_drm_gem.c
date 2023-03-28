@@ -255,7 +255,7 @@ static int exynos_drm_gem_mmap_buffer(struct exynos_drm_gem *exynos_gem,
 	unsigned long vm_size;
 	int ret;
 
-	vm_flags_clear(vma, VM_PFNMAP);
+	vma->vm_flags &= ~VM_PFNMAP;
 	vma->vm_pgoff = 0;
 
 	vm_size = vma->vm_end - vma->vm_start;

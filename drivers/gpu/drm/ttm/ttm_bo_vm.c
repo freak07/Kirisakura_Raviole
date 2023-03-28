@@ -567,7 +567,8 @@ static void ttm_bo_mmap_vma_setup(struct ttm_buffer_object *bo, struct vm_area_s
 	 * bad for performance. Until that has been sorted out, use
 	 * VM_MIXEDMAP on all mappings. See freedesktop.org bug #75719
 	 */
-	vm_flags_set(vma, VM_MIXEDMAP | VM_IO | VM_DONTEXPAND | VM_DONTDUMP);
+	vma->vm_flags |= VM_MIXEDMAP;
+	vma->vm_flags |= VM_IO | VM_DONTEXPAND | VM_DONTDUMP;
 }
 
 int ttm_bo_mmap(struct file *filp, struct vm_area_struct *vma,

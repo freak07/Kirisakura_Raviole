@@ -2075,7 +2075,7 @@ static int hisi_qm_uacce_mmap(struct uacce_queue *q,
 				return -EINVAL;
 		}
 
-		vm_flags_set(vma, VM_IO);
+		vma->vm_flags |= VM_IO;
 
 		return remap_pfn_range(vma, vma->vm_start,
 				       qm->phys_base >> PAGE_SHIFT,

@@ -1971,8 +1971,8 @@ static int kfd_mmio_mmap(struct kfd_dev *dev, struct kfd_process *process,
 
 	address = amdgpu_amdkfd_get_mmio_remap_phys_addr(dev->kgd);
 
-	vm_flags_set(vma, VM_IO | VM_DONTCOPY | VM_DONTEXPAND | VM_NORESERVE |
-				VM_DONTDUMP | VM_PFNMAP);
+	vma->vm_flags |= VM_IO | VM_DONTCOPY | VM_DONTEXPAND | VM_NORESERVE |
+				VM_DONTDUMP | VM_PFNMAP;
 
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
