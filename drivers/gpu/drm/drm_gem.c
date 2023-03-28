@@ -1159,7 +1159,7 @@ int drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 			return -EINVAL;
 		}
 
-		vm_flags_clear(vma, VM_MAYWRITE);
+		vma->vm_flags &= ~VM_MAYWRITE;
 	}
 
 	ret = drm_gem_mmap_obj(obj, drm_vma_node_size(node) << PAGE_SHIFT,
