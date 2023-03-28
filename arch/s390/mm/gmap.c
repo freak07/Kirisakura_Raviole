@@ -2570,17 +2570,13 @@ int gmap_mark_unmergeable(void)
 {
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
-	unsigned long vm_flags;
 	int ret;
 
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
-		/* Copy vm_flags to avoid partial modifications in ksm_madvise */
-		vm_flags = vma->vm_flags;
 		ret = ksm_madvise(vma, vma->vm_start, vma->vm_end,
-				  MADV_UNMERGEABLE, &vm_flags);
+				  MADV_UNMERGEABLE, &vma->vm_flags);
 		if (ret)
 			return ret;
-		vm_flags_reset(vma, vm_flags);
 	}
 	mm->def_flags &= ~VM_MERGEABLE;
 	return 0;
