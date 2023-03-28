@@ -688,7 +688,7 @@ static unsigned long move_vma(struct vm_area_struct *vma,
 
 	if (unlikely(!err && (flags & MREMAP_DONTUNMAP))) {
 		/* We always clear VM_LOCKED[ONFAULT] on the old vma */
-		vm_flags_clear(vma, VM_LOCKED_MASK);
+		vma->vm_flags &= VM_LOCKED_CLEAR_MASK;
 
 		/* Because we won't unmap we don't need to touch locked_vm */
 		return new_addr;
