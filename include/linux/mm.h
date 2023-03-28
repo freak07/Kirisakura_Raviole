@@ -752,28 +752,21 @@ static inline void vm_flags_init(struct vm_area_struct *vma,
 static inline void vm_flags_reset(struct vm_area_struct *vma,
 				  vm_flags_t flags)
 {
-	vma_start_write(vma);
+	mmap_assert_write_locked(vma->vm_mm);
 	vm_flags_init(vma, flags);
-}
-
-static inline void vm_flags_reset_once(struct vm_area_struct *vma,
-				       vm_flags_t flags)
-{
-	vma_start_write(vma);
-	WRITE_ONCE(ACCESS_PRIVATE(vma, __vm_flags), flags);
 }
 
 static inline void vm_flags_set(struct vm_area_struct *vma,
 				vm_flags_t flags)
 {
-	vma_start_write(vma);
+	mmap_assert_write_locked(vma->vm_mm);
 	ACCESS_PRIVATE(vma, __vm_flags) |= flags;
 }
 
 static inline void vm_flags_clear(struct vm_area_struct *vma,
 				  vm_flags_t flags)
 {
-	vma_start_write(vma);
+	mmap_assert_write_locked(vma->vm_mm);
 	ACCESS_PRIVATE(vma, __vm_flags) &= ~flags;
 }
 
@@ -794,7 +787,7 @@ static inline void __vm_flags_mod(struct vm_area_struct *vma,
 static inline void vm_flags_mod(struct vm_area_struct *vma,
 				vm_flags_t set, vm_flags_t clear)
 {
-	vma_start_write(vma);
+	mmap_assert_write_locked(vma->vm_mm);
 	__vm_flags_mod(vma, set, clear);
 }
 
