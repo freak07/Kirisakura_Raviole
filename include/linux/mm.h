@@ -689,16 +689,6 @@ static inline void vm_flags_clear(struct vm_area_struct *vma,
 }
 
 /*
- * Use only if VMA is not part of the VMA tree or has no other users and
- * therefore needs no locking.
- */
-static inline void __vm_flags_mod(struct vm_area_struct *vma,
-				  vm_flags_t set, vm_flags_t clear)
-{
-	vm_flags_init(vma, (vma->vm_flags | set) & ~clear);
-}
-
-/*
  * Use only when the order of set/clear operations is unimportant, otherwise
  * use vm_flags_{set|clear} explicitly.
  */
@@ -706,7 +696,7 @@ static inline void vm_flags_mod(struct vm_area_struct *vma,
 				vm_flags_t set, vm_flags_t clear)
 {
 	mmap_assert_write_locked(vma->vm_mm);
-	__vm_flags_mod(vma, set, clear);
+	vm_flags_init(vma, (vma->vm_flags | set) & ~clear);
 }
 
 static inline void vma_set_anonymous(struct vm_area_struct *vma)
@@ -1815,7 +1805,7 @@ void zap_page_range(struct vm_area_struct *vma, unsigned long address,
 		    unsigned long size);
 void unmap_vmas(struct mmu_gather *tlb, struct maple_tree *mt,
 		struct vm_area_struct *start_vma, unsigned long start,
-		unsigned long end, bool mm_wr_locked);
+		unsigned long end);
 
 struct mmu_notifier_range;
 
