@@ -2512,13 +2512,11 @@ do_mas_align_munmap(struct ma_state *mas, struct vm_area_struct *vma,
 	 * down_read(mmap_lock) and collide with the VMA we are about to unmap.
 	 */
 	if (downgrade) {
-		if (next && (next->vm_flags & VM_GROWSDOWN)) {
-			vma_start_write(next);
+		if (next && (next->vm_flags & VM_GROWSDOWN))
 			downgrade = false;
-		} else if (prev && (prev->vm_flags & VM_GROWSUP)) {
-			vma_start_write(prev);
+		else if (prev && (prev->vm_flags & VM_GROWSUP))
 			downgrade = false;
-		} else
+		else
 			mmap_write_downgrade(mm);
 	}
 
