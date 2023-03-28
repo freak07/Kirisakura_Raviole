@@ -26,7 +26,6 @@
  *       hugetlbfs_i_mmap_rwsem_key (in huge_pmd_share)
  *         mapping->i_mmap_rwsem
  *           hugetlb_fault_mutex (hugetlbfs specific page fault mutex)
- *           vma_start_write
  *           anon_vma->rwsem
  *             mm->page_table_lock or pte_lock
  *               swap_lock (in swap_duplicate, swap_info_get)
