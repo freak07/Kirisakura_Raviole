@@ -842,7 +842,7 @@ int __vma_adjust(struct vma_iterator *vmi, struct vm_area_struct *vma,
 			 * If next doesn't have anon_vma, import from vma after
 			 * next, if the vma overlaps with it.
 			 */
-			if (remove != NULL && !next->anon_vma)
+			if (remove2 != NULL && !next->anon_vma)
 				error = dup_anon_vma(vma, remove2);
 			else
 				error = dup_anon_vma(vma, remove);
