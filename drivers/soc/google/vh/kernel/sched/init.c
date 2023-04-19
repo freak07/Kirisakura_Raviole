@@ -76,6 +76,8 @@ extern void vh_sched_setaffinity_mod(void *data, struct task_struct *task,
 extern void vh_try_to_freeze_todo_logging_pixel_mod(void *data, bool *logging_on);
 extern void rvh_cpumask_any_and_distribute(void *data, struct task_struct *p,
 	const struct cpumask *cpu_valid_mask, const struct cpumask *new_mask, int *dest_cpu);
+void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_flags *rf,
+		int *pulled_task, int *done);
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 extern void rvh_attach_entity_load_avg_pixel_mod(void *data, struct cfs_rq *cfs_rq,
 						 struct sched_entity *se);
@@ -87,8 +89,10 @@ extern void rvh_remove_entity_load_avg_pixel_mod(void *data, struct cfs_rq *cfs_
 						 struct sched_entity *se);
 extern void rvh_update_blocked_fair_pixel_mod(void *data, struct rq *rq);
 #endif
-void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_flags *rf,
-		int *pulled_task, int *done);
+extern void rvh_set_user_nice_pixel_mod(void *data, struct task_struct *p, long *nice,
+					bool *allowed);
+extern void rvh_setscheduler_pixel_mod(void *data, struct task_struct *p);
+extern void rvh_prepare_prio_fork_pixel_mod(void *data, struct task_struct *p);
 
 extern struct cpufreq_governor sched_pixel_gov;
 
@@ -103,6 +107,7 @@ static int init_vendor_task_data(void *data)
 		get_task_struct(t);
 		v_tsk = get_vendor_task_struct(t);
 		init_vendor_task_struct(v_tsk);
+		v_tsk->orig_prio = t->static_prio;
 		put_task_struct(t);
 	}
 
@@ -295,6 +300,18 @@ static int vh_sched_init(void)
 
 	ret = register_trace_android_vh_binder_restore_priority(
 		vh_binder_restore_priority_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_set_user_nice(rvh_set_user_nice_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_setscheduler(rvh_setscheduler_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_prepare_prio_fork(rvh_prepare_prio_fork_pixel_mod, NULL);
 	if (ret)
 		return ret;
 
