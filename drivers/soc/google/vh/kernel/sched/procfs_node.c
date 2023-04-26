@@ -353,6 +353,20 @@ VENDOR_GROUP_CPUMASK_ATTRIBUTE(ta, preferred_idle_mask_mid, VG_TOPAPP);
 VENDOR_GROUP_CPUMASK_ATTRIBUTE(ta, preferred_idle_mask_high, VG_TOPAPP);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(ta, uclamp_min, VG_TOPAPP, UCLAMP_MIN);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(ta, uclamp_max, VG_TOPAPP, UCLAMP_MAX);
+VENDOR_GROUP_UINT_ATTRIBUTE(ta, uclamp_min_on_nice_low_value, VG_TOPAPP);
+VENDOR_GROUP_UINT_ATTRIBUTE(ta, uclamp_min_on_nice_mid_value, VG_TOPAPP);
+VENDOR_GROUP_UINT_ATTRIBUTE(ta, uclamp_min_on_nice_high_value, VG_TOPAPP);
+VENDOR_GROUP_UINT_ATTRIBUTE(ta, uclamp_max_on_nice_low_value, VG_TOPAPP);
+VENDOR_GROUP_UINT_ATTRIBUTE(ta, uclamp_max_on_nice_mid_value, VG_TOPAPP);
+VENDOR_GROUP_UINT_ATTRIBUTE(ta, uclamp_max_on_nice_high_value, VG_TOPAPP);
+VENDOR_GROUP_UINT_ATTRIBUTE(ta, uclamp_min_on_nice_low_prio, VG_TOPAPP);
+VENDOR_GROUP_UINT_ATTRIBUTE(ta, uclamp_min_on_nice_mid_prio, VG_TOPAPP);
+VENDOR_GROUP_UINT_ATTRIBUTE(ta, uclamp_min_on_nice_high_prio, VG_TOPAPP);
+VENDOR_GROUP_UINT_ATTRIBUTE(ta, uclamp_max_on_nice_low_prio, VG_TOPAPP);
+VENDOR_GROUP_UINT_ATTRIBUTE(ta, uclamp_max_on_nice_mid_prio, VG_TOPAPP);
+VENDOR_GROUP_UINT_ATTRIBUTE(ta, uclamp_max_on_nice_high_prio, VG_TOPAPP);
+VENDOR_GROUP_BOOL_ATTRIBUTE(ta, uclamp_min_on_nice_enable, VG_TOPAPP);
+VENDOR_GROUP_BOOL_ATTRIBUTE(ta, uclamp_max_on_nice_enable, VG_TOPAPP);
 
 VENDOR_GROUP_BOOL_ATTRIBUTE(fg, prefer_idle, VG_FOREGROUND);
 VENDOR_GROUP_BOOL_ATTRIBUTE(fg, prefer_high_cap, VG_FOREGROUND);
@@ -365,6 +379,20 @@ VENDOR_GROUP_CPUMASK_ATTRIBUTE(fg, preferred_idle_mask_mid, VG_FOREGROUND);
 VENDOR_GROUP_CPUMASK_ATTRIBUTE(fg, preferred_idle_mask_high, VG_FOREGROUND);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(fg, uclamp_min, VG_FOREGROUND, UCLAMP_MIN);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(fg, uclamp_max, VG_FOREGROUND, UCLAMP_MAX);
+VENDOR_GROUP_UINT_ATTRIBUTE(fg, uclamp_min_on_nice_low_value, VG_FOREGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(fg, uclamp_min_on_nice_mid_value, VG_FOREGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(fg, uclamp_min_on_nice_high_value, VG_FOREGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(fg, uclamp_max_on_nice_low_value, VG_FOREGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(fg, uclamp_max_on_nice_mid_value, VG_FOREGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(fg, uclamp_max_on_nice_high_value, VG_FOREGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(fg, uclamp_min_on_nice_low_prio, VG_FOREGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(fg, uclamp_min_on_nice_mid_prio, VG_FOREGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(fg, uclamp_min_on_nice_high_prio, VG_FOREGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(fg, uclamp_max_on_nice_low_prio, VG_FOREGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(fg, uclamp_max_on_nice_mid_prio, VG_FOREGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(fg, uclamp_max_on_nice_high_prio, VG_FOREGROUND);
+VENDOR_GROUP_BOOL_ATTRIBUTE(fg, uclamp_min_on_nice_enable, VG_FOREGROUND);
+VENDOR_GROUP_BOOL_ATTRIBUTE(fg, uclamp_max_on_nice_enable, VG_FOREGROUND);
 
 VENDOR_GROUP_BOOL_ATTRIBUTE(sys, prefer_idle, VG_SYSTEM);
 VENDOR_GROUP_BOOL_ATTRIBUTE(sys, prefer_high_cap, VG_SYSTEM);
@@ -377,6 +405,20 @@ VENDOR_GROUP_CPUMASK_ATTRIBUTE(sys, preferred_idle_mask_mid, VG_SYSTEM);
 VENDOR_GROUP_CPUMASK_ATTRIBUTE(sys, preferred_idle_mask_high, VG_SYSTEM);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(sys, uclamp_min, VG_SYSTEM, UCLAMP_MIN);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(sys, uclamp_max, VG_SYSTEM, UCLAMP_MAX);
+VENDOR_GROUP_UINT_ATTRIBUTE(sys, uclamp_min_on_nice_low_value, VG_SYSTEM);
+VENDOR_GROUP_UINT_ATTRIBUTE(sys, uclamp_min_on_nice_mid_value, VG_SYSTEM);
+VENDOR_GROUP_UINT_ATTRIBUTE(sys, uclamp_min_on_nice_high_value, VG_SYSTEM);
+VENDOR_GROUP_UINT_ATTRIBUTE(sys, uclamp_max_on_nice_low_value, VG_SYSTEM);
+VENDOR_GROUP_UINT_ATTRIBUTE(sys, uclamp_max_on_nice_mid_value, VG_SYSTEM);
+VENDOR_GROUP_UINT_ATTRIBUTE(sys, uclamp_max_on_nice_high_value, VG_SYSTEM);
+VENDOR_GROUP_UINT_ATTRIBUTE(sys, uclamp_min_on_nice_low_prio, VG_SYSTEM);
+VENDOR_GROUP_UINT_ATTRIBUTE(sys, uclamp_min_on_nice_mid_prio, VG_SYSTEM);
+VENDOR_GROUP_UINT_ATTRIBUTE(sys, uclamp_min_on_nice_high_prio, VG_SYSTEM);
+VENDOR_GROUP_UINT_ATTRIBUTE(sys, uclamp_max_on_nice_low_prio, VG_SYSTEM);
+VENDOR_GROUP_UINT_ATTRIBUTE(sys, uclamp_max_on_nice_mid_prio, VG_SYSTEM);
+VENDOR_GROUP_UINT_ATTRIBUTE(sys, uclamp_max_on_nice_high_prio, VG_SYSTEM);
+VENDOR_GROUP_BOOL_ATTRIBUTE(sys, uclamp_min_on_nice_enable, VG_SYSTEM);
+VENDOR_GROUP_BOOL_ATTRIBUTE(sys, uclamp_max_on_nice_enable, VG_SYSTEM);
 
 VENDOR_GROUP_BOOL_ATTRIBUTE(cam, prefer_idle, VG_CAMERA);
 VENDOR_GROUP_BOOL_ATTRIBUTE(cam, prefer_high_cap, VG_CAMERA);
@@ -389,6 +431,20 @@ VENDOR_GROUP_CPUMASK_ATTRIBUTE(cam, preferred_idle_mask_mid, VG_CAMERA);
 VENDOR_GROUP_CPUMASK_ATTRIBUTE(cam, preferred_idle_mask_high, VG_CAMERA);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(cam, uclamp_min, VG_CAMERA, UCLAMP_MIN);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(cam, uclamp_max, VG_CAMERA, UCLAMP_MAX);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam, uclamp_min_on_nice_low_value, VG_CAMERA);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam, uclamp_min_on_nice_mid_value, VG_CAMERA);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam, uclamp_min_on_nice_high_value, VG_CAMERA);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam, uclamp_max_on_nice_low_value, VG_CAMERA);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam, uclamp_max_on_nice_mid_value, VG_CAMERA);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam, uclamp_max_on_nice_high_value, VG_CAMERA);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam, uclamp_min_on_nice_low_prio, VG_CAMERA);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam, uclamp_min_on_nice_mid_prio, VG_CAMERA);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam, uclamp_min_on_nice_high_prio, VG_CAMERA);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam, uclamp_max_on_nice_low_prio, VG_CAMERA);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam, uclamp_max_on_nice_mid_prio, VG_CAMERA);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam, uclamp_max_on_nice_high_prio, VG_CAMERA);
+VENDOR_GROUP_BOOL_ATTRIBUTE(cam, uclamp_min_on_nice_enable, VG_CAMERA);
+VENDOR_GROUP_BOOL_ATTRIBUTE(cam, uclamp_max_on_nice_enable, VG_CAMERA);
 
 VENDOR_GROUP_BOOL_ATTRIBUTE(cam_power, prefer_idle, VG_CAMERA_POWER);
 VENDOR_GROUP_BOOL_ATTRIBUTE(cam_power, prefer_high_cap, VG_CAMERA_POWER);
@@ -401,6 +457,20 @@ VENDOR_GROUP_CPUMASK_ATTRIBUTE(cam_power, preferred_idle_mask_mid, VG_CAMERA_POW
 VENDOR_GROUP_CPUMASK_ATTRIBUTE(cam_power, preferred_idle_mask_high, VG_CAMERA_POWER);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(cam_power, uclamp_min, VG_CAMERA_POWER, UCLAMP_MIN);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(cam_power, uclamp_max, VG_CAMERA_POWER, UCLAMP_MAX);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam_power, uclamp_min_on_nice_low_value, VG_CAMERA_POWER);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam_power, uclamp_min_on_nice_mid_value, VG_CAMERA_POWER);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam_power, uclamp_min_on_nice_high_value, VG_CAMERA_POWER);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam_power, uclamp_max_on_nice_low_value, VG_CAMERA_POWER);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam_power, uclamp_max_on_nice_mid_value, VG_CAMERA_POWER);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam_power, uclamp_max_on_nice_high_value, VG_CAMERA_POWER);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam_power, uclamp_min_on_nice_low_prio, VG_CAMERA_POWER);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam_power, uclamp_min_on_nice_mid_prio, VG_CAMERA_POWER);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam_power, uclamp_min_on_nice_high_prio, VG_CAMERA_POWER);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam_power, uclamp_max_on_nice_low_prio, VG_CAMERA_POWER);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam_power, uclamp_max_on_nice_mid_prio, VG_CAMERA_POWER);
+VENDOR_GROUP_UINT_ATTRIBUTE(cam_power, uclamp_max_on_nice_high_prio, VG_CAMERA_POWER);
+VENDOR_GROUP_BOOL_ATTRIBUTE(cam_power, uclamp_min_on_nice_enable, VG_CAMERA_POWER);
+VENDOR_GROUP_BOOL_ATTRIBUTE(cam_power, uclamp_max_on_nice_enable, VG_CAMERA_POWER);
 
 VENDOR_GROUP_BOOL_ATTRIBUTE(bg, prefer_idle, VG_BACKGROUND);
 VENDOR_GROUP_BOOL_ATTRIBUTE(bg, prefer_high_cap, VG_BACKGROUND);
@@ -413,6 +483,20 @@ VENDOR_GROUP_CPUMASK_ATTRIBUTE(bg, preferred_idle_mask_mid, VG_BACKGROUND);
 VENDOR_GROUP_CPUMASK_ATTRIBUTE(bg, preferred_idle_mask_high, VG_BACKGROUND);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(bg, uclamp_min, VG_BACKGROUND, UCLAMP_MIN);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(bg, uclamp_max, VG_BACKGROUND, UCLAMP_MAX);
+VENDOR_GROUP_UINT_ATTRIBUTE(bg, uclamp_min_on_nice_low_value, VG_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(bg, uclamp_min_on_nice_mid_value, VG_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(bg, uclamp_min_on_nice_high_value, VG_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(bg, uclamp_max_on_nice_low_value, VG_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(bg, uclamp_max_on_nice_mid_value, VG_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(bg, uclamp_max_on_nice_high_value, VG_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(bg, uclamp_min_on_nice_low_prio, VG_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(bg, uclamp_min_on_nice_mid_prio, VG_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(bg, uclamp_min_on_nice_high_prio, VG_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(bg, uclamp_max_on_nice_low_prio, VG_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(bg, uclamp_max_on_nice_mid_prio, VG_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(bg, uclamp_max_on_nice_high_prio, VG_BACKGROUND);
+VENDOR_GROUP_BOOL_ATTRIBUTE(bg, uclamp_min_on_nice_enable, VG_BACKGROUND);
+VENDOR_GROUP_BOOL_ATTRIBUTE(bg, uclamp_max_on_nice_enable, VG_BACKGROUND);
 
 VENDOR_GROUP_BOOL_ATTRIBUTE(sysbg, prefer_idle, VG_SYSTEM_BACKGROUND);
 VENDOR_GROUP_BOOL_ATTRIBUTE(sysbg, prefer_high_cap, VG_SYSTEM_BACKGROUND);
@@ -425,6 +509,20 @@ VENDOR_GROUP_CPUMASK_ATTRIBUTE(sysbg, preferred_idle_mask_mid, VG_SYSTEM_BACKGRO
 VENDOR_GROUP_CPUMASK_ATTRIBUTE(sysbg, preferred_idle_mask_high, VG_SYSTEM_BACKGROUND);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(sysbg, uclamp_min, VG_SYSTEM_BACKGROUND, UCLAMP_MIN);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(sysbg, uclamp_max, VG_SYSTEM_BACKGROUND, UCLAMP_MAX);
+VENDOR_GROUP_UINT_ATTRIBUTE(sysbg, uclamp_min_on_nice_low_value, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(sysbg, uclamp_min_on_nice_mid_value, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(sysbg, uclamp_min_on_nice_high_value, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(sysbg, uclamp_max_on_nice_low_value, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(sysbg, uclamp_max_on_nice_mid_value, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(sysbg, uclamp_max_on_nice_high_value, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(sysbg, uclamp_min_on_nice_low_prio, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(sysbg, uclamp_min_on_nice_mid_prio, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(sysbg, uclamp_min_on_nice_high_prio, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(sysbg, uclamp_max_on_nice_low_prio, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(sysbg, uclamp_max_on_nice_mid_prio, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_UINT_ATTRIBUTE(sysbg, uclamp_max_on_nice_high_prio, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_BOOL_ATTRIBUTE(sysbg, uclamp_min_on_nice_enable, VG_SYSTEM_BACKGROUND);
+VENDOR_GROUP_BOOL_ATTRIBUTE(sysbg, uclamp_max_on_nice_enable, VG_SYSTEM_BACKGROUND);
 
 VENDOR_GROUP_BOOL_ATTRIBUTE(nnapi, prefer_idle, VG_NNAPI_HAL);
 VENDOR_GROUP_BOOL_ATTRIBUTE(nnapi, prefer_high_cap, VG_NNAPI_HAL);
@@ -437,6 +535,20 @@ VENDOR_GROUP_CPUMASK_ATTRIBUTE(nnapi, preferred_idle_mask_mid, VG_NNAPI_HAL);
 VENDOR_GROUP_CPUMASK_ATTRIBUTE(nnapi, preferred_idle_mask_high, VG_NNAPI_HAL);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(nnapi, uclamp_min, VG_NNAPI_HAL, UCLAMP_MIN);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(nnapi, uclamp_max, VG_NNAPI_HAL, UCLAMP_MAX);
+VENDOR_GROUP_UINT_ATTRIBUTE(nnapi, uclamp_min_on_nice_low_value, VG_NNAPI_HAL);
+VENDOR_GROUP_UINT_ATTRIBUTE(nnapi, uclamp_min_on_nice_mid_value, VG_NNAPI_HAL);
+VENDOR_GROUP_UINT_ATTRIBUTE(nnapi, uclamp_min_on_nice_high_value, VG_NNAPI_HAL);
+VENDOR_GROUP_UINT_ATTRIBUTE(nnapi, uclamp_max_on_nice_low_value, VG_NNAPI_HAL);
+VENDOR_GROUP_UINT_ATTRIBUTE(nnapi, uclamp_max_on_nice_mid_value, VG_NNAPI_HAL);
+VENDOR_GROUP_UINT_ATTRIBUTE(nnapi, uclamp_max_on_nice_high_value, VG_NNAPI_HAL);
+VENDOR_GROUP_UINT_ATTRIBUTE(nnapi, uclamp_min_on_nice_low_prio, VG_NNAPI_HAL);
+VENDOR_GROUP_UINT_ATTRIBUTE(nnapi, uclamp_min_on_nice_mid_prio, VG_NNAPI_HAL);
+VENDOR_GROUP_UINT_ATTRIBUTE(nnapi, uclamp_min_on_nice_high_prio, VG_NNAPI_HAL);
+VENDOR_GROUP_UINT_ATTRIBUTE(nnapi, uclamp_max_on_nice_low_prio, VG_NNAPI_HAL);
+VENDOR_GROUP_UINT_ATTRIBUTE(nnapi, uclamp_max_on_nice_mid_prio, VG_NNAPI_HAL);
+VENDOR_GROUP_UINT_ATTRIBUTE(nnapi, uclamp_max_on_nice_high_prio, VG_NNAPI_HAL);
+VENDOR_GROUP_BOOL_ATTRIBUTE(nnapi, uclamp_min_on_nice_enable, VG_NNAPI_HAL);
+VENDOR_GROUP_BOOL_ATTRIBUTE(nnapi, uclamp_max_on_nice_enable, VG_NNAPI_HAL);
 
 VENDOR_GROUP_BOOL_ATTRIBUTE(rt, prefer_idle, VG_RT);
 VENDOR_GROUP_BOOL_ATTRIBUTE(rt, prefer_high_cap, VG_RT);
@@ -449,6 +561,20 @@ VENDOR_GROUP_CPUMASK_ATTRIBUTE(rt, preferred_idle_mask_mid, VG_RT);
 VENDOR_GROUP_CPUMASK_ATTRIBUTE(rt, preferred_idle_mask_high, VG_RT);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(rt, uclamp_min, VG_RT, UCLAMP_MIN);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(rt, uclamp_max, VG_RT, UCLAMP_MAX);
+VENDOR_GROUP_UINT_ATTRIBUTE(rt, uclamp_min_on_nice_low_value, VG_RT);
+VENDOR_GROUP_UINT_ATTRIBUTE(rt, uclamp_min_on_nice_mid_value, VG_RT);
+VENDOR_GROUP_UINT_ATTRIBUTE(rt, uclamp_min_on_nice_high_value, VG_RT);
+VENDOR_GROUP_UINT_ATTRIBUTE(rt, uclamp_max_on_nice_low_value, VG_RT);
+VENDOR_GROUP_UINT_ATTRIBUTE(rt, uclamp_max_on_nice_mid_value, VG_RT);
+VENDOR_GROUP_UINT_ATTRIBUTE(rt, uclamp_max_on_nice_high_value, VG_RT);
+VENDOR_GROUP_UINT_ATTRIBUTE(rt, uclamp_min_on_nice_low_prio, VG_RT);
+VENDOR_GROUP_UINT_ATTRIBUTE(rt, uclamp_min_on_nice_mid_prio, VG_RT);
+VENDOR_GROUP_UINT_ATTRIBUTE(rt, uclamp_min_on_nice_high_prio, VG_RT);
+VENDOR_GROUP_UINT_ATTRIBUTE(rt, uclamp_max_on_nice_low_prio, VG_RT);
+VENDOR_GROUP_UINT_ATTRIBUTE(rt, uclamp_max_on_nice_mid_prio, VG_RT);
+VENDOR_GROUP_UINT_ATTRIBUTE(rt, uclamp_max_on_nice_high_prio, VG_RT);
+VENDOR_GROUP_BOOL_ATTRIBUTE(rt, uclamp_min_on_nice_enable, VG_RT);
+VENDOR_GROUP_BOOL_ATTRIBUTE(rt, uclamp_max_on_nice_enable, VG_RT);
 
 VENDOR_GROUP_BOOL_ATTRIBUTE(dex2oat, prefer_idle, VG_DEX2OAT);
 VENDOR_GROUP_BOOL_ATTRIBUTE(dex2oat, prefer_high_cap, VG_DEX2OAT);
@@ -461,6 +587,20 @@ VENDOR_GROUP_CPUMASK_ATTRIBUTE(dex2oat, preferred_idle_mask_mid, VG_DEX2OAT);
 VENDOR_GROUP_CPUMASK_ATTRIBUTE(dex2oat, preferred_idle_mask_high, VG_DEX2OAT);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(dex2oat, uclamp_min, VG_DEX2OAT, UCLAMP_MIN);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(dex2oat, uclamp_max, VG_DEX2OAT, UCLAMP_MAX);
+VENDOR_GROUP_UINT_ATTRIBUTE(dex2oat, uclamp_min_on_nice_low_value, VG_DEX2OAT);
+VENDOR_GROUP_UINT_ATTRIBUTE(dex2oat, uclamp_min_on_nice_mid_value, VG_DEX2OAT);
+VENDOR_GROUP_UINT_ATTRIBUTE(dex2oat, uclamp_min_on_nice_high_value, VG_DEX2OAT);
+VENDOR_GROUP_UINT_ATTRIBUTE(dex2oat, uclamp_max_on_nice_low_value, VG_DEX2OAT);
+VENDOR_GROUP_UINT_ATTRIBUTE(dex2oat, uclamp_max_on_nice_mid_value, VG_DEX2OAT);
+VENDOR_GROUP_UINT_ATTRIBUTE(dex2oat, uclamp_max_on_nice_high_value, VG_DEX2OAT);
+VENDOR_GROUP_UINT_ATTRIBUTE(dex2oat, uclamp_min_on_nice_low_prio, VG_DEX2OAT);
+VENDOR_GROUP_UINT_ATTRIBUTE(dex2oat, uclamp_min_on_nice_mid_prio, VG_DEX2OAT);
+VENDOR_GROUP_UINT_ATTRIBUTE(dex2oat, uclamp_min_on_nice_high_prio, VG_DEX2OAT);
+VENDOR_GROUP_UINT_ATTRIBUTE(dex2oat, uclamp_max_on_nice_low_prio, VG_DEX2OAT);
+VENDOR_GROUP_UINT_ATTRIBUTE(dex2oat, uclamp_max_on_nice_mid_prio, VG_DEX2OAT);
+VENDOR_GROUP_UINT_ATTRIBUTE(dex2oat, uclamp_max_on_nice_high_prio, VG_DEX2OAT);
+VENDOR_GROUP_BOOL_ATTRIBUTE(dex2oat, uclamp_min_on_nice_enable, VG_DEX2OAT);
+VENDOR_GROUP_BOOL_ATTRIBUTE(dex2oat, uclamp_max_on_nice_enable, VG_DEX2OAT);
 
 VENDOR_GROUP_BOOL_ATTRIBUTE(ota, prefer_idle, VG_OTA);
 VENDOR_GROUP_BOOL_ATTRIBUTE(ota, prefer_high_cap, VG_OTA);
@@ -473,6 +613,20 @@ VENDOR_GROUP_CPUMASK_ATTRIBUTE(ota, preferred_idle_mask_mid, VG_OTA);
 VENDOR_GROUP_CPUMASK_ATTRIBUTE(ota, preferred_idle_mask_high, VG_OTA);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(ota, uclamp_min, VG_OTA, UCLAMP_MIN);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(ota, uclamp_max, VG_OTA, UCLAMP_MAX);
+VENDOR_GROUP_UINT_ATTRIBUTE(ota, uclamp_min_on_nice_low_value, VG_OTA);
+VENDOR_GROUP_UINT_ATTRIBUTE(ota, uclamp_min_on_nice_mid_value, VG_OTA);
+VENDOR_GROUP_UINT_ATTRIBUTE(ota, uclamp_min_on_nice_high_value, VG_OTA);
+VENDOR_GROUP_UINT_ATTRIBUTE(ota, uclamp_max_on_nice_low_value, VG_OTA);
+VENDOR_GROUP_UINT_ATTRIBUTE(ota, uclamp_max_on_nice_mid_value, VG_OTA);
+VENDOR_GROUP_UINT_ATTRIBUTE(ota, uclamp_max_on_nice_high_value, VG_OTA);
+VENDOR_GROUP_UINT_ATTRIBUTE(ota, uclamp_min_on_nice_low_prio, VG_OTA);
+VENDOR_GROUP_UINT_ATTRIBUTE(ota, uclamp_min_on_nice_mid_prio, VG_OTA);
+VENDOR_GROUP_UINT_ATTRIBUTE(ota, uclamp_min_on_nice_high_prio, VG_OTA);
+VENDOR_GROUP_UINT_ATTRIBUTE(ota, uclamp_max_on_nice_low_prio, VG_OTA);
+VENDOR_GROUP_UINT_ATTRIBUTE(ota, uclamp_max_on_nice_mid_prio, VG_OTA);
+VENDOR_GROUP_UINT_ATTRIBUTE(ota, uclamp_max_on_nice_high_prio, VG_OTA);
+VENDOR_GROUP_BOOL_ATTRIBUTE(ota, uclamp_min_on_nice_enable, VG_OTA);
+VENDOR_GROUP_BOOL_ATTRIBUTE(ota, uclamp_max_on_nice_enable, VG_OTA);
 
 VENDOR_GROUP_BOOL_ATTRIBUTE(sf, prefer_idle, VG_SF);
 VENDOR_GROUP_BOOL_ATTRIBUTE(sf, prefer_high_cap, VG_SF);
@@ -485,6 +639,20 @@ VENDOR_GROUP_CPUMASK_ATTRIBUTE(sf, preferred_idle_mask_mid, VG_SF);
 VENDOR_GROUP_CPUMASK_ATTRIBUTE(sf, preferred_idle_mask_high, VG_SF);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(sf, uclamp_min, VG_SF, UCLAMP_MIN);
 VENDOR_GROUP_UCLAMP_ATTRIBUTE(sf, uclamp_max, VG_SF, UCLAMP_MAX);
+VENDOR_GROUP_UINT_ATTRIBUTE(sf, uclamp_min_on_nice_low_value, VG_SF);
+VENDOR_GROUP_UINT_ATTRIBUTE(sf, uclamp_min_on_nice_mid_value, VG_SF);
+VENDOR_GROUP_UINT_ATTRIBUTE(sf, uclamp_min_on_nice_high_value, VG_SF);
+VENDOR_GROUP_UINT_ATTRIBUTE(sf, uclamp_max_on_nice_low_value, VG_SF);
+VENDOR_GROUP_UINT_ATTRIBUTE(sf, uclamp_max_on_nice_mid_value, VG_SF);
+VENDOR_GROUP_UINT_ATTRIBUTE(sf, uclamp_max_on_nice_high_value, VG_SF);
+VENDOR_GROUP_UINT_ATTRIBUTE(sf, uclamp_min_on_nice_low_prio, VG_SF);
+VENDOR_GROUP_UINT_ATTRIBUTE(sf, uclamp_min_on_nice_mid_prio, VG_SF);
+VENDOR_GROUP_UINT_ATTRIBUTE(sf, uclamp_min_on_nice_high_prio, VG_SF);
+VENDOR_GROUP_UINT_ATTRIBUTE(sf, uclamp_max_on_nice_low_prio, VG_SF);
+VENDOR_GROUP_UINT_ATTRIBUTE(sf, uclamp_max_on_nice_mid_prio, VG_SF);
+VENDOR_GROUP_UINT_ATTRIBUTE(sf, uclamp_max_on_nice_high_prio, VG_SF);
+VENDOR_GROUP_BOOL_ATTRIBUTE(sf, uclamp_min_on_nice_enable, VG_SF);
+VENDOR_GROUP_BOOL_ATTRIBUTE(sf, uclamp_max_on_nice_enable, VG_SF);
 
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
@@ -1550,6 +1718,20 @@ static struct pentry entries[] = {
 	PROC_ENTRY(ta_preferred_idle_mask_high),
 	PROC_ENTRY(ta_uclamp_min),
 	PROC_ENTRY(ta_uclamp_max),
+	PROC_ENTRY(ta_uclamp_min_on_nice_low_value),
+	PROC_ENTRY(ta_uclamp_min_on_nice_mid_value),
+	PROC_ENTRY(ta_uclamp_min_on_nice_high_value),
+	PROC_ENTRY(ta_uclamp_max_on_nice_low_value),
+	PROC_ENTRY(ta_uclamp_max_on_nice_mid_value),
+	PROC_ENTRY(ta_uclamp_max_on_nice_high_value),
+	PROC_ENTRY(ta_uclamp_min_on_nice_low_prio),
+	PROC_ENTRY(ta_uclamp_min_on_nice_mid_prio),
+	PROC_ENTRY(ta_uclamp_min_on_nice_high_prio),
+	PROC_ENTRY(ta_uclamp_max_on_nice_low_prio),
+	PROC_ENTRY(ta_uclamp_max_on_nice_mid_prio),
+	PROC_ENTRY(ta_uclamp_max_on_nice_high_prio),
+	PROC_ENTRY(ta_uclamp_min_on_nice_enable),
+	PROC_ENTRY(ta_uclamp_max_on_nice_enable),
 	// Foreground group attributes
 	PROC_ENTRY(fg_prefer_idle),
 	PROC_ENTRY(fg_prefer_high_cap),
@@ -1562,6 +1744,20 @@ static struct pentry entries[] = {
 	PROC_ENTRY(fg_preferred_idle_mask_high),
 	PROC_ENTRY(fg_uclamp_min),
 	PROC_ENTRY(fg_uclamp_max),
+	PROC_ENTRY(fg_uclamp_min_on_nice_low_value),
+	PROC_ENTRY(fg_uclamp_min_on_nice_mid_value),
+	PROC_ENTRY(fg_uclamp_min_on_nice_high_value),
+	PROC_ENTRY(fg_uclamp_max_on_nice_low_value),
+	PROC_ENTRY(fg_uclamp_max_on_nice_mid_value),
+	PROC_ENTRY(fg_uclamp_max_on_nice_high_value),
+	PROC_ENTRY(fg_uclamp_min_on_nice_low_prio),
+	PROC_ENTRY(fg_uclamp_min_on_nice_mid_prio),
+	PROC_ENTRY(fg_uclamp_min_on_nice_high_prio),
+	PROC_ENTRY(fg_uclamp_max_on_nice_low_prio),
+	PROC_ENTRY(fg_uclamp_max_on_nice_mid_prio),
+	PROC_ENTRY(fg_uclamp_max_on_nice_high_prio),
+	PROC_ENTRY(fg_uclamp_min_on_nice_enable),
+	PROC_ENTRY(fg_uclamp_max_on_nice_enable),
 	// System group attributes
 	PROC_ENTRY(sys_prefer_idle),
 	PROC_ENTRY(sys_prefer_high_cap),
@@ -1574,6 +1770,20 @@ static struct pentry entries[] = {
 	PROC_ENTRY(sys_preferred_idle_mask_high),
 	PROC_ENTRY(sys_uclamp_min),
 	PROC_ENTRY(sys_uclamp_max),
+	PROC_ENTRY(sys_uclamp_min_on_nice_low_value),
+	PROC_ENTRY(sys_uclamp_min_on_nice_mid_value),
+	PROC_ENTRY(sys_uclamp_min_on_nice_high_value),
+	PROC_ENTRY(sys_uclamp_max_on_nice_low_value),
+	PROC_ENTRY(sys_uclamp_max_on_nice_mid_value),
+	PROC_ENTRY(sys_uclamp_max_on_nice_high_value),
+	PROC_ENTRY(sys_uclamp_min_on_nice_low_prio),
+	PROC_ENTRY(sys_uclamp_min_on_nice_mid_prio),
+	PROC_ENTRY(sys_uclamp_min_on_nice_high_prio),
+	PROC_ENTRY(sys_uclamp_max_on_nice_low_prio),
+	PROC_ENTRY(sys_uclamp_max_on_nice_mid_prio),
+	PROC_ENTRY(sys_uclamp_max_on_nice_high_prio),
+	PROC_ENTRY(sys_uclamp_min_on_nice_enable),
+	PROC_ENTRY(sys_uclamp_max_on_nice_enable),
 	// Camera group attributes
 	PROC_ENTRY(cam_prefer_idle),
 	PROC_ENTRY(cam_prefer_high_cap),
@@ -1586,6 +1796,20 @@ static struct pentry entries[] = {
 	PROC_ENTRY(cam_preferred_idle_mask_high),
 	PROC_ENTRY(cam_uclamp_min),
 	PROC_ENTRY(cam_uclamp_max),
+	PROC_ENTRY(cam_uclamp_min_on_nice_low_value),
+	PROC_ENTRY(cam_uclamp_min_on_nice_mid_value),
+	PROC_ENTRY(cam_uclamp_min_on_nice_high_value),
+	PROC_ENTRY(cam_uclamp_max_on_nice_low_value),
+	PROC_ENTRY(cam_uclamp_max_on_nice_mid_value),
+	PROC_ENTRY(cam_uclamp_max_on_nice_high_value),
+	PROC_ENTRY(cam_uclamp_min_on_nice_low_prio),
+	PROC_ENTRY(cam_uclamp_min_on_nice_mid_prio),
+	PROC_ENTRY(cam_uclamp_min_on_nice_high_prio),
+	PROC_ENTRY(cam_uclamp_max_on_nice_low_prio),
+	PROC_ENTRY(cam_uclamp_max_on_nice_mid_prio),
+	PROC_ENTRY(cam_uclamp_max_on_nice_high_prio),
+	PROC_ENTRY(cam_uclamp_min_on_nice_enable),
+	PROC_ENTRY(cam_uclamp_max_on_nice_enable),
 	// Camera_power group attributes
 	PROC_ENTRY(cam_power_prefer_idle),
 	PROC_ENTRY(cam_power_prefer_high_cap),
@@ -1598,6 +1822,20 @@ static struct pentry entries[] = {
 	PROC_ENTRY(cam_power_preferred_idle_mask_high),
 	PROC_ENTRY(cam_power_uclamp_min),
 	PROC_ENTRY(cam_power_uclamp_max),
+	PROC_ENTRY(cam_power_uclamp_min_on_nice_low_value),
+	PROC_ENTRY(cam_power_uclamp_min_on_nice_mid_value),
+	PROC_ENTRY(cam_power_uclamp_min_on_nice_high_value),
+	PROC_ENTRY(cam_power_uclamp_max_on_nice_low_value),
+	PROC_ENTRY(cam_power_uclamp_max_on_nice_mid_value),
+	PROC_ENTRY(cam_power_uclamp_max_on_nice_high_value),
+	PROC_ENTRY(cam_power_uclamp_min_on_nice_low_prio),
+	PROC_ENTRY(cam_power_uclamp_min_on_nice_mid_prio),
+	PROC_ENTRY(cam_power_uclamp_min_on_nice_high_prio),
+	PROC_ENTRY(cam_power_uclamp_max_on_nice_low_prio),
+	PROC_ENTRY(cam_power_uclamp_max_on_nice_mid_prio),
+	PROC_ENTRY(cam_power_uclamp_max_on_nice_high_prio),
+	PROC_ENTRY(cam_power_uclamp_min_on_nice_enable),
+	PROC_ENTRY(cam_power_uclamp_max_on_nice_enable),
 	// Background group attributes
 	PROC_ENTRY(bg_prefer_idle),
 	PROC_ENTRY(bg_prefer_high_cap),
@@ -1610,6 +1848,20 @@ static struct pentry entries[] = {
 	PROC_ENTRY(bg_preferred_idle_mask_high),
 	PROC_ENTRY(bg_uclamp_min),
 	PROC_ENTRY(bg_uclamp_max),
+	PROC_ENTRY(bg_uclamp_min_on_nice_low_value),
+	PROC_ENTRY(bg_uclamp_min_on_nice_mid_value),
+	PROC_ENTRY(bg_uclamp_min_on_nice_high_value),
+	PROC_ENTRY(bg_uclamp_max_on_nice_low_value),
+	PROC_ENTRY(bg_uclamp_max_on_nice_mid_value),
+	PROC_ENTRY(bg_uclamp_max_on_nice_high_value),
+	PROC_ENTRY(bg_uclamp_min_on_nice_low_prio),
+	PROC_ENTRY(bg_uclamp_min_on_nice_mid_prio),
+	PROC_ENTRY(bg_uclamp_min_on_nice_high_prio),
+	PROC_ENTRY(bg_uclamp_max_on_nice_low_prio),
+	PROC_ENTRY(bg_uclamp_max_on_nice_mid_prio),
+	PROC_ENTRY(bg_uclamp_max_on_nice_high_prio),
+	PROC_ENTRY(bg_uclamp_min_on_nice_enable),
+	PROC_ENTRY(bg_uclamp_max_on_nice_enable),
 	// System Background group attributes
 	PROC_ENTRY(sysbg_prefer_idle),
 	PROC_ENTRY(sysbg_prefer_high_cap),
@@ -1622,6 +1874,20 @@ static struct pentry entries[] = {
 	PROC_ENTRY(sysbg_preferred_idle_mask_high),
 	PROC_ENTRY(sysbg_uclamp_min),
 	PROC_ENTRY(sysbg_uclamp_max),
+	PROC_ENTRY(sysbg_uclamp_min_on_nice_low_value),
+	PROC_ENTRY(sysbg_uclamp_min_on_nice_mid_value),
+	PROC_ENTRY(sysbg_uclamp_min_on_nice_high_value),
+	PROC_ENTRY(sysbg_uclamp_max_on_nice_low_value),
+	PROC_ENTRY(sysbg_uclamp_max_on_nice_mid_value),
+	PROC_ENTRY(sysbg_uclamp_max_on_nice_high_value),
+	PROC_ENTRY(sysbg_uclamp_min_on_nice_low_prio),
+	PROC_ENTRY(sysbg_uclamp_min_on_nice_mid_prio),
+	PROC_ENTRY(sysbg_uclamp_min_on_nice_high_prio),
+	PROC_ENTRY(sysbg_uclamp_max_on_nice_low_prio),
+	PROC_ENTRY(sysbg_uclamp_max_on_nice_mid_prio),
+	PROC_ENTRY(sysbg_uclamp_max_on_nice_high_prio),
+	PROC_ENTRY(sysbg_uclamp_min_on_nice_enable),
+	PROC_ENTRY(sysbg_uclamp_max_on_nice_enable),
 	// Nnapi-HAL group attributes
 	PROC_ENTRY(nnapi_prefer_idle),
 	PROC_ENTRY(nnapi_prefer_high_cap),
@@ -1634,6 +1900,20 @@ static struct pentry entries[] = {
 	PROC_ENTRY(nnapi_preferred_idle_mask_high),
 	PROC_ENTRY(nnapi_uclamp_min),
 	PROC_ENTRY(nnapi_uclamp_max),
+	PROC_ENTRY(nnapi_uclamp_min_on_nice_low_value),
+	PROC_ENTRY(nnapi_uclamp_min_on_nice_mid_value),
+	PROC_ENTRY(nnapi_uclamp_min_on_nice_high_value),
+	PROC_ENTRY(nnapi_uclamp_max_on_nice_low_value),
+	PROC_ENTRY(nnapi_uclamp_max_on_nice_mid_value),
+	PROC_ENTRY(nnapi_uclamp_max_on_nice_high_value),
+	PROC_ENTRY(nnapi_uclamp_min_on_nice_low_prio),
+	PROC_ENTRY(nnapi_uclamp_min_on_nice_mid_prio),
+	PROC_ENTRY(nnapi_uclamp_min_on_nice_high_prio),
+	PROC_ENTRY(nnapi_uclamp_max_on_nice_low_prio),
+	PROC_ENTRY(nnapi_uclamp_max_on_nice_mid_prio),
+	PROC_ENTRY(nnapi_uclamp_max_on_nice_high_prio),
+	PROC_ENTRY(nnapi_uclamp_min_on_nice_enable),
+	PROC_ENTRY(nnapi_uclamp_max_on_nice_enable),
 	// RT group attributes
 	PROC_ENTRY(rt_prefer_idle),
 	PROC_ENTRY(rt_prefer_high_cap),
@@ -1646,6 +1926,20 @@ static struct pentry entries[] = {
 	PROC_ENTRY(rt_preferred_idle_mask_high),
 	PROC_ENTRY(rt_uclamp_min),
 	PROC_ENTRY(rt_uclamp_max),
+	PROC_ENTRY(rt_uclamp_min_on_nice_low_value),
+	PROC_ENTRY(rt_uclamp_min_on_nice_mid_value),
+	PROC_ENTRY(rt_uclamp_min_on_nice_high_value),
+	PROC_ENTRY(rt_uclamp_max_on_nice_low_value),
+	PROC_ENTRY(rt_uclamp_max_on_nice_mid_value),
+	PROC_ENTRY(rt_uclamp_max_on_nice_high_value),
+	PROC_ENTRY(rt_uclamp_min_on_nice_low_prio),
+	PROC_ENTRY(rt_uclamp_min_on_nice_mid_prio),
+	PROC_ENTRY(rt_uclamp_min_on_nice_high_prio),
+	PROC_ENTRY(rt_uclamp_max_on_nice_low_prio),
+	PROC_ENTRY(rt_uclamp_max_on_nice_mid_prio),
+	PROC_ENTRY(rt_uclamp_max_on_nice_high_prio),
+	PROC_ENTRY(rt_uclamp_min_on_nice_enable),
+	PROC_ENTRY(rt_uclamp_max_on_nice_enable),
 	// DEX2OAT group attributes
 	PROC_ENTRY(dex2oat_prefer_idle),
 	PROC_ENTRY(dex2oat_prefer_high_cap),
@@ -1658,6 +1952,20 @@ static struct pentry entries[] = {
 	PROC_ENTRY(dex2oat_preferred_idle_mask_high),
 	PROC_ENTRY(dex2oat_uclamp_min),
 	PROC_ENTRY(dex2oat_uclamp_max),
+	PROC_ENTRY(dex2oat_uclamp_min_on_nice_low_value),
+	PROC_ENTRY(dex2oat_uclamp_min_on_nice_mid_value),
+	PROC_ENTRY(dex2oat_uclamp_min_on_nice_high_value),
+	PROC_ENTRY(dex2oat_uclamp_max_on_nice_low_value),
+	PROC_ENTRY(dex2oat_uclamp_max_on_nice_mid_value),
+	PROC_ENTRY(dex2oat_uclamp_max_on_nice_high_value),
+	PROC_ENTRY(dex2oat_uclamp_min_on_nice_low_prio),
+	PROC_ENTRY(dex2oat_uclamp_min_on_nice_mid_prio),
+	PROC_ENTRY(dex2oat_uclamp_min_on_nice_high_prio),
+	PROC_ENTRY(dex2oat_uclamp_max_on_nice_low_prio),
+	PROC_ENTRY(dex2oat_uclamp_max_on_nice_mid_prio),
+	PROC_ENTRY(dex2oat_uclamp_max_on_nice_high_prio),
+	PROC_ENTRY(dex2oat_uclamp_min_on_nice_enable),
+	PROC_ENTRY(dex2oat_uclamp_max_on_nice_enable),
 	// OTA group attributes
 	PROC_ENTRY(ota_prefer_idle),
 	PROC_ENTRY(ota_prefer_high_cap),
@@ -1670,6 +1978,20 @@ static struct pentry entries[] = {
 	PROC_ENTRY(ota_preferred_idle_mask_high),
 	PROC_ENTRY(ota_uclamp_min),
 	PROC_ENTRY(ota_uclamp_max),
+	PROC_ENTRY(ota_uclamp_min_on_nice_low_value),
+	PROC_ENTRY(ota_uclamp_min_on_nice_mid_value),
+	PROC_ENTRY(ota_uclamp_min_on_nice_high_value),
+	PROC_ENTRY(ota_uclamp_max_on_nice_low_value),
+	PROC_ENTRY(ota_uclamp_max_on_nice_mid_value),
+	PROC_ENTRY(ota_uclamp_max_on_nice_high_value),
+	PROC_ENTRY(ota_uclamp_min_on_nice_low_prio),
+	PROC_ENTRY(ota_uclamp_min_on_nice_mid_prio),
+	PROC_ENTRY(ota_uclamp_min_on_nice_high_prio),
+	PROC_ENTRY(ota_uclamp_max_on_nice_low_prio),
+	PROC_ENTRY(ota_uclamp_max_on_nice_mid_prio),
+	PROC_ENTRY(ota_uclamp_max_on_nice_high_prio),
+	PROC_ENTRY(ota_uclamp_min_on_nice_enable),
+	PROC_ENTRY(ota_uclamp_max_on_nice_enable),
 	// SF group attributes
 	PROC_ENTRY(sf_prefer_idle),
 	PROC_ENTRY(sf_prefer_high_cap),
@@ -1682,6 +2004,20 @@ static struct pentry entries[] = {
 	PROC_ENTRY(sf_preferred_idle_mask_high),
 	PROC_ENTRY(sf_uclamp_min),
 	PROC_ENTRY(sf_uclamp_max),
+	PROC_ENTRY(sf_uclamp_min_on_nice_low_value),
+	PROC_ENTRY(sf_uclamp_min_on_nice_mid_value),
+	PROC_ENTRY(sf_uclamp_min_on_nice_high_value),
+	PROC_ENTRY(sf_uclamp_max_on_nice_low_value),
+	PROC_ENTRY(sf_uclamp_max_on_nice_mid_value),
+	PROC_ENTRY(sf_uclamp_max_on_nice_high_value),
+	PROC_ENTRY(sf_uclamp_min_on_nice_low_prio),
+	PROC_ENTRY(sf_uclamp_min_on_nice_mid_prio),
+	PROC_ENTRY(sf_uclamp_min_on_nice_high_prio),
+	PROC_ENTRY(sf_uclamp_max_on_nice_low_prio),
+	PROC_ENTRY(sf_uclamp_max_on_nice_mid_prio),
+	PROC_ENTRY(sf_uclamp_max_on_nice_high_prio),
+	PROC_ENTRY(sf_uclamp_min_on_nice_enable),
+	PROC_ENTRY(sf_uclamp_max_on_nice_enable),
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	// FG util group attributes
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
