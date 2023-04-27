@@ -2622,7 +2622,19 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 			continue;
 		}
 
-		if (src_rq->nr_running <= 1) {
+		if (cpu_is_idle(cpu)) {
+			rq_unlock_irqrestore(src_rq, &src_rf);
+			continue;
+		}
+
+		/* src_cpu is just waken up by tasks */
+		if (src_rq->curr == src_rq->idle) {
+			rq_unlock_irqrestore(src_rq, &src_rf);
+			continue;
+		}
+
+		/* we assume rt task will release cpu soon */
+		if (src_rq->curr->prio < MAX_RT_PRIO) {
 			rq_unlock_irqrestore(src_rq, &src_rf);
 			continue;
 		}
