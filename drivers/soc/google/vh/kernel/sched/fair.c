@@ -71,6 +71,8 @@ extern struct vendor_group_list vendor_group_list[VG_MAX];
 
 extern inline unsigned int uclamp_none(enum uclamp_id clamp_id);
 
+bool wait_for_init = true;
+
 unsigned long schedutil_cpu_util_pixel_mod(int cpu, unsigned long util_cfs,
 				 unsigned long max, enum cpu_util_type type,
 				 struct task_struct *p);
@@ -2254,6 +2256,9 @@ void vh_dup_task_struct_pixel_mod(void *data, struct task_struct *tsk, struct ta
 {
 	struct vendor_task_struct *v_tsk, *v_orig;
 	struct vendor_binder_task_struct *vbinder;
+
+	if (wait_for_init)
+		return;
 
 	v_tsk = get_vendor_task_struct(tsk);
 	v_orig = get_vendor_task_struct(orig);
