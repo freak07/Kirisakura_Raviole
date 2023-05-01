@@ -73,6 +73,7 @@ struct vendor_task_struct {
 	struct vendor_binder_task_struct binder_task;
 	/* parameters for RT inheritance */
 	unsigned int uclamp_pi[UCLAMP_CNT];
+	u64 runnable_start_ns;
 };
 
 ANDROID_VENDOR_CHECK_SIZE_ALIGN(u64 android_vendor_data1[64], struct vendor_task_struct t);
