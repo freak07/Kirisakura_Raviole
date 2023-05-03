@@ -26,6 +26,7 @@ unsigned int __read_mostly vendor_sched_uclamp_threshold;
 unsigned int __read_mostly vendor_sched_util_post_init_scale = DEF_UTIL_POST_INIT_SCALE;
 bool __read_mostly vendor_sched_npi_packing = true; //non prefer idle packing
 bool __read_mostly vendor_sched_reduce_prefer_idle = true;
+bool __read_mostly vendor_sched_boost_adpf_prio = true;
 struct proc_dir_entry *vendor_sched;
 extern struct vendor_group_list vendor_group_list[VG_MAX];
 
@@ -1074,7 +1075,9 @@ static int update_uclamp_fork_reset(const char *buf, bool val)
 	vp = get_vendor_task_struct(p);
 	if (vp->uclamp_fork_reset != val) {
 		vp->uclamp_fork_reset = val;
-		update_adpf_prio(p, vp, val);
+
+		if (vendor_sched_boost_adpf_prio)
+			update_adpf_prio(p, vp, val);
 	}
 
 	put_task_struct(p);
@@ -1406,6 +1409,31 @@ static ssize_t reduce_prefer_idle_store(struct file *filp, const char __user *ub
 }
 
 PROC_OPS_RW(reduce_prefer_idle);
+
+static int boost_adpf_prio_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%s\n", vendor_sched_boost_adpf_prio ? "true" : "false");
+
+	return 0;
+}
+
+static ssize_t boost_adpf_prio_store(struct file *filp, const char __user *ubuf,
+				     size_t count, loff_t *pos)
+{
+	bool enable;
+	int err;
+
+	err = kstrtobool_from_user(ubuf, count, &enable);
+
+	if (err)
+		return err;
+
+	vendor_sched_boost_adpf_prio = enable;
+
+	return count;
+}
+
+PROC_OPS_RW(boost_adpf_prio);
 
 #if IS_ENABLED(CONFIG_UCLAMP_STATS)
 static int uclamp_stats_show(struct seq_file *m, void *v)
@@ -2287,6 +2315,7 @@ static struct pentry entries[] = {
 	PROC_ENTRY(util_post_init_scale),
 	PROC_ENTRY(npi_packing),
 	PROC_ENTRY(reduce_prefer_idle),
+	PROC_ENTRY(boost_adpf_prio),
 	PROC_ENTRY(dump_task),
 	// pmu limit attribute
 	PROC_ENTRY(pmu_poll_time),
