@@ -650,7 +650,7 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 	}
 	tlb_finish_mmu(&tlb);
 
-	if (!error && vma_iter_end(&vmi) < end)
+	if (vma_iter_end(&vmi) < end)
 		error = -ENOMEM;
 
 out:
