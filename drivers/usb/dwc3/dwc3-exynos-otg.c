@@ -73,7 +73,9 @@ static int dwc3_otg_statemachine(struct otg_fsm *fsm)
 		if (!fsm->id) {
 			otg->state = OTG_STATE_A_IDLE;
 		} else if (fsm->b_sess_vld) {
-			exynos->retry_cnt = 0;
+			/* TODO: change back to 0 if the issue is fixed*/
+			exynos->retry_cnt = REMOVED_RETRY_CNT;
+			dev_info(dev, "retry mechanism is bypass by overriding retry_cnt to REMOVED_RETRY_CNT\n");
 			ret = otg_start_gadget(fsm, 1);
 			if (!ret)
 				otg->state = OTG_STATE_B_PERIPHERAL;
@@ -486,6 +488,7 @@ err1:
 static void dwc3_otg_retry_configuration(struct timer_list *t)
 {
 	struct dwc3_exynos *exynos = from_timer(exynos, t, usb_connect_timer);
+	struct dwc3_otg *dotg = exynos->dotg;
 	struct usb_gadget *gadget = exynos->dwc->gadget;
 	struct usb_composite_dev *cdev = get_gadget_data(gadget);
 
@@ -495,6 +498,9 @@ static void dwc3_otg_retry_configuration(struct timer_list *t)
 		dev_dbg(exynos->dev, "Stop retry configuration(cdev is NULL) or Removed\n");
 		return;
 	}
+
+	if (dotg->skip_retry)
+		return;
 
 	if (!cdev->config) {
 		if (exynos->retry_cnt >= MAX_RETRY_CNT) {
@@ -558,10 +564,10 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 			goto err1;
 		}
 
-		ret = usb_gadget_activate(dwc->gadget);
-		if (ret < 0)
-			dev_err(dev, "USB gadget activate failed with %d\n", ret);
+		/* connect gadget */
+		usb_udc_vbus_handler(dwc->gadget, true);
 
+		exynos->gadget_state = true;
 		dwc3_otg_set_peripheral_mode(dotg);
 
 		dev_dbg(dev, "%s: start check usb configuration timer\n", __func__);
@@ -573,9 +579,8 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 		exynos->vbus_state = false;
 		del_timer_sync(&exynos->usb_connect_timer);
 
-		ret = usb_gadget_deactivate(dwc->gadget);
-		if (ret < 0)
-			dev_err(dev, "USB gadget deactivate failed with %d\n", ret);
+		/* disconnect gadget */
+		usb_udc_vbus_handler(dwc->gadget, false);
 
 		if (exynos->config.is_not_vbus_pad && exynos_usbdrd_get_ldo_status() &&
 				!dotg->in_shutdown)
@@ -584,7 +589,13 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 		if (exynos->extra_delay)
 			msleep(100);
 
+
+		if (!dwc3_otg_check_usb_activity(exynos))
+			dev_err(dev, "too long to suspend after cable plug-out\n");
+
 		ret = dwc3_otg_phy_enable(fsm, 0, on);
+
+		exynos->gadget_state = false;
 err1:
 		__pm_relax(dotg->wakelock);
 	}
@@ -882,6 +893,21 @@ bool dwc3_otg_check_usb_suspend(struct dwc3_exynos *exynos)
 	return wait_counter < DWC3_EXYNOS_MAX_WAIT_COUNT;
 }
 
+bool dwc3_otg_check_usb_activity(struct dwc3_exynos *exynos)
+{
+	int wait_counter = 0;
+
+	do {
+		if ((atomic_read(&exynos->dwc->dev->power.usage_count)) < 2)
+			break;
+
+		wait_counter++;
+		msleep(20);
+	} while (wait_counter < DWC3_EXYNOS_DISCONNECT_COUNT);
+
+	return wait_counter < DWC3_EXYNOS_DISCONNECT_COUNT;
+}
+
 static int dwc3_otg_reboot_notify(struct notifier_block *nb, unsigned long event, void *buf)
 {
 	struct dwc3_exynos *exynos;
@@ -950,6 +976,9 @@ static void dwc3_otg_recovery_reconnection(struct work_struct *w)
 	if (dotg->in_shutdown)
 		return;
 
+	if (dotg->skip_retry)
+		return;
+
 	__pm_stay_awake(dotg->reconn_wakelock);
 	/* Lock to avoid real cable insert/remove operation. */
 	mutex_lock(&fsm->lock);
@@ -1000,6 +1029,9 @@ int dwc3_otg_usb_recovery_reconn(struct dwc3_exynos *exynos)
 	if (dotg->in_shutdown)
 		return -ESHUTDOWN;
 
+	if (dotg->skip_retry)
+		return -EPERM;
+
 	schedule_work(&dotg->recov_work);
 
 	return 0;
@@ -1034,6 +1066,22 @@ static int dwc3_otg_pm_notifier(struct notifier_block *nb,
 	default:
 		break;
 	}
+	return NOTIFY_OK;
+}
+
+static int psy_changed(struct notifier_block *nb, unsigned long evt, void *ptr)
+{
+	struct dwc3_otg *dotg = container_of(nb, struct dwc3_otg, psy_notifier);
+	struct power_supply *psy = ptr;
+
+	if (!strstr(psy->desc->name, "usb") || evt != PSY_EVENT_PROP_CHANGED)
+		return NOTIFY_OK;
+
+	if (dotg->dwc->gadget->state == USB_STATE_CONFIGURED && !dotg->skip_retry) {
+		dotg->skip_retry = true;
+		del_timer_sync(&dotg->exynos->usb_connect_timer);
+	}
+
 	return NOTIFY_OK;
 }
 
@@ -1108,6 +1156,11 @@ int dwc3_exynos_otg_init(struct dwc3 *dwc, struct dwc3_exynos *exynos)
 	ret = register_reboot_notifier(&dwc3_otg_reboot_notifier);
 	if (ret)
 		dev_err(dwc->dev, "failed register reboot notifier\n");
+
+	dotg->psy_notifier.notifier_call = psy_changed;
+	ret = power_supply_reg_notifier(&dotg->psy_notifier);
+	if (ret)
+		dev_err(dwc->dev, "failed register power supply notifier\n");
 
 	dotg->ssphy_restart_votable = gvotable_create_bool_election(SSPHY_RESTART_EL,
 								    dwc3_otg_ssphy_restart_cb,

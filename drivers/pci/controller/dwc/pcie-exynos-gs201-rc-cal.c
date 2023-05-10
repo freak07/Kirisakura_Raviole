@@ -16,6 +16,7 @@
 #include <linux/delay.h>
 #include <linux/exynos-pci-noti.h>
 #include <linux/regmap.h>
+#include <misc/logbuffer.h>
 #include "pcie-designware.h"
 #include "pcie-exynos-common.h"
 #include "pcie-exynos-rc.h"
@@ -104,6 +105,21 @@ void exynos_pcie_rc_pcie_phy_otp_config(void *phy_base_regs, int ch_num)
 
 #define LCPLL_REF_CLK_SEL	(0x3 << 4)
 
+/* Debug code added to check if PCIe PHY is being reset correctly. */
+struct pcie_reg {
+	u32 offset;
+	u32 val;
+};
+
+static const struct pcie_reg reset_table[6] = {
+	{ 0x0010, 0x55 },
+	{ 0x0014, 0x51 },
+	{ 0x0040, 0x50 },
+	{ 0x0044, 0x0C },
+	{ 0x00D8, 0x28 },
+	{ 0x1054, 0x77 }
+};
+
 void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 {
 	void __iomem *elbi_base_regs = exynos_pcie->elbi_base;
@@ -114,6 +130,16 @@ void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 	u32 i;
 
 	dev_dbg(exynos_pcie->pci->dev, "[CAL: %s] CAL ver 210802\n", __func__);
+
+	/* Debug code added to check if PCIe PHY is being reset correctly. */
+	logbuffer_log(exynos_pcie->log, "start checking reset values");
+	for (i = 0; i < 6; i++) {
+		val = readl(phy_base_regs + reset_table[i].offset);
+		if (val != reset_table[i].val)
+			dev_err(exynos_pcie->pci->dev, "off=%x, exp=0x%x, act=0x%x\n",
+				reset_table[i].offset, reset_table[i].val, val);
+	}
+	logbuffer_log(exynos_pcie->log, "reset values checked");
 
 	/* init. input clk path */
 	writel(0x28, phy_base_regs + 0xD8);

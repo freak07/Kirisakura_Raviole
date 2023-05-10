@@ -662,15 +662,6 @@ err1:
 	return ret;
 }
 
-static int dwc3_exynos_remove_child(struct device *dev, void *unused)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-
-	platform_device_unregister(pdev);
-
-	return 0;
-}
-
 int dwc3_exynos_host_init(struct dwc3_exynos *exynos)
 {
 	struct dwc3		*dwc = exynos->dwc;
@@ -774,6 +765,7 @@ static int dwc3_exynos_vbus_notifier(struct notifier_block *nb,
 				     unsigned long action, void *dev)
 {
 	struct dwc3_exynos *exynos = container_of(nb, struct dwc3_exynos, vbus_nb);
+	struct dwc3_otg *dotg = exynos->dotg;
 
 	dev_info(exynos->dev, "turn %s USB gadget\n", action ? "on" : "off");
 
@@ -782,6 +774,7 @@ static int dwc3_exynos_vbus_notifier(struct notifier_block *nb,
 		return NOTIFY_OK;
 	}
 
+	dotg->skip_retry = false;
 	dwc3_exynos_vbus_event(exynos->dev, action);
 
 	return NOTIFY_OK;
@@ -1055,6 +1048,15 @@ static ssize_t force_speed_store(struct device *dev, struct device_attribute *at
 }
 static DEVICE_ATTR_RW(force_speed);
 
+static ssize_t dwc3_exynos_gadget_state_show(struct device *dev, struct device_attribute *attr,
+					     char *buf)
+{
+	struct dwc3_exynos	*exynos = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%d\n", exynos->gadget_state);
+}
+static DEVICE_ATTR_RO(dwc3_exynos_gadget_state);
+
 static struct attribute *dwc3_exynos_otg_attrs[] = {
 	&dev_attr_dwc3_exynos_otg_id.attr,
 	&dev_attr_dwc3_exynos_otg_b_sess.attr,
@@ -1062,6 +1064,7 @@ static struct attribute *dwc3_exynos_otg_attrs[] = {
 	&dev_attr_dwc3_exynos_extra_delay.attr,
 	&dev_attr_usb_data_enabled.attr,
 	&dev_attr_force_speed.attr,
+	&dev_attr_dwc3_exynos_gadget_state.attr,
 	NULL
 };
 ATTRIBUTE_GROUPS(dwc3_exynos_otg);
@@ -1200,9 +1203,9 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 
 	otg_set_peripheral(&exynos->dotg->otg, exynos->dwc->gadget);
 
-	ret = usb_gadget_deactivate(exynos->dwc->gadget);
-	if (ret < 0)
-		dev_err(dev, "USB gadget deactivate failed with %d\n", ret);
+	/* disconnect gadget in probe */
+	usb_udc_vbus_handler(exynos->dwc->gadget, false);
+
 	/*
 	 * To avoid missing notification in kernel booting check extcon
 	 * state to run state machine.
@@ -1241,7 +1244,8 @@ static int dwc3_exynos_remove(struct platform_device *pdev)
 	pm_runtime_allow(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 
-	device_for_each_child(&pdev->dev, NULL, dwc3_exynos_remove_child);
+	of_platform_depopulate(&pdev->dev);
+
 	platform_device_unregister(exynos->usb2_phy);
 	platform_device_unregister(exynos->usb3_phy);
 
