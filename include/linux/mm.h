@@ -2695,19 +2695,35 @@ void anon_vma_interval_tree_verify(struct anon_vma_chain *node);
 
 /* mmap.c */
 extern int __vm_enough_memory(struct mm_struct *mm, long pages, int cap_sys_admin);
+extern int __vma_adjust_legacy(struct vm_area_struct *vma, unsigned long start,
+	unsigned long end, pgoff_t pgoff, struct vm_area_struct *insert,
+	struct vm_area_struct *expand);
+static inline int vma_adjust_legacy(struct vm_area_struct *vma, unsigned long start,
+	unsigned long end, pgoff_t pgoff, struct vm_area_struct *insert)
+{
+	return __vma_adjust_legacy(vma, start, end, pgoff, insert, NULL);
+}
 extern int vma_expand(struct vma_iterator *vmi, struct vm_area_struct *vma,
 		      unsigned long start, unsigned long end, pgoff_t pgoff,
 		      struct vm_area_struct *next);
 extern int vma_shrink(struct vma_iterator *vmi, struct vm_area_struct *vma,
 		       unsigned long start, unsigned long end, pgoff_t pgoff);
+extern struct vm_area_struct *vma_merge_legacy(struct mm_struct *,
+	struct vm_area_struct *prev, unsigned long addr, unsigned long end,
+	unsigned long vm_flags, struct anon_vma *, struct file *, pgoff_t,
+	struct mempolicy *, struct vm_userfaultfd_ctx, struct anon_vma_name *);
 extern struct vm_area_struct *vma_merge(struct vma_iterator *vmi,
 	struct mm_struct *, struct vm_area_struct *prev, unsigned long addr,
 	unsigned long end, unsigned long vm_flags, struct anon_vma *,
 	struct file *, pgoff_t, struct mempolicy *, struct vm_userfaultfd_ctx,
 	struct anon_vma_name *);
 extern struct anon_vma *find_mergeable_anon_vma(struct vm_area_struct *);
+extern int __split_vma_legacy(struct mm_struct *, struct vm_area_struct *,
+			       unsigned long addr, int new_below);
 extern int __split_vma(struct vma_iterator *vmi, struct vm_area_struct *,
 		       unsigned long addr, int new_below);
+extern int split_vma_legacy(struct mm_struct *, struct vm_area_struct *,
+	unsigned long addr, int new_below);
 extern int split_vma(struct vma_iterator *vmi, struct vm_area_struct *,
 			 unsigned long addr, int new_below);
 extern int insert_vm_struct(struct mm_struct *, struct vm_area_struct *);
@@ -2716,6 +2732,9 @@ extern struct vm_area_struct *copy_vma(struct vm_area_struct **,
 	unsigned long addr, unsigned long len, pgoff_t pgoff,
 	bool *need_rmap_locks);
 extern void exit_mmap(struct mm_struct *);
+
+void vma_mas_store(struct vm_area_struct *vma, struct ma_state *mas);
+void vma_mas_remove(struct vm_area_struct *vma, struct ma_state *mas);
 
 static inline int check_data_rlimit(unsigned long rlim,
 				    unsigned long new,
