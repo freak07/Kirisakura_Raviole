@@ -644,7 +644,6 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 		if (error)
 			break;
 
-		tmp = vma_iter_end(&vmi);
 		nstart = tmp;
 		prot = reqprot;
 	}
