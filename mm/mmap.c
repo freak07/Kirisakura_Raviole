@@ -2610,7 +2610,7 @@ int __split_vma_legacy(struct mm_struct *mm, struct vm_area_struct *vma,
 {
 	struct vm_area_struct *new;
 	int err;
-	validate_mm_mt(mm);
+	validate_mm(mm);
 
 	if (vma->vm_ops && vma->vm_ops->may_split) {
 		err = vma->vm_ops->may_split(vma, addr);
@@ -2666,7 +2666,7 @@ int __split_vma_legacy(struct mm_struct *mm, struct vm_area_struct *vma,
 	mpol_put(vma_policy(new));
  out_free_vma:
 	vm_area_free(new);
-	validate_mm_mt(mm);
+	validate_mm(mm);
 	return err;
 }
 
