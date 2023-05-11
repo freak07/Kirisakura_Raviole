@@ -134,19 +134,8 @@ void rvh_enqueue_task_pixel_mod(void *data, struct rq *rq, struct task_struct *p
 	 * enqueue_task_fair() where we need cfs_rqs to be updated before we
 	 * can read sched_slice()
 	 */
-	if (uclamp_is_used() && rt_task(p)) {
-		if (uclamp_can_ignore_uclamp_max(rq, p)) {
-			uclamp_set_ignore_uclamp_max(p);
-			/* GKI has incremented it already, undo that */
-			uclamp_rq_dec_id(rq, p, UCLAMP_MAX);
-		}
-
-		if (uclamp_can_ignore_uclamp_min(rq, p)) {
-			uclamp_set_ignore_uclamp_min(p);
-			/* GKI has incremented it already, undo that */
-			uclamp_rq_dec_id(rq, p, UCLAMP_MIN);
-		}
-	}
+	if (uclamp_is_used() && rt_task(p))
+		apply_uclamp_filters(rq, p);
 }
 
 void rvh_dequeue_task_pixel_mod(void *data, struct rq *rq, struct task_struct *p, int flags)
