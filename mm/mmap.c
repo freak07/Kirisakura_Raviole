@@ -1254,7 +1254,7 @@ struct vm_area_struct *vma_merge_legacy(struct mm_struct *mm,
 	 */
 	if (err)
 		return NULL;
-	khugepaged_enter_vma_merge(res, vm_flags);
+	khugepaged_enter_vma(res, vm_flags);
 	return res;
 }
 
@@ -3432,7 +3432,7 @@ static int do_brk_flags(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	if (vma && vma->vm_end == addr && !vma_policy(vma) &&
 	    can_vma_merge_after(vma, flags, NULL, NULL,
 				addr >> PAGE_SHIFT, NULL_VM_UFFD_CTX, NULL)) {
-		if (vma_iter_prealloc(vmi, vma))
+		if (vma_iter_prealloc(vmi))
 			goto unacct_fail;
 
 		init_vma_prep(&vp, vma);

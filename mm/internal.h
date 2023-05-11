@@ -683,9 +683,9 @@ struct migration_target_control {
 /*
  * VMA Iterator functions shared between nommu and mmap
  */
-static inline int vma_iter_prealloc(struct vma_iterator *vmi, struct vm_area_struct *vma)
+static inline int vma_iter_prealloc(struct vma_iterator *vmi)
 {
-	return mas_preallocate(&vmi->mas, vma, GFP_KERNEL);
+	return mas_preallocate(&vmi->mas, GFP_KERNEL);
 }
 
 static inline void vma_iter_clear(struct vma_iterator *vmi,
