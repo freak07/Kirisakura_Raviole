@@ -229,7 +229,7 @@ static const char *GRP_NAME[VG_MAX] = {"sys", "ta", "fg", "cam", "cam_power", "b
 		static int __grp##_##__attr##_show(struct seq_file *m, void *v) 	\
 		{									      \
 			struct vendor_group_property *gp = get_vendor_group_property(__vg);   \
-			seq_printf(m, "%u\n", gp->uc_req[__cid].value);		      \
+			seq_printf(m, "%d\n", gp->uc_req[__cid].value);		      \
 			return 0;	\
 		}									      \
 		static ssize_t __grp##_##__attr##_store(struct file *filp,			\
@@ -244,12 +244,18 @@ static const char *GRP_NAME[VG_MAX] = {"sys", "ta", "fg", "cam", "cam_power", "b
 			if (copy_from_user(buf, ubuf, count))	\
 				return -EFAULT;	\
 			buf[count] = '\0';	\
-			if (kstrtouint(buf, 0, &val))					      \
+			if (kstrtoint(buf, 0, &val))					      \
 				return -EINVAL;						      \
-			if (val > 1024)							      \
+			if (val > 1024 && val != AUTO_UCLAMP_MAX_MAGIC)			      \
 				return -EINVAL;						      \
 			if (val == gp->uc_req[__cid].value)				      \
 				return count;						      \
+			if (val == AUTO_UCLAMP_MAX_MAGIC) {				      \
+				gp->auto_uclamp_max = true;				      \
+				val = uclamp_none(UCLAMP_MAX);				      \
+			} else {							      \
+				gp->auto_uclamp_max = false;				      \
+			}								      \
 			gp->uc_req[__cid].value = val;					      \
 			gp->uc_req[__cid].bucket_id = get_bucket_id(val);		      \
 			gp->uc_req[__cid].user_defined = false;				      \

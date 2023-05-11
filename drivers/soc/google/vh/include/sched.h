@@ -64,6 +64,7 @@ struct vendor_task_struct {
 	bool queued_to_list;
 	bool uclamp_fork_reset;
 	bool prefer_idle;
+	int auto_uclamp_max_flags;	// Relative to cpu instead of absolute
 	struct uclamp_filter uclamp_filter;
 	int orig_prio;
 
