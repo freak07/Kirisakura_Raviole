@@ -2342,6 +2342,12 @@ void rvh_post_init_entity_util_avg_pixel_mod(void *data, struct sched_entity *se
 	}
 }
 
+void vh_sched_uclamp_validate_pixel_mod(void *data, struct task_struct *tsk,
+					const struct sched_attr *attr,
+					int *ret, bool *done)
+{
+}
+
 void vh_sched_setscheduler_uclamp_pixel_mod(void *data, struct task_struct *tsk, int clamp_id,
 					    unsigned int value)
 {

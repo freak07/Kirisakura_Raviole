@@ -45,6 +45,9 @@ extern void rvh_post_init_entity_util_avg_pixel_mod(void *data, struct sched_ent
 extern void rvh_check_preempt_wakeup_pixel_mod(void *data, struct rq *rq, struct task_struct *p,
 			bool *preempt, bool *nopreempt, int wake_flags, struct sched_entity *se,
 			struct sched_entity *pse, int next_buddy_marked);
+extern void vh_sched_uclamp_validate_pixel_mod(void *data, struct task_struct *tsk,
+					       const struct sched_attr *attr,
+					       int *ret, bool *done);
 extern void vh_sched_setscheduler_uclamp_pixel_mod(void *data, struct task_struct *tsk,
 						   int clamp_id, unsigned int value);
 extern void init_uclamp_stats(void);
@@ -299,6 +302,11 @@ static int vh_sched_init(void)
 	if (ret)
 		return ret;
 #endif
+
+	ret = register_trace_android_vh_uclamp_validate(
+		vh_sched_uclamp_validate_pixel_mod, NULL);
+	if (ret)
+		return ret;
 
 	ret = register_trace_android_vh_setscheduler_uclamp(
 		vh_sched_setscheduler_uclamp_pixel_mod, NULL);
