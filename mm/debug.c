@@ -321,4 +321,13 @@ void page_init_poison(struct page *page, size_t size)
 		memset(page, PAGE_POISON_PATTERN, size);
 }
 EXPORT_SYMBOL_GPL(page_init_poison);
+
+
+void vma_iter_dump_tree(const struct vma_iterator *vmi)
+{
+#if defined(CONFIG_DEBUG_VM_MAPLE_TREE)
+	mas_dump(&vmi->mas);
+	mt_dump(vmi->mas.tree, mt_dump_hex);
+#endif	/* CONFIG_DEBUG_VM_MAPLE_TREE */
+}
 #endif		/* CONFIG_DEBUG_VM */
