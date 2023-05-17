@@ -217,26 +217,26 @@ static bool bio_crypt_check_alignment(struct bio *bio)
 	return true;
 }
 
-blk_status_t __blk_crypto_rq_get_keyslot(struct request *rq)
+blk_status_t __blk_crypto_init_request(struct request *rq)
 {
 	return blk_ksm_get_slot_for_key(rq->q->ksm, rq->crypt_ctx->bc_key,
 					&rq->crypt_keyslot);
 }
 
-void __blk_crypto_rq_put_keyslot(struct request *rq)
-{
-	blk_ksm_put_slot(rq->crypt_keyslot);
-	rq->crypt_keyslot = NULL;
-}
-
+/**
+ * __blk_crypto_free_request - Uninitialize the crypto fields of a request.
+ *
+ * @rq: The request whose crypto fields to uninitialize.
+ *
+ * Completely uninitializes the crypto fields of a request. If a keyslot has
+ * been programmed into some inline encryption hardware, that keyslot is
+ * released. The rq->crypt_ctx is also freed.
+ */
 void __blk_crypto_free_request(struct request *rq)
 {
-	/* The keyslot, if one was needed, should have been released earlier. */
-	if (WARN_ON_ONCE(rq->crypt_keyslot))
-		__blk_crypto_rq_put_keyslot(rq);
-
+	blk_ksm_put_slot(rq->crypt_keyslot);
 	mempool_free(rq->crypt_ctx, bio_crypt_ctx_pool);
-	rq->crypt_ctx = NULL;
+	blk_crypto_rq_set_defaults(rq);
 }
 
 /**
