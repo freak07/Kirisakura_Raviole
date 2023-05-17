@@ -42,6 +42,8 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&aoc_vsync_pins>;
 
+		gsa-enabled = "true";
+
 		iommus = <&sysmmu_asoc>;
 		memory-region = <&aoc_reserve>;
 		samsung,iommu-group = <&iommu_group_aoc>;
