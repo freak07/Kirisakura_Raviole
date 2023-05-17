@@ -350,16 +350,25 @@ bool blk_ksm_crypto_cfg_supported(struct blk_keyslot_manager *ksm,
 	return true;
 }
 
-/*
- * This is an internal function that evicts a key from an inline encryption
- * device that can be either a real device or the blk-crypto-fallback "device".
- * It is used only by blk_crypto_evict_key(); see that function for details.
+/**
+ * blk_ksm_evict_key() - Evict a key from the lower layer device.
+ * @ksm: The keyslot manager to evict from
+ * @key: The key to evict
+ *
+ * Find the keyslot that the specified key was programmed into, and evict that
+ * slot from the lower layer device. The slot must not be in use by any
+ * in-flight IO when this function is called.
+ *
+ * Context: Process context. Takes and releases ksm->lock.
+ * Return: 0 on success or if there's no keyslot with the specified key, -EBUSY
+ *	   if the keyslot is still in use, or another -errno value on other
+ *	   error.
  */
 int blk_ksm_evict_key(struct blk_keyslot_manager *ksm,
 		      const struct blk_crypto_key *key)
 {
 	struct blk_ksm_keyslot *slot;
-	int err;
+	int err = 0;
 
 	if (blk_ksm_is_passthrough(ksm)) {
 		if (ksm->ksm_ll_ops.keyslot_evict) {
@@ -373,30 +382,22 @@ int blk_ksm_evict_key(struct blk_keyslot_manager *ksm,
 
 	blk_ksm_hw_enter(ksm);
 	slot = blk_ksm_find_keyslot(ksm, key);
-	if (!slot) {
-		/*
-		 * Not an error, since a key not in use by I/O is not guaranteed
-		 * to be in a keyslot.  There can be more keys than keyslots.
-		 */
-		err = 0;
-		goto out;
-	}
+	if (!slot)
+		goto out_unlock;
 
 	if (WARN_ON_ONCE(atomic_read(&slot->slot_refs) != 0)) {
-		/* BUG: key is still in use by I/O */
 		err = -EBUSY;
-		goto out_remove;
+		goto out_unlock;
 	}
 	err = ksm->ksm_ll_ops.keyslot_evict(ksm, key,
 					    blk_ksm_get_slot_idx(slot));
-out_remove:
-	/*
-	 * Callers free the key even on error, so unlink the key from the hash
-	 * table and clear slot->key even on error.
-	 */
+	if (err)
+		goto out_unlock;
+
 	hlist_del(&slot->hash_node);
 	slot->key = NULL;
-out:
+	err = 0;
+out_unlock:
 	blk_ksm_hw_exit(ksm);
 	return err;
 }
