@@ -6740,12 +6740,15 @@ static void mas_dfs_postorder(struct ma_state *mas, unsigned long max)
 
 	mas->node = mn;
 	mas_ascend(mas);
-	do {
+	while (mas->node != MAS_NONE) {
 		p = mas->node;
 		p_min = mas->min;
 		p_max = mas->max;
 		mas_prev_node(mas, 0);
-	} while (!mas_is_none(mas));
+	}
+
+	if (p == MAS_NONE)
+		return;
 
 	mas->node = p;
 	mas->max = p_max;
