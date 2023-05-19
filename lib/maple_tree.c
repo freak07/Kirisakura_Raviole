@@ -4726,25 +4726,33 @@ static inline void *mas_next_nentry(struct ma_state *mas,
 		if (ma_dead_node(node))
 			return NULL;
 
-		mas->last = pivot;
 		if (entry)
-			return entry;
+			goto found;
 
 		if (pivot >= max)
-			return NULL;
-
-		if (pivot >= mas->max)
 			return NULL;
 
 		mas->index = pivot + 1;
 		mas->offset++;
 	}
 
-	pivot = mas_logical_pivot(mas, pivots, mas->offset, type);
+	if (mas->index > mas->max) {
+		mas->index = mas->last;
+		return NULL;
+	}
+
+	pivot = mas_safe_pivot(mas, pivots, mas->offset, type);
 	entry = mas_slot(mas, slots, mas->offset);
 	if (ma_dead_node(node))
 		return NULL;
 
+	if (!pivot)
+		return NULL;
+
+	if (!entry)
+		return NULL;
+
+found:
 	mas->last = pivot;
 	return entry;
 }
@@ -4773,15 +4781,21 @@ retry:
 static inline void *mas_next_entry(struct ma_state *mas, unsigned long limit)
 {
 	void *entry = NULL;
+	struct maple_enode *prev_node;
 	struct maple_node *node;
+	unsigned char offset;
 	unsigned long last;
 	enum maple_type mt;
 
-	if (mas->last >= limit)
+	if (mas->index > limit) {
+		mas->index = mas->last = limit;
+		mas_pause(mas);
 		return NULL;
-
+	}
 	last = mas->last;
 retry:
+	offset = mas->offset;
+	prev_node = mas->node;
 	node = mas_mn(mas);
 	mt = mte_node_type(mas->node);
 	mas->offset++;
@@ -4800,10 +4814,12 @@ retry:
 		if (likely(entry))
 			return entry;
 
-		if (unlikely((mas->last >= limit)))
-			return NULL;
+		if (unlikely((mas->index > limit)))
+			break;
 
 next_node:
+		prev_node = mas->node;
+		offset = mas->offset;
 		if (unlikely(mas_next_node(mas, node, limit))) {
 			mas_rewalk(mas, last);
 			goto retry;
@@ -4813,6 +4829,9 @@ next_node:
 		mt = mte_node_type(mas->node);
 	}
 
+	mas->index = mas->last = limit;
+	mas->offset = offset;
+	mas->node = prev_node;
 	return NULL;
 }
 
@@ -5901,8 +5920,6 @@ EXPORT_SYMBOL_GPL(mas_expected_entries);
  */
 void *mas_next(struct ma_state *mas, unsigned long max)
 {
-	bool was_none = mas_is_none(mas);
-
 	if (mas_is_none(mas) || mas_is_paused(mas))
 		mas->node = MAS_START;
 
@@ -5910,15 +5927,15 @@ void *mas_next(struct ma_state *mas, unsigned long max)
 		mas_walk(mas); /* Retries on dead nodes handled by mas_walk */
 
 	if (mas_is_ptr(mas)) {
-		if (was_none && mas->index == 0) {
-			mas->index = mas->last = 0;
-			return mas_root(mas);
+		if (!mas->index) {
+			mas->index = 1;
+			mas->last = ULONG_MAX;
 		}
-		mas->index = 1;
-		mas->last = ULONG_MAX;
-		mas->node = MAS_NONE;
 		return NULL;
 	}
+
+	if (mas->last == ULONG_MAX)
+		return NULL;
 
 	/* Retries on dead nodes handled by mas_next_entry */
 	return mas_next_entry(mas, max);
@@ -6043,25 +6060,17 @@ EXPORT_SYMBOL_GPL(mas_pause);
  */
 void *mas_find(struct ma_state *mas, unsigned long max)
 {
-	if (unlikely(mas_is_none(mas))) {
-		if (unlikely(mas->last >= max))
-			return NULL;
-
-		mas->index = mas->last;
-		mas->node = MAS_START;
-	}
-
 	if (unlikely(mas_is_paused(mas))) {
-		if (unlikely(mas->last >= max))
+		if (unlikely(mas->last == ULONG_MAX)) {
+			mas->node = MAS_NONE;
 			return NULL;
-
+		}
 		mas->node = MAS_START;
 		mas->index = ++mas->last;
 	}
 
-
-	if (unlikely(mas_is_ptr(mas)))
-		goto ptr_out_of_range;
+	if (unlikely(mas_is_none(mas)))
+		mas->node = MAS_START;
 
 	if (unlikely(mas_is_start(mas))) {
 		/* First run or continue */
@@ -6073,27 +6082,13 @@ void *mas_find(struct ma_state *mas, unsigned long max)
 		entry = mas_walk(mas);
 		if (entry)
 			return entry;
-
 	}
 
-	if (unlikely(!mas_searchable(mas))) {
-		if (unlikely(mas_is_ptr(mas)))
-			goto ptr_out_of_range;
-
-		return NULL;
-	}
-
-	if (mas->index == max)
+	if (unlikely(!mas_searchable(mas)))
 		return NULL;
 
 	/* Retries on dead nodes handled by mas_next_entry */
 	return mas_next_entry(mas, max);
-
-ptr_out_of_range:
-	mas->node = MAS_NONE;
-	mas->index = 1;
-	mas->last = ULONG_MAX;
-	return NULL;
 }
 EXPORT_SYMBOL_GPL(mas_find);
 
@@ -6524,7 +6519,7 @@ retry:
 	if (entry)
 		goto unlock;
 
-	while (mas_searchable(&mas) && (mas.last < max)) {
+	while (mas_searchable(&mas) && (mas.index < max)) {
 		entry = mas_next_entry(&mas, max);
 		if (likely(entry && !xa_is_zero(entry)))
 			break;
