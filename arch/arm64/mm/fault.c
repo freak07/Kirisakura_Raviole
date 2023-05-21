@@ -25,7 +25,6 @@
 #include <linux/perf_event.h>
 #include <linux/preempt.h>
 #include <linux/hugetlb.h>
-#include <linux/gfp_types.h>
 
 #include <asm/acpi.h>
 #include <asm/bug.h>
