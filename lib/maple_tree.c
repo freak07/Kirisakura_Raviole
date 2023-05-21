@@ -4604,7 +4604,7 @@ no_entry:
  *
  * Return: The entry in the previous slot which is possibly NULL
  */
-void *mas_prev_slot(struct ma_state *mas, unsigned long min, bool empty)
+static void *mas_prev_slot(struct ma_state *mas, unsigned long min, bool empty)
 {
 	void *entry;
 	void __rcu **slots;
@@ -4756,7 +4756,7 @@ no_entry:
  *
  * Return: The entry in the next slot which is possibly NULL
  */
-void *mas_next_slot(struct ma_state *mas, unsigned long max, bool empty)
+static void *mas_next_slot(struct ma_state *mas, unsigned long max, bool empty)
 {
 	void __rcu **slots;
 	unsigned long *pivots;
@@ -5023,7 +5023,7 @@ void *mas_walk(struct ma_state *mas)
 {
 	void *entry;
 
-	if (mas_is_none(mas) || mas_is_paused(mas))
+	if (mas_is_none(mas) || mas_is_paused(mas) || mas_is_ptr(mas))
 		mas->node = MAS_START;
 retry:
 	entry = mas_state_walk(mas);
@@ -6004,7 +6004,7 @@ void *mas_prev_range(struct ma_state *mas, unsigned long min)
 
 	return mas_prev_slot(mas, min, true);
 }
-EXPORT_SYMBOL_GPL(mas_prev_slot);
+EXPORT_SYMBOL_GPL(mas_prev_range);
 
 /**
  * mt_prev() - get the previous value in the maple tree
@@ -6047,6 +6047,9 @@ EXPORT_SYMBOL_GPL(mas_pause);
 
 /**
  * mas_find_setup() - Internal function to set up mas_find*().
+ * @mas: The maple state
+ * @max: The maximum index
+ * @entry: Pointer to the entry
  *
  * Returns: True if entry is the answer, false otherwise.
  */
@@ -6117,7 +6120,7 @@ void *mas_find(struct ma_state *mas, unsigned long max)
 	void *entry = NULL;
 
 	if (mas_find_setup(mas, max, &entry))
-	    return entry;
+		return entry;
 
 	/* Retries on dead nodes handled by mas_next_slot */
 	return mas_next_slot(mas, max, false);
@@ -6150,6 +6153,9 @@ EXPORT_SYMBOL_GPL(mas_find_range);
 
 /**
  * mas_find_rev_setup() - Internal function to set up mas_find_*_rev()
+ * @mas: The maple state
+ * @min: The minimum index
+ * @entry: Pointer to the entry
  *
  * Returns: True if entry is the answer, false otherwise.
  */
