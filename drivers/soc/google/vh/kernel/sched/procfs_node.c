@@ -875,7 +875,7 @@ static int update_sched_capacity_margin(const char *buf, int count)
 	str2 = str1;
 
 	if (!str2)
-		return -EINVAL;
+		return -ENOMEM;
 
 	while (1) {
 		tok = strsep(&str2, " ");
@@ -932,7 +932,7 @@ static int update_sched_dvfs_headroom(const char *buf, int count)
 	str2 = str1;
 
 	if (!str2)
-		return -EINVAL;
+		return -ENOMEM;
 
 	while (1) {
 		tok = strsep(&str2, " ");
@@ -968,6 +968,63 @@ static int update_sched_dvfs_headroom(const char *buf, int count)
 			sched_dvfs_headroom[index] = tmp[2];
 	} else if (index == CPU_NUM) {
 		memcpy(sched_dvfs_headroom, tmp, sizeof(sched_dvfs_headroom));
+	} else {
+		goto fail;
+	}
+
+	kfree(str1);
+	return count;
+fail:
+	kfree(str1);
+	return -EINVAL;
+}
+
+static int update_sched_auto_uclamp_max(const char *buf, int count)
+{
+	char *tok, *str1, *str2;
+	unsigned int val, tmp[CPU_NUM];
+	int index = 0;
+
+	str1 = kstrndup(buf, count, GFP_KERNEL);
+	str2 = str1;
+
+	if (!str2)
+		return -ENOMEM;
+
+	while (1) {
+		tok = strsep(&str2, " ");
+
+		if (tok == NULL)
+			break;
+
+		if (kstrtouint(tok, 0, &val))
+			goto fail;
+
+		if (val > SCHED_CAPACITY_SCALE)
+			goto fail;
+
+		tmp[index] = val;
+		index++;
+
+		if (index == CPU_NUM)
+			break;
+	}
+
+	if (index == 1) {
+		for (index = 0; index < CPU_NUM; index++) {
+			sched_auto_uclamp_max[index] = tmp[0];
+		}
+	} else if (index == CLUSTER_NUM) {
+		for (index = MIN_CAPACITY_CPU; index < MID_CAPACITY_CPU; index++)
+			sched_auto_uclamp_max[index] = tmp[0];
+
+		for (index = MID_CAPACITY_CPU; index < MAX_CAPACITY_CPU; index++)
+			sched_auto_uclamp_max[index] = tmp[1];
+
+		for (index = MAX_CAPACITY_CPU; index < CPU_NUM; index++)
+			sched_auto_uclamp_max[index] = tmp[2];
+	} else if (index == CPU_NUM) {
+		memcpy(sched_auto_uclamp_max, tmp, sizeof(sched_auto_uclamp_max));
 	} else {
 		goto fail;
 	}
@@ -1673,6 +1730,36 @@ static int util_post_init_scale_show(struct seq_file *m, void *v)
 	seq_printf(m, "%d\n", vendor_sched_util_post_init_scale);
 	return 0;
 }
+
+static int auto_uclamp_max_show(struct seq_file *m, void *v)
+{
+	int i;
+
+	for (i = 0; i < CPU_NUM; i++) {
+		seq_printf(m, "%u ", sched_auto_uclamp_max[i]);
+	}
+
+	seq_printf(m, "\n");
+
+	return 0;
+}
+static ssize_t auto_uclamp_max_store(struct file *filp,
+				     const char __user *ubuf,
+				     size_t count, loff_t *pos)
+{
+	char buf[MAX_PROC_SIZE];
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, ubuf, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+
+	return update_sched_auto_uclamp_max(buf, count);
+}
+PROC_OPS_RW(auto_uclamp_max);
 
 static ssize_t util_post_init_scale_store(struct file *filp,
 							const char __user *ubuf,
@@ -2460,6 +2547,7 @@ static struct pentry entries[] = {
 	PROC_ENTRY(uclamp_max_filter_enable),
 	PROC_ENTRY(uclamp_max_filter_divider),
 	PROC_ENTRY(uclamp_max_filter_rt),
+	PROC_ENTRY(auto_uclamp_max),
 	// dvfs headroom
 	PROC_ENTRY(dvfs_headroom),
 	PROC_ENTRY(tapered_dvfs_headroom_enable),
