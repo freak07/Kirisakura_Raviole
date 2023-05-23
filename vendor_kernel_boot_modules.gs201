@@ -114,6 +114,7 @@ phy-exynos-usbdrd-super.ko
 pinctrl-samsung-core.ko
 pixel-boot-metrics.ko
 pixel-debug-test.ko
+pixel-suspend-diag.ko
 pixel-em.ko
 pkvm-s2mpu.ko
 pl330.ko
@@ -163,7 +164,6 @@ touch_bus_negotiator.ko
 touch_offload.ko
 trusty-core.ko
 trusty-ipc.ko
-trusty-irq.ko
 trusty-log.ko
 trusty-test.ko
 trusty-virtio.ko

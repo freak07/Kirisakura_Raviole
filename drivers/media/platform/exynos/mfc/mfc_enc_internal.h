@@ -82,6 +82,14 @@ struct mfc_fmt enc_formats[] = {
 		.mem_planes = 2,
 	},
 	{
+		.name = "4:2:0 2 Planes Y/CbCr P010 10bit single",
+		.fourcc = V4L2_PIX_FMT_NV12N_P010,
+		.codec_mode = MFC_FORMATS_NO_CODEC,
+		.type = MFC_FMT_FRAME | MFC_FMT_10BIT,
+		.num_planes = 2,
+		.mem_planes = 1,
+	},
+	{
 		.name = "4:2:0 2 Planes Y/CrCb",
 		.fourcc = V4L2_PIX_FMT_NV21M,
 		.codec_mode = MFC_FORMATS_NO_CODEC,
@@ -106,7 +114,7 @@ struct mfc_fmt enc_formats[] = {
 		.mem_planes = 2,
 	},
 	{
-		.name = "4:2:0 2 Planes Y/CbCr 8bit Compress (SBWC)",
+		.name = "4:2:0 2 Planes CbCr 8bit Compress (SBWC)",
 		.fourcc = V4L2_PIX_FMT_NV12M_SBWC_8B,
 		.codec_mode = MFC_FORMATS_NO_CODEC,
 		.type = MFC_FMT_FRAME | MFC_FMT_SBWC,
@@ -114,7 +122,7 @@ struct mfc_fmt enc_formats[] = {
 		.mem_planes = 2,
 	},
 	{
-		.name = "4:2:0 2 Planes Y/CbCr 10bit Compress (SBWC)",
+		.name = "4:2:0 2 Planes CbCr 10bit Compress (SBWC)",
 		.fourcc = V4L2_PIX_FMT_NV12M_SBWC_10B,
 		.codec_mode = MFC_FORMATS_NO_CODEC,
 		.type = MFC_FMT_FRAME | MFC_FMT_SBWC,
@@ -122,7 +130,7 @@ struct mfc_fmt enc_formats[] = {
 		.mem_planes = 2,
 	},
 	{
-		.name = "4:2:0 2 Planes Y/CrCb 8bit Compress (SBWC)",
+		.name = "4:2:0 2 Planes CrCb 8bit Compress (SBWC)",
 		.fourcc = V4L2_PIX_FMT_NV21M_SBWC_8B,
 		.codec_mode = MFC_FORMATS_NO_CODEC,
 		.type = MFC_FMT_FRAME | MFC_FMT_SBWC,
@@ -130,7 +138,7 @@ struct mfc_fmt enc_formats[] = {
 		.mem_planes = 2,
 	},
 	{
-		.name = "4:2:0 2 Planes Y/CrCb 10bit Compress (SBWC)",
+		.name = "4:2:0 2 Planes CrCb 10bit Compress (SBWC)",
 		.fourcc = V4L2_PIX_FMT_NV21M_SBWC_10B,
 		.codec_mode = MFC_FORMATS_NO_CODEC,
 		.type = MFC_FMT_FRAME | MFC_FMT_SBWC,

@@ -166,209 +166,293 @@ static void __mfc_dec_fix_10bit_memtype(struct mfc_ctx *ctx, unsigned int format
 		ctx->mem_type_10bit = 0;
 		break;
 	case V4L2_PIX_FMT_NV12M_P010:
+	case V4L2_PIX_FMT_NV12N_P010:
 	case V4L2_PIX_FMT_NV16M_P210:
 	case V4L2_PIX_FMT_NV21M_P010:
 	case V4L2_PIX_FMT_NV61M_P210:
+	case V4L2_PIX_FMT_NV21M_SBWC_8B:
+	case V4L2_PIX_FMT_NV21M_SBWC_10B:
+	case V4L2_PIX_FMT_NV12M_SBWC_10B:
+	case V4L2_PIX_FMT_NV12N_SBWC_10B:
 		ctx->mem_type_10bit = 1;
 		break;
 	default:
-		mfc_ctx_err("[10BIT] not supported 10bit format: %d\n", format);
 		if (dev->pdata->P010_decoding)
 			ctx->mem_type_10bit = 1;
 		else
 			ctx->mem_type_10bit = 0;
 		break;
 	}
+	mfc_debug(2, "[10BIT] mem_type is %s\n", ctx->mem_type_10bit ? "P010" : "8+2");
 }
 
-static void __mfc_dec_change_format(struct mfc_ctx *ctx)
+static void __mfc_dec_change_format_sbwc_8bit(struct mfc_ctx *ctx)
 {
-	struct mfc_dev *dev = ctx->dev;
 	u32 org_fmt = ctx->dst_fmt->fourcc;
 
-	if (ctx->is_10bit && ctx->is_422) {
+	switch (org_fmt) {
+	case V4L2_PIX_FMT_NV12M_SBWC_8B:
+	case V4L2_PIX_FMT_NV12N_SBWC_8B:
+	case V4L2_PIX_FMT_NV21M_SBWC_8B:
+		/* It is right format */
+		break;
+	case V4L2_PIX_FMT_NV12N:
+	case V4L2_PIX_FMT_NV12N_P010:
+	case V4L2_PIX_FMT_NV12N_10B:
+	case V4L2_PIX_FMT_NV12N_SBWC_10B:
+		/* change to single plane format */
+		ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12N_SBWC_8B);
+		break;
+	default:
+		ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M_SBWC_8B);
+		break;
+	}
+}
+
+static void __mfc_dec_change_format_sbwc_10bit(struct mfc_ctx *ctx)
+{
+	u32 org_fmt = ctx->dst_fmt->fourcc;
+
+	switch (org_fmt) {
+	case V4L2_PIX_FMT_NV12M_SBWC_10B:
+	case V4L2_PIX_FMT_NV12N_SBWC_10B:
+	case V4L2_PIX_FMT_NV21M_SBWC_10B:
+		/* It is right format */
+		break;
+	case V4L2_PIX_FMT_NV12N:
+	case V4L2_PIX_FMT_NV12N_P010:
+	case V4L2_PIX_FMT_NV12N_10B:
+	case V4L2_PIX_FMT_NV12N_SBWC_8B:
+		/* change to single plane format */
+		ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12N_SBWC_10B);
+		break;
+	default:
+		ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M_SBWC_10B);
+		break;
+	}
+}
+
+static void __mfc_dec_change_format_8bit(struct mfc_ctx *ctx)
+{
+	u32 org_fmt = ctx->dst_fmt->fourcc;
+
+	switch (org_fmt) {
+	case V4L2_PIX_FMT_NV12M:
+	case V4L2_PIX_FMT_NV12N:
+	case V4L2_PIX_FMT_NV21M:
+	case V4L2_PIX_FMT_YUV420M:
+	case V4L2_PIX_FMT_YUV420N:
+	case V4L2_PIX_FMT_YVU420M:
+		/* It is right format */
+		break;
+	case V4L2_PIX_FMT_NV12N_P010:
+	case V4L2_PIX_FMT_NV12N_10B:
+	case V4L2_PIX_FMT_NV12N_SBWC_8B:
+	case V4L2_PIX_FMT_NV12N_SBWC_10B:
+		/* change to single plane format */
+		ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12N);
+		break;
+	case V4L2_PIX_FMT_NV61M:
+	case V4L2_PIX_FMT_NV61M_P210:
+	case V4L2_PIX_FMT_NV61M_S10B:
+	case V4L2_PIX_FMT_NV21M_P010:
+	case V4L2_PIX_FMT_NV21M_S10B:
+	case V4L2_PIX_FMT_NV21M_SBWC_8B:
+	case V4L2_PIX_FMT_NV21M_SBWC_10B:
+		/* change to CrCb order format */
+		ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV21M);
+		break;
+	default:
+		ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M);
+		break;
+	}
+}
+
+static void __mfc_dec_change_format_8bit_422(struct mfc_ctx *ctx)
+{
+	u32 org_fmt = ctx->dst_fmt->fourcc;
+
+	switch (org_fmt) {
+	case V4L2_PIX_FMT_NV16M:
+	case V4L2_PIX_FMT_NV61M:
+		/* It is right format */
+		break;
+	case V4L2_PIX_FMT_NV61M_P210:
+	case V4L2_PIX_FMT_NV61M_S10B:
+	case V4L2_PIX_FMT_NV21M:
+	case V4L2_PIX_FMT_NV21M_P010:
+	case V4L2_PIX_FMT_NV21M_S10B:
+	case V4L2_PIX_FMT_NV21M_SBWC_8B:
+	case V4L2_PIX_FMT_NV21M_SBWC_10B:
+	case V4L2_PIX_FMT_YVU420M:
+		/* change to CrCb order format */
+		ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV61M);
+		break;
+	default:
+		ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV16M);
+		break;
+	}
+}
+
+static void __mfc_dec_change_format_10bit(struct mfc_ctx *ctx)
+{
+	u32 org_fmt = ctx->dst_fmt->fourcc;
+
+	if (ctx->dev->pdata->P010_decoding) {
 		switch (org_fmt) {
-		case V4L2_PIX_FMT_NV16M_P210:
-		case V4L2_PIX_FMT_NV61M_P210:
-			/* It is right format */
-			break;
-		case V4L2_PIX_FMT_NV12M:
-		case V4L2_PIX_FMT_NV16M:
-		case V4L2_PIX_FMT_NV12M_S10B:
 		case V4L2_PIX_FMT_NV12M_P010:
-		case V4L2_PIX_FMT_NV16M_S10B:
-		case V4L2_PIX_FMT_NV12M_SBWC_8B:
-		case V4L2_PIX_FMT_NV12M_SBWC_10B:
-			if (dev->pdata->P010_decoding)
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV16M_P210);
-			else
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV16M_S10B);
-			break;
-		case V4L2_PIX_FMT_NV21M:
-		case V4L2_PIX_FMT_NV61M:
-		case V4L2_PIX_FMT_NV21M_S10B:
-		case V4L2_PIX_FMT_NV21M_P010:
-		case V4L2_PIX_FMT_NV61M_S10B:
-			if (dev->pdata->P010_decoding)
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV61M_P210);
-			else
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV61M_S10B);
-			break;
-		default:
-			if (dev->pdata->P010_decoding)
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV16M_P210);
-			else
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV16M_S10B);
-			break;
-		}
-		ctx->raw_buf.num_planes = 2;
-	} else if (ctx->is_10bit && !ctx->is_422) {
-		switch (org_fmt) {
-		case V4L2_PIX_FMT_NV12M_P010:
+		case V4L2_PIX_FMT_NV12N_P010:
 		case V4L2_PIX_FMT_NV21M_P010:
 			/* It is right format */
 			break;
 		case V4L2_PIX_FMT_NV12N:
-		case V4L2_PIX_FMT_NV12M:
 		case V4L2_PIX_FMT_NV12N_10B:
-		case V4L2_PIX_FMT_NV12M_S10B:
-		case V4L2_PIX_FMT_NV16M:
-		case V4L2_PIX_FMT_NV16M_S10B:
-		case V4L2_PIX_FMT_NV16M_P210:
-			if (dev->pdata->P010_decoding)
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M_P010);
-			else
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M_S10B);
-			break;
-		case V4L2_PIX_FMT_NV21M:
-		case V4L2_PIX_FMT_NV21M_S10B:
-		case V4L2_PIX_FMT_NV61M:
-		case V4L2_PIX_FMT_NV61M_S10B:
-		case V4L2_PIX_FMT_NV61M_P210:
-			if (dev->pdata->P010_decoding)
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV21M_P010);
-			else
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV21M_S10B);
-			break;
-		case V4L2_PIX_FMT_NV12M_SBWC_8B:
-		case V4L2_PIX_FMT_NV12M_SBWC_10B:
-			if (ctx->is_sbwc) {
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M_SBWC_10B);
-			} else {
-				if (dev->pdata->P010_decoding)
-					ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M_P010);
-				else
-					ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M_S10B);
-			}
-			break;
-		default:
-			if (dev->pdata->P010_decoding)
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M_P010);
-			else
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M_S10B);
-			break;
-		}
-		ctx->raw_buf.num_planes = 2;
-	} else if (!ctx->is_10bit && ctx->is_422) {
-		switch (org_fmt) {
-		case V4L2_PIX_FMT_NV16M:
-		case V4L2_PIX_FMT_NV61M:
-			/* It is right format */
-			break;
-		case V4L2_PIX_FMT_NV12M:
-		case V4L2_PIX_FMT_NV12M_S10B:
-		case V4L2_PIX_FMT_NV16M_S10B:
-		case V4L2_PIX_FMT_NV12M_P010:
-		case V4L2_PIX_FMT_NV16M_P210:
-		case V4L2_PIX_FMT_NV12M_SBWC_8B:
-		case V4L2_PIX_FMT_NV12M_SBWC_10B:
-			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV16M);
-			break;
-		case V4L2_PIX_FMT_NV21M:
-		case V4L2_PIX_FMT_NV21M_S10B:
-		case V4L2_PIX_FMT_NV61M_S10B:
-		case V4L2_PIX_FMT_NV21M_P010:
-		case V4L2_PIX_FMT_NV61M_P210:
-			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV61M);
-			break;
-		default:
-			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV16M);
-			break;
-		}
-		ctx->raw_buf.num_planes = 2;
-	} else {
-		/* YUV420 8bit */
-		switch (org_fmt) {
-		case V4L2_PIX_FMT_NV16M:
-		case V4L2_PIX_FMT_NV12M_S10B:
-		case V4L2_PIX_FMT_NV16M_S10B:
-		case V4L2_PIX_FMT_NV12M_P010:
-		case V4L2_PIX_FMT_NV16M_P210:
-			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M);
-			break;
-		case V4L2_PIX_FMT_NV61M:
-		case V4L2_PIX_FMT_NV21M_S10B:
-		case V4L2_PIX_FMT_NV61M_S10B:
-		case V4L2_PIX_FMT_NV21M_P010:
-		case V4L2_PIX_FMT_NV61M_P210:
-			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV21M);
-			break;
-		case V4L2_PIX_FMT_NV12M_SBWC_8B:
-		case V4L2_PIX_FMT_NV12M_SBWC_10B:
-			if (ctx->is_sbwc)
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M_SBWC_8B);
-			else
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M);
-			break;
 		case V4L2_PIX_FMT_NV12N_SBWC_8B:
 		case V4L2_PIX_FMT_NV12N_SBWC_10B:
-			if (ctx->is_sbwc)
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12N_SBWC_8B);
-			else
-				ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12N);
+			/* change to single plane format */
+			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12N_P010);
+			break;
+		case V4L2_PIX_FMT_NV61M:
+		case V4L2_PIX_FMT_NV61M_P210:
+		case V4L2_PIX_FMT_NV61M_S10B:
+		case V4L2_PIX_FMT_NV21M:
+		case V4L2_PIX_FMT_NV21M_S10B:
+		case V4L2_PIX_FMT_NV21M_SBWC_8B:
+		case V4L2_PIX_FMT_NV21M_SBWC_10B:
+		case V4L2_PIX_FMT_YVU420M:
+			/* change to CrCb order format */
+			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV21M_P010);
 			break;
 		default:
+			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M_P010);
+			break;
+		}
+	} else {
+		switch (org_fmt) {
+		case V4L2_PIX_FMT_NV12M_S10B:
+		case V4L2_PIX_FMT_NV12N_10B:
+		case V4L2_PIX_FMT_NV21M_S10B:
 			/* It is right format */
+			break;
+		case V4L2_PIX_FMT_NV12N:
+		case V4L2_PIX_FMT_NV12N_P010:
+		case V4L2_PIX_FMT_NV12N_SBWC_8B:
+		case V4L2_PIX_FMT_NV12N_SBWC_10B:
+			/* change to single plane format */
+			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12N_10B);
+			break;
+		case V4L2_PIX_FMT_NV61M:
+		case V4L2_PIX_FMT_NV61M_P210:
+		case V4L2_PIX_FMT_NV61M_S10B:
+		case V4L2_PIX_FMT_NV21M:
+		case V4L2_PIX_FMT_NV21M_P010:
+		case V4L2_PIX_FMT_NV21M_SBWC_8B:
+		case V4L2_PIX_FMT_NV21M_SBWC_10B:
+		case V4L2_PIX_FMT_YVU420M:
+			/* change to CrCb order format */
+			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV21M_S10B);
+			break;
+		default:
+			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV12M_S10B);
 			break;
 		}
 	}
+}
 
-	if (org_fmt != ctx->dst_fmt->fourcc)
-		mfc_ctx_info("[FRAME] format is changed to %s\n", ctx->dst_fmt->name);
+static void __mfc_dec_change_format_10bit_422(struct mfc_ctx *ctx)
+{
+	u32 org_fmt = ctx->dst_fmt->fourcc;
+
+	if (ctx->dev->pdata->P010_decoding) {
+		switch (org_fmt) {
+		case V4L2_PIX_FMT_NV16M_P210:
+		case V4L2_PIX_FMT_NV61M_P210:
+			/* It is right format */
+			break;
+		case V4L2_PIX_FMT_NV61M:
+		case V4L2_PIX_FMT_NV61M_S10B:
+		case V4L2_PIX_FMT_NV21M:
+		case V4L2_PIX_FMT_NV21M_P010:
+		case V4L2_PIX_FMT_NV21M_S10B:
+		case V4L2_PIX_FMT_NV21M_SBWC_8B:
+		case V4L2_PIX_FMT_NV21M_SBWC_10B:
+		case V4L2_PIX_FMT_YVU420M:
+			/* change to CrCb order format */
+			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV61M_P210);
+			break;
+		default:
+			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV16M_P210);
+			break;
+		}
+	} else {
+		switch (org_fmt) {
+		case V4L2_PIX_FMT_NV16M_S10B:
+		case V4L2_PIX_FMT_NV61M_S10B:
+			/* It is right format */
+			break;
+		case V4L2_PIX_FMT_NV61M:
+		case V4L2_PIX_FMT_NV61M_P210:
+		case V4L2_PIX_FMT_NV21M:
+		case V4L2_PIX_FMT_NV21M_P010:
+		case V4L2_PIX_FMT_NV21M_S10B:
+		case V4L2_PIX_FMT_NV21M_SBWC_8B:
+		case V4L2_PIX_FMT_NV21M_SBWC_10B:
+		case V4L2_PIX_FMT_YVU420M:
+			/* change to CrCb order format */
+			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV61M_S10B);
+			break;
+		default:
+			ctx->dst_fmt = __mfc_dec_find_format(ctx, V4L2_PIX_FMT_NV16M_S10B);
+			break;
+		}
+	}
+}
+
+static void __mfc_dec_change_format_sbwc(struct mfc_ctx *ctx)
+{
+	u32 org_fmt = ctx->dst_fmt->fourcc;
 
 	if (ctx->is_10bit)
-		__mfc_dec_fix_10bit_memtype(ctx, ctx->dst_fmt->fourcc);
+		__mfc_dec_change_format_sbwc_10bit(ctx);
+	else
+		__mfc_dec_change_format_sbwc_8bit(ctx);
+
+	ctx->raw_buf.num_planes = ctx->dst_fmt->num_planes;
+	if (org_fmt != ctx->dst_fmt->fourcc)
+		mfc_ctx_info("[FRAME][SBWC] format is changed to %s\n", ctx->dst_fmt->name);
+}
+
+static void __mfc_dec_change_format(struct mfc_ctx *ctx)
+{
+	u32 org_fmt = ctx->dst_fmt->fourcc;
+
+	if (ctx->is_10bit && ctx->is_422)
+		__mfc_dec_change_format_10bit_422(ctx);
+	else if (ctx->is_10bit && !ctx->is_422)
+		__mfc_dec_change_format_10bit(ctx);
+	else if (!ctx->is_10bit && ctx->is_422)
+		__mfc_dec_change_format_8bit_422(ctx);
+	else
+		__mfc_dec_change_format_8bit(ctx);
+
+	ctx->raw_buf.num_planes = ctx->dst_fmt->num_planes;
+	if (org_fmt != ctx->dst_fmt->fourcc)
+		mfc_ctx_info("[FRAME] format is changed to %s\n", ctx->dst_fmt->name);
 }
 
 static void __mfc_dec_uncomp_format(struct mfc_ctx *ctx)
 {
 	struct mfc_dec *dec = ctx->dec_priv;
 	u32 org_fmt = ctx->dst_fmt->fourcc;
+	u32 uncomp_fmt = 0;
 
-	switch (org_fmt) {
-		case V4L2_PIX_FMT_NV12M_SBWC_8B:
-			dec->uncomp_pixfmt = V4L2_PIX_FMT_NV12M;
-			break;
-		case V4L2_PIX_FMT_NV21M_SBWC_8B:
-			dec->uncomp_pixfmt = V4L2_PIX_FMT_NV21M;
-			break;
-		case V4L2_PIX_FMT_NV12N_SBWC_8B:
-			dec->uncomp_pixfmt = V4L2_PIX_FMT_NV12N;
-			break;
-		case V4L2_PIX_FMT_NV12M_SBWC_10B:
-			if (ctx->mem_type_10bit)
-				dec->uncomp_pixfmt = V4L2_PIX_FMT_NV12M_P010;
-			else
-				dec->uncomp_pixfmt = V4L2_PIX_FMT_NV12M_S10B;
-			break;
-		case V4L2_PIX_FMT_NV12N_SBWC_10B:
-			dec->uncomp_pixfmt = V4L2_PIX_FMT_NV12N_10B;
-			break;
-		default:
-			mfc_ctx_err("[SBWC] Cannot find uncomp format: %d\n", org_fmt);
-			break;
+	uncomp_fmt = mfc_get_uncomp_format(ctx, org_fmt);
+	if (uncomp_fmt) {
+		dec->uncomp_fmt = __mfc_dec_find_format(ctx, uncomp_fmt);
+		if (dec->uncomp_fmt)
+			mfc_debug(2, "[SBWC] Uncompressed format is %s\n",
+					dec->uncomp_fmt->name);
 	}
-	mfc_debug(2, "[SBWC] Uncompressed format is %d\n", dec->uncomp_pixfmt);
 }
 
 static int __mfc_dec_update_disp_res(struct mfc_ctx *ctx, struct v4l2_format *f)
@@ -496,19 +580,30 @@ static int mfc_dec_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 			}
 		}
 
-		/* only NV16(61) format is supported for 422 format */
-		/* only 2 plane is supported for 10bit */
-		__mfc_dec_change_format(ctx);
-
-		if (ctx->is_sbwc)
+		/*
+		 * The format should be changed according to various conditions.
+		 * 1. compress (SBWC or not)
+		 * 2. bit depth (8bit or 10bit)
+		 * 3. chroma order (CbCr or CrCb)
+		 * 4. SoC supported 10bit type (P010/P210 or 8+2)
+		 * 5. component in memory (multi or single)
+		 */
+		if (ctx->is_sbwc) {
+			__mfc_dec_change_format_sbwc(ctx);
 			__mfc_dec_uncomp_format(ctx);
+		} else {
+			__mfc_dec_change_format(ctx);
+		}
+
+		if (ctx->is_10bit)
+			__mfc_dec_fix_10bit_memtype(ctx, ctx->dst_fmt->fourcc);
 
 		raw = &ctx->raw_buf;
 		/* Width and height are set to the dimensions
 		   of the movie, the buffer is bigger and
 		   further processing stages should crop to this
 		   rectangle. */
-		mfc_dec_calc_dpb_size(ctx);
+		mfc_dec_calc_dpb_size(ctx, &ctx->raw_buf, ctx->dst_fmt);
 
 		if (IS_LOW_MEM) {
 			unsigned int dpb_size;
@@ -906,6 +1001,7 @@ static int mfc_dec_dqbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 	struct dec_dpb_ref_info *dstBuf, *srcBuf;
 	struct hdr10_plus_meta *dst_sei_meta, *src_sei_meta;
 	struct av1_film_grain_meta *dst_av1_sei_meta, *src_av1_sei_meta;
+	unsigned int *dst_sei_full, *src_sei_full;
 	int ret;
 	int ncount = 0;
 
@@ -952,7 +1048,20 @@ static int mfc_dec_dqbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 		}
 
 		/* Memcpy from dec->hdr10_plus_info to shared memory */
-		if (dec->hdr10_plus_info) {
+		if (dec->hdr10_plus_full) {
+			src_sei_full = HDR10_PLUS_ADDR(dec->hdr10_plus_full, buf->index);
+			if (dec->sh_handle_hdr.vaddr != NULL) {
+				dst_sei_full = HDR10_PLUS_ADDR(dec->sh_handle_hdr.vaddr,
+								buf->index);
+				memcpy(dst_sei_full, src_sei_full, HDR10_PLUS_DATA_SIZE);
+				if (hdr_dump == 1) {
+					mfc_ctx_err("[HDR+][DUMP] SH_HANDLE data (idx %d)....\n",
+							buf->index);
+					print_hex_dump(KERN_ERR, "", DUMP_PREFIX_OFFSET, 32, 4,
+							dst_sei_full, 68, false);
+				}
+			}
+		} else if (dec->hdr10_plus_info) {
 			src_sei_meta = &dec->hdr10_plus_info[buf->index];
 			if (dec->sh_handle_hdr.vaddr != NULL) {
 				dst_sei_meta = (struct hdr10_plus_meta *)
@@ -1069,6 +1178,9 @@ static int __mfc_dec_ext_info(struct mfc_ctx *ctx)
 	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->hdr10_plus))
 		val |= DEC_SET_HDR10_PLUS;
 
+	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->hdr10_plus_full))
+		val |= DEC_SET_HDR10_PLUS_FULL;
+
 	mfc_debug(5, "[CTRLS] ext info val: %#x\n", val);
 
 	return val;
@@ -1177,7 +1289,10 @@ static int __mfc_dec_get_ctrl_val(struct mfc_ctx *ctx, struct v4l2_control *ctrl
 		ctrl->value = MFC_DRIVER_INFO;
 		break;
 	case V4L2_CID_MPEG_VIDEO_UNCOMP_FMT:
-		ctrl->value = dec->uncomp_pixfmt;
+		if (dec->uncomp_fmt)
+			ctrl->value = dec->uncomp_fmt->fourcc;
+		else
+			ctrl->value = 0;
 		break;
 	case V4L2_CID_MPEG_VIDEO_GET_DISPLAY_DELAY:
 		/* These context information is need to for only maincore */
@@ -1308,10 +1423,8 @@ static int mfc_dec_s_ctrl(struct file *file, void *priv,
 	case V4L2_CID_MPEG_MFC_SET_USER_SHARED_HANDLE:
 		if (dec->sh_handle_dpb.fd == -1) {
 			dec->sh_handle_dpb.fd = ctrl->value;
-			if (mfc_mem_get_user_shared_handle(ctx, &dec->sh_handle_dpb))
+			if (mfc_mem_get_user_shared_handle(ctx, &dec->sh_handle_dpb, "DPB"))
 				return -EINVAL;
-			mfc_debug(2, "[MEMINFO][DPB] shared handle fd: %d, vaddr: 0x%p\n",
-					dec->sh_handle_dpb.fd, dec->sh_handle_dpb.vaddr);
 		}
 		break;
 	case V4L2_CID_MPEG_MFC_SET_BUF_PROCESS_TYPE:
@@ -1326,22 +1439,21 @@ static int mfc_dec_s_ctrl(struct file *file, void *priv,
 		break;
 	case V4L2_CID_MPEG_MFC_HDR_USER_SHARED_HANDLE:
 		dec->sh_handle_hdr.fd = ctrl->value;
-		if (mfc_mem_get_user_shared_handle(ctx, &dec->sh_handle_hdr)) {
+		if (MFC_FEATURE_SUPPORT(ctx->dev, ctx->dev->pdata->hdr10_plus_full))
+			dec->sh_handle_hdr.data_size =
+				HDR10_PLUS_DATA_SIZE * MFC_MAX_BUFFERS;
+		else
+			dec->sh_handle_hdr.data_size =
+				sizeof(struct hdr10_plus_meta) * MFC_MAX_BUFFERS;
+		if (mfc_mem_get_user_shared_handle(ctx, &dec->sh_handle_hdr, "HDR10+"))
 			dec->sh_handle_hdr.fd = -1;
-			return -EINVAL;
-		}
-		mfc_debug(2, "[MEMINFO][HDR+] shared handle fd: %d, vaddr: 0x%p\n",
-				dec->sh_handle_hdr.fd, dec->sh_handle_hdr.vaddr);
 		break;
 	case V4L2_CID_MPEG_MFC_AV1_FILM_GRAIN_USER_SHARED_HANDLE:
 		dec->sh_handle_av1_film_grain.fd = ctrl->value;
-		if (mfc_mem_get_user_shared_handle(ctx, &dec->sh_handle_av1_film_grain)) {
+		dec->sh_handle_av1_film_grain.data_size =
+			sizeof(struct av1_film_grain_meta) * MFC_MAX_BUFFERS;
+		if (mfc_mem_get_user_shared_handle(ctx, &dec->sh_handle_av1_film_grain, "FILM_G"))
 			dec->sh_handle_av1_film_grain.fd = -1;
-			return -EINVAL;
-		}
-		mfc_debug(2, "[MEMINFO][FILMGR] shared handle fd: %d, vaddr: 0x%p\n",
-				dec->sh_handle_av1_film_grain.fd,
-				dec->sh_handle_av1_film_grain.vaddr);
 		break;
 	case V4L2_CID_MPEG_VIDEO_DECODING_ORDER:
 		dec->decoding_order = ctrl->value;

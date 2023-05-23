@@ -74,12 +74,8 @@ extern int dbg_snapshot_get_freq_idx(const char *name);
 extern void *dbg_snapshot_get_suspend_diag(void);
 
 #define dbg_snapshot_get_timestamp()	local_clock()
-extern void dbg_snapshot_task(int cpu, void *v_task);
-extern void dbg_snapshot_work(void *worker, void *v_task, work_func_t fn, int en);
 extern void dbg_snapshot_cpuidle(char *modes, unsigned int state, s64 diff, int en);
 extern void dbg_snapshot_cpuidle_mod(char *modes, unsigned int state, s64 diff, int en);
-extern void dbg_snapshot_irq(int irq, void *fn, void *val, unsigned long long time,
-				int en);
 extern void dbg_snapshot_clk(struct clk_hw *clock, const char *func_name,
 			    unsigned long arg, int mode);
 extern void dbg_snapshot_regulator(unsigned long long timestamp, char *f_name,
@@ -89,7 +85,6 @@ extern void dbg_snapshot_acpm(unsigned long long timestamp, const char *log,
 				unsigned int data);
 extern void dbg_snapshot_thermal(struct exynos_tmu_data *data, unsigned int temp,
 				char *name, unsigned long long max_cooling);
-extern void dbg_snapshot_hrtimer(void *timer, s64 *now, void *fn, int en);
 extern void dbg_snapshot_pmu(int id, const char *func_name, int mode);
 extern void dbg_snapshot_freq(int type, unsigned long old_freq,
 				unsigned long target_freq, int en);
@@ -334,28 +329,6 @@ enum dss_log_item_indx {
 	DSS_LOG_THERMAL_ID,
 	DSS_LOG_ACPM_ID,
 	DSS_LOG_PRINTK_ID,
-};
-
-enum dss_suspend_diag_item_index {
-	DSS_SUSPEND_SYNC_FILESYSTEMS_ID = 0,
-	DSS_SUSPEND_FREEZE_PROCESSES_ID,
-	DSS_SUSPEND_SUSPEND_ENTER_ID,
-	DSS_SUSPEND_DPM_PREPARE_ID,
-	DSS_SUSPEND_DPM_SUSPEND_ID,
-	DSS_SUSPEND_DPM_SUSPEND_LATE_ID,
-	DSS_SUSPEND_DPM_SUSPEND_NOIRQ_ID,
-	DSS_SUSPEND_CPU_OFF_ID,
-	DSS_SUSPEND_SYSCORE_SUSPEND_ID,
-	DSS_SUSPEND_MACHINE_SUSPEND_ID,
-	DSS_SUSPEND_SYSCORE_RESUME_ID,
-	DSS_SUSPEND_CPU_ON_ID,
-	DSS_SUSPEND_DPM_RESUME_NOIRQ_ID,
-	DSS_SUSPEND_DPM_RESUME_EARLY_ID,
-	DSS_SUSPEND_DPM_RESUME_ID,
-	DSS_SUSPEND_DPM_COMPLETE_ID,
-	DSS_SUSPEND_RESUME_CONSOLE_ID,
-	DSS_SUSPEND_THAW_PROCESSES_ID,
-	// up to 31
 };
 
 struct dbg_snapshot_helper_ops {

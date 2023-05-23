@@ -309,8 +309,9 @@ static struct mfc_buf *__mfc_handle_frame_output_del(struct mfc_core *core,
 	unsigned int is_video_signal_type = 0, is_colour_description = 0;
 	unsigned int is_content_light = 0, is_display_colour = 0;
 	unsigned int is_hdr10_plus_sei = 0, is_av1_film_grain_sei = 0;
+	unsigned int is_hdr10_plus_full = 0;
 	unsigned int is_uncomp = 0;
-	unsigned int i, index, idr_flag;
+	unsigned int i, index, idr_flag, is_last_display;
 
 	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->color_aspect_dec)) {
 		is_video_signal_type = mfc_core_get_video_signal_type();
@@ -324,6 +325,9 @@ static struct mfc_buf *__mfc_handle_frame_output_del(struct mfc_core *core,
 
 	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->hdr10_plus))
 		is_hdr10_plus_sei = mfc_core_get_sei_avail_st_2094_40();
+
+	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->hdr10_plus_full))
+		is_hdr10_plus_full = mfc_core_get_sei_nal_meta_status();
 
 	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->av1_film_grain))
 		is_av1_film_grain_sei = mfc_core_get_sei_avail_film_grain();
@@ -343,6 +347,8 @@ static struct mfc_buf *__mfc_handle_frame_output_del(struct mfc_core *core,
 		frame_type = mfc_core_get_disp_frame_type();
 		idr_flag = mfc_core_get_disp_idr_flag();
 	}
+
+	is_last_display = mfc_core_get_last_display();
 
 	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->sbwc_uncomp) && ctx->is_sbwc)
 		is_uncomp = mfc_core_get_uncomp();
@@ -414,13 +420,23 @@ static struct mfc_buf *__mfc_handle_frame_output_del(struct mfc_core *core,
 				mfc_core_get_hdr_plus_info(core, ctx,
 						&dec->hdr10_plus_info[index]);
 				mfc_set_mb_flag(dst_mb, MFC_FLAG_HDR_PLUS);
-				mfc_debug(2, "[HDR+] HDR10 plus dyanmic SEI metadata parsed\n");
+				mfc_debug(2, "[HDR+] HDR10 plus dynamic SEI metadata parsed\n");
 			} else {
 				mfc_ctx_err("[HDR+] HDR10 plus cannot be copied\n");
 			}
 		} else {
 			if (dec->hdr10_plus_info)
 				dec->hdr10_plus_info[index].valid = 0;
+		}
+
+		if (is_hdr10_plus_full) {
+			if (dec->hdr10_plus_full) {
+				mfc_core_get_dec_metadata_sei_nal(core, ctx, index);
+				mfc_set_mb_flag(dst_mb, MFC_FLAG_HDR_PLUS);
+				mfc_debug(2, "[HDR+] HDR10 plus full SEI metadata parsed\n");
+			} else {
+				mfc_ctx_err("[HDR+] HDR10 plus full cannot be copied\n");
+			}
 		}
 
 		if (is_av1_film_grain_sei) {
@@ -435,7 +451,6 @@ static struct mfc_buf *__mfc_handle_frame_output_del(struct mfc_core *core,
 		} else {
 			if (dec->av1_film_grain_info)
 				dec->av1_film_grain_info[index].apply_grain = 0;
-
 		}
 
 		if (is_uncomp) {
@@ -447,6 +462,11 @@ static struct mfc_buf *__mfc_handle_frame_output_del(struct mfc_core *core,
 			mfc_set_mb_flag(dst_mb, MFC_FLAG_FRAMERATE_CH);
 			ctx->update_framerate = false;
 			mfc_debug(2, "[QoS] framerate changed\n");
+		}
+
+		if (is_last_display) {
+			mfc_set_mb_flag(dst_mb, MFC_FLAG_LAST_FRAME);
+			mfc_debug(2, "[FRAME] Last display frame\n");
 		}
 
 		if ((IS_VP9_DEC(ctx) || IS_AV1_DEC(ctx)) && dec->has_multiframe) {
@@ -756,6 +776,10 @@ static void __mfc_handle_frame_error(struct mfc_core *core, struct mfc_ctx *ctx,
 	if (ctx->type == MFCINST_ENCODER) {
 		mfc_err("Encoder Interrupt Error (err: %d, warn: %d)\n",
 				mfc_get_err(err), mfc_get_warn(err));
+
+		if (mfc_get_err(err) == MFC_REG_ERR_UNDEFINED_EXCEPTION)
+			mfc_core_handle_error(core);
+
 		return;
 	}
 
@@ -802,6 +826,7 @@ static void __mfc_handle_frame_error(struct mfc_core *core, struct mfc_ctx *ctx,
 static void __mfc_handle_frame_input(struct mfc_core *core,
 		struct mfc_ctx *ctx, unsigned int err)
 {
+	struct mfc_dev *dev = ctx->dev;
 	struct mfc_core_ctx *core_ctx = core->core_ctx[ctx->num];
 	struct mfc_dec *dec = ctx->dec_priv;
 	struct mfc_buf *src_mb;
@@ -894,6 +919,14 @@ static void __mfc_handle_frame_input(struct mfc_core *core,
 			dec->is_multiple_show = 0;
 			mfc_ctx_info("[STREAM] AV1 multiple show frame has no buffer to DQ\n");
 		}
+	}
+
+	/* If pic_output_flag is 0 in HEVC, it is no destination buffer */
+	if (IS_HEVC_DEC(ctx) &&
+			MFC_FEATURE_SUPPORT(dev, dev->pdata->hevc_pic_output_flag) &&
+			!mfc_core_get_hevc_pic_output_flag()) {
+		mfc_set_mb_flag(src_mb, MFC_FLAG_CONSUMED_ONLY);
+		mfc_debug(2, "[STREAM] HEVC pic_output_flag off has no buffer to DQ\n");
 	}
 
 	if ((mfc_core_get_disp_status() == MFC_REG_DEC_STATUS_DECODING_ONLY) &&
@@ -1929,6 +1962,7 @@ static int __mfc_irq_ctx(struct mfc_core *core, struct mfc_ctx *ctx,
 		break;
 	default:
 		mfc_err("Unknown int reason: %d\n", reason);
+		mfc_core_handle_error(core);
 	}
 
 	return 1;

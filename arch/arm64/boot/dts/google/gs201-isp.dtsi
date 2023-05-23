@@ -456,9 +456,6 @@
 		/* Device node name */
 		node-name = "ipp";
 
-		/* Thread priority */
-		transaction-thread-priority = <99>;
-
 		/* Register space */
 		reg =
 			<0x0 0x1AC40000 0x10000>, /* IPP0 */
@@ -516,6 +513,9 @@
 
 		iommus = <&sysmmu_ipp>;
 		samsung,iommu-group = <&iommu_group_isp>;
+
+		/* Adjust Thread priority */
+		transaction-thread-priority = <99>;
 	};
 
 	lwis_gtnr_align: lwis_gtnr_align@1AC80000 {
@@ -627,9 +627,6 @@
 		/* Device node name */
 		node-name = "g3aa";
 
-		/* Thread priority */
-		transaction-thread-priority = <99>;
-
 		/* Register space */
 		reg =
 			<0x0 0x1A840000 0x20000>, /* G3AA */
@@ -663,6 +660,9 @@
 
 		iommus = <&sysmmu_g3aa>;
 		samsung,iommu-group = <&iommu_group_isp>;
+
+		/* Adjust Thread priority */
+		transaction-thread-priority = <99>;
 	};
 
 	lwis_itp: lwis_itp@1B450000 {

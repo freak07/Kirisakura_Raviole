@@ -45,11 +45,6 @@ struct dbg_snapshot_log_item {
 	struct dbg_snapshot_info entry;
 };
 
-struct dbg_snapshot_suspend_diag_item {
-	const char *action;
-	unsigned long long timeout;
-};
-
 struct dbg_snapshot_desc {
 	struct device *dev;
 	raw_spinlock_t ctrl_lock;
@@ -78,6 +73,7 @@ struct dbg_snapshot_dpm {
 	unsigned int p_el1_serror;
 };
 
+void dbg_snapshot_register_vh_log(void);
 extern void dbg_snapshot_init_log(void);
 extern void dbg_snapshot_init_dpm(void);
 extern void dbg_snapshot_init_utils(void);
