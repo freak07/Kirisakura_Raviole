@@ -4653,9 +4653,6 @@ static void lru_gen_exit_fault(void)
 }
 #endif /* CONFIG_LRU_GEN */
 
-static void lru_gen_enter_fault(struct vm_area_struct *vma);
-static void lru_gen_exit_fault(void);
-
 
 /*
  * By the time we get here, we already hold the mm semaphore
