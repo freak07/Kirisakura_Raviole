@@ -1417,7 +1417,7 @@ static int next_search_order(struct compact_control *cc, int order)
 static void fast_isolate_freepages(struct compact_control *cc)
 {
 	unsigned int limit = max(1U, freelist_scan_limit(cc) >> 1);
-	unsigned int nr_scanned = 0;
+	unsigned int nr_scanned = 0, total_isolated = 0;
 	unsigned long low_pfn, min_pfn, highest = 0;
 	unsigned long nr_isolated = 0;
 	unsigned long distance;
@@ -1516,6 +1516,7 @@ static void fast_isolate_freepages(struct compact_control *cc)
 				set_page_private(page, order);
 				nr_isolated = 1 << order;
 				nr_scanned += nr_isolated - 1;
+				total_isolated += nr_isolated;
 				cc->nr_freepages += nr_isolated;
 				list_add_tail(&page->lru, &cc->freepages);
 				count_compact_events(COMPACTISOLATED, nr_isolated);
@@ -1535,6 +1536,9 @@ static void fast_isolate_freepages(struct compact_control *cc)
 		if (order_scanned >= limit)
 			limit = max(1U, limit >> 1);
 	}
+
+	trace_mm_compaction_fast_isolate_freepages(min_pfn, cc->free_pfn,
+						   nr_scanned, total_isolated);
 
 	if (!page) {
 		cc->fast_search_fail++;
