@@ -65,6 +65,11 @@ struct xhci_exynos_priv {
 #define hcd_to_xhci_exynos_priv(h) ((struct xhci_exynos_priv *)hcd_to_xhci(h)->priv)
 #define xhci_to_exynos_priv(x) ((struct xhci_exynos_priv *)(x)->priv)
 
+struct xhci_exynos_udev_ids {
+	__le16 vendor;
+	__le16 product;
+};
+
 extern void __iomem *phycon_base_addr;
 extern int exynos_usbdrd_phy_vendor_set(struct phy *phy, int is_enable,
 					int is_cancel);
@@ -76,5 +81,7 @@ static int xhci_exynos_bus_suspend(struct usb_hcd *hcd);
 static int xhci_exynos_bus_resume(struct usb_hcd *hcd);
 static int xhci_exynos_wake_lock(struct xhci_hcd_exynos *xhci_exynos,
 				 int is_main_hcd, int is_lock);
-
+void register_bus_suspend_callback(void (*callback)(void *bus_suspend_payload, bool main_hcd,
+						    bool suspend),
+				   void *data);
 #endif	/* _XHCI_EXYNOS_H */
