@@ -33,7 +33,7 @@ extern struct vendor_group_list vendor_group_list[VG_MAX];
 extern inline unsigned int uclamp_none(enum uclamp_id clamp_id);
 
 unsigned long schedutil_cpu_util_pixel_mod(int cpu, unsigned long util_cfs,
-				 unsigned long max, enum schedutil_type type,
+				 unsigned long max, enum cpu_util_type type,
 				 struct task_struct *p);
 unsigned int map_scaling_freq(int cpu, unsigned int freq);
 
