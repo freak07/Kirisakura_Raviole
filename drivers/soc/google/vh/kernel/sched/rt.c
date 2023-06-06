@@ -86,11 +86,12 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 	bool task_fits[CPU_NUM] = { 0 };
 	bool task_fits_original[CPU_NUM] = { 0 };
 	bool overutilize[CPU_NUM] = { 0 };
-	int cpu, best_cpu = -1, best_busy_cpu, least_used_best_cpu;
-	unsigned long min_cpu_util, min_unimportant_cpu_util;
+	bool candidates[CPU_NUM] = { 0 };
+	int cpu, best_cpu = -1;
+	unsigned long min_cpu_util;
 	unsigned long min_cpu_capacity;
 	unsigned int min_exit_lat;
-	unsigned int best_busy_importance, least_importance;
+	unsigned int least_importance;
 	struct cpuidle_state *idle;
 	int prev_cpu = task_cpu(p);
 	bool is_idle;
@@ -106,16 +107,12 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 	cpumask_clear(backup_mask);
 	min_exit_lat = UINT_MAX;
 	min_cpu_util = ULONG_MAX;
-	min_unimportant_cpu_util = ULONG_MAX;
 	min_cpu_capacity = ULONG_MAX;
-	best_busy_importance = UINT_MAX;
 	least_importance = UINT_MAX;
-	best_busy_cpu = -1;
-	least_used_best_cpu = -1;
 
 	for_each_cpu(cpu, lowest_mask) {
-		is_idle = cpu_is_idle(cpu);
-		exit_lat[cpu] = 0;
+		is_idle = available_idle_cpu(cpu);
+		exit_lat[cpu] = C1_EXIT_LATENCY; // If cpu is not idle, use C1_EXIT_LATENCY
 		capacity[cpu] = capacity_orig_of(cpu);
 		cpu_importance[cpu] = READ_ONCE(cpu_rq(cpu)->uclamp[UCLAMP_MIN].value) +
 				 READ_ONCE(cpu_rq(cpu)->uclamp[UCLAMP_MAX].value);
@@ -127,11 +124,11 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 
 			if (idle)
 				exit_lat[cpu] = idle->exit_latency;
+		}
 
-			if (sched_cpu_idle(cpu)) {
-				exit_lat[cpu] = 0;
-				cpu_importance[cpu] = 0;
-			}
+		if (sched_cpu_idle(cpu)) {
+			exit_lat[cpu] = C1_EXIT_LATENCY;
+			cpu_importance[cpu] = 0;
 		}
 
 		util[cpu] = cpu_util(cpu) + cpu_util_rt(cpu_rq(cpu));
@@ -178,24 +175,7 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 		else if (fit_orig_and_overutilized_found && (!task_fits_original[cpu]))
 			continue;
 
-		/* select non-idle cpus with throttled(unimportant) tasks first */
-		if (exit_lat[cpu] == 0 && cpu_importance[cpu] < DEFAULT_IMPRATANCE_THRESHOLD) {
-			cpumask_set_cpu(cpu, backup_mask);
-
-			/* Always prefer the least important cpu. */
-			if (best_busy_importance < cpu_importance[cpu])
-				continue;
-
-			/* If importance is the same, choose the least loaded cpu. */
-			if (best_busy_importance == cpu_importance[cpu] &&
-					min_unimportant_cpu_util < util[cpu])
-				continue;
-
-			best_busy_importance = cpu_importance[cpu];
-			best_busy_cpu = cpu;
-			min_unimportant_cpu_util = util[cpu];
-			continue;
-		}
+		candidates[cpu] = 1;
 
 		/* Always prefer cpu with the least importance. */
 		if (cpu_importance[cpu] > least_importance)
@@ -217,9 +197,13 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 					/* Prefer lower capacity. */
 					if (capacity[cpu] > min_cpu_capacity )
 						continue;
-					/* If capacity is the same, prefer prev cpu */
-					if (least_used_best_cpu == prev_cpu)
-						continue;
+
+					/* If capacity is the same */
+					if (capacity[cpu] == min_cpu_capacity) {
+						/* Prefer prev cpu */
+						if (best_cpu == prev_cpu)
+							continue;
+					}
 				}
 			}
 		}
@@ -228,29 +212,22 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 		min_cpu_util = util[cpu];
 		min_cpu_capacity = capacity[cpu];
 		min_exit_lat = exit_lat[cpu];
-		least_used_best_cpu = cpu;
+		best_cpu = cpu;
+	}
+
+	/* Set cpus with the same least importance as backup */
+	for_each_cpu(cpu, lowest_mask) {
+		if (candidates[cpu] && cpu_importance[cpu] == least_importance && cpu != best_cpu)
+			cpumask_set_cpu(cpu, backup_mask);
 	}
 
 	rcu_read_unlock();
 
-	if (best_busy_cpu != -1) {
-		best_cpu = best_busy_cpu;
-		/* backup_mask always contains best_busy_cpu.  */
-		cpumask_clear_cpu(best_busy_cpu, backup_mask);
-
-		/* No other backup, use least_used_best_cpu as backup. */
-		if (cpumask_empty(backup_mask) && least_used_best_cpu != -1)
-			cpumask_set_cpu(least_used_best_cpu, backup_mask);
-	} else if (least_used_best_cpu != -1) {
-		/* Fall back to least_used_best_cpu if there is no non-important cpu. */
-		best_cpu = least_used_best_cpu;
-	}
-
 out:
 	trace_sched_find_least_loaded_cpu(p, get_vendor_group(p), uclamp_eff_value(p, UCLAMP_MIN),
 					  uclamp_eff_value(p, UCLAMP_MAX), get_prefer_high_cap(p),
-					  best_busy_cpu, least_used_best_cpu, prev_cpu, best_cpu,
-					  *lowest_mask->bits, *backup_mask->bits);
+					  prev_cpu, best_cpu, *lowest_mask->bits,
+					  *backup_mask->bits);
 
 	return best_cpu;
 }
@@ -386,9 +363,7 @@ void rvh_select_task_rq_rt_pixel_mod(void *data, struct task_struct *p, int prev
 		}
 	}
 
-	if (target != -1 &&
-	   (p->prio < cpu_rq(target)->rt.highest_prio.curr ||
-	   task_may_not_preempt(curr, prev_cpu))) {
+	if (target != -1) {
 		*new_cpu = target;
 	}
 
