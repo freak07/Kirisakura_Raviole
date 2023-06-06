@@ -569,12 +569,11 @@ TRACE_EVENT(sched_cpu_util_rt,
 TRACE_EVENT(sched_find_least_loaded_cpu,
 
 	TP_PROTO(struct task_struct *tsk, int group, unsigned long uclamp_min,
-		 unsigned long uclamp_max, bool prefer_high_cap, int best_busy_cpu,
-		 unsigned long least_used_best_cpu, int prev_cpu, int best_cpu,
+		 unsigned long uclamp_max, bool prefer_high_cap, int prev_cpu, int best_cpu,
 		 unsigned long lowest_mask, unsigned long backup_mask),
 
-	TP_ARGS(tsk, group, uclamp_min, uclamp_max, prefer_high_cap, best_busy_cpu,
-		least_used_best_cpu, prev_cpu, best_cpu, lowest_mask, backup_mask),
+	TP_ARGS(tsk, group, uclamp_min, uclamp_max, prefer_high_cap, prev_cpu, best_cpu,
+		lowest_mask, backup_mask),
 
 	TP_STRUCT__entry(
 		__array(char,		comm, TASK_COMM_LEN)
@@ -583,8 +582,6 @@ TRACE_EVENT(sched_find_least_loaded_cpu,
 		__field(unsigned long,	uclamp_min)
 		__field(unsigned long,	uclamp_max)
 		__field(bool,		prefer_high_cap)
-		__field(unsigned long,	best_busy_cpu)
-		__field(unsigned long,	least_used_best_cpu)
 		__field(int,		prev_cpu)
 		__field(int,		best_cpu)
 		__field(unsigned long,	lowest_mask)
@@ -598,8 +595,6 @@ TRACE_EVENT(sched_find_least_loaded_cpu,
 		__entry->uclamp_min              = uclamp_min;
 		__entry->uclamp_max              = uclamp_max;
 		__entry->prefer_high_cap         = prefer_high_cap;
-		__entry->best_busy_cpu           = best_busy_cpu;
-		__entry->least_used_best_cpu     = least_used_best_cpu;
 		__entry->prev_cpu                = prev_cpu;
 		__entry->best_cpu                = best_cpu;
 		__entry->lowest_mask             = lowest_mask;
@@ -607,11 +602,9 @@ TRACE_EVENT(sched_find_least_loaded_cpu,
 		),
 
 	TP_printk("pid=%d comm=%s group=%d uclamp_min=%lu uclamp_max=%lu prefer_high_cap=%d " \
-		"best_busy_cpu=%lu least_used_best_cpu=%lu prev_cpu=%d best_cpu=%d " \
-		"lowest_mask=0x%lx backup_mask=0x%lx",
+		"prev_cpu=%d best_cpu=%d lowest_mask=0x%lx backup_mask=0x%lx",
 		__entry->pid, __entry->comm, __entry->group, __entry->uclamp_min,
-		__entry->uclamp_max, __entry->prefer_high_cap, __entry->best_busy_cpu,
-		__entry->least_used_best_cpu, __entry->prev_cpu, __entry->best_cpu,
+		__entry->uclamp_max, __entry->prefer_high_cap, __entry->prev_cpu, __entry->best_cpu,
 		__entry->lowest_mask, __entry->backup_mask)
 );
 
