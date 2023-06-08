@@ -2655,10 +2655,11 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 	struct task_struct *p = NULL;
 	struct rq_flags src_rf;
 	int this_cpu = this_rq->cpu;
-	struct vendor_rq_struct *vrq = get_vendor_rq_struct(this_rq);
+	struct vendor_rq_struct *this_vrq = get_vendor_rq_struct(this_rq);
+	struct vendor_rq_struct *src_vrq;
 
-	if (SCHED_WARN_ON(atomic_read(&vrq->num_adpf_tasks)))
-		atomic_set(&vrq->num_adpf_tasks, 0);
+	if (SCHED_WARN_ON(atomic_read(&this_vrq->num_adpf_tasks)))
+		atomic_set(&this_vrq->num_adpf_tasks, 0);
 
 
 	if (!vendor_sched_idle_balancer)
@@ -2693,6 +2694,28 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 			continue;
 
 		src_rq = cpu_rq(cpu);
+		src_vrq = get_vendor_rq_struct(src_rq);
+
+		/*
+		 * Don't bother if no latency sensitive tasks on src_rq or if
+		 * there's only one.
+		 *
+		 * If there are too many other tasks on the rq but a single
+		 * latency_sensitive one, we should rely on skip_next_buddy()
+		 * and better wake up placement logic to avoid this situation
+		 * first. We can consider pulling here too in the future if we
+		 * find there are corner cases hard to fix otherwise.
+		 *
+		 * If something with a high nice value is stealing time, then
+		 * we should ask questions about why nice value is set so high.
+		 *
+		 * If an RT task is stealing time, then we should ask why wake
+		 * up path placed the two in the same CPU. We have an avoidance
+		 * strategy for this.
+		 */
+		if (atomic_read(&src_vrq->num_adpf_tasks) <= 1)
+			continue;
+
 		rq_lock_irqsave(src_rq, &src_rf);
 		update_rq_clock(src_rq);
 
