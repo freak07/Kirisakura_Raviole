@@ -170,6 +170,9 @@ DECLARE_HOOK(android_vh_alloc_pages_failure_bypass,
 	TP_ARGS(gfp_mask, order, alloc_flags, migratetype, page));
 /* macro versions of hooks are no longer required */
 
+DECLARE_HOOK(android_vh_use_cma_first_check,
+	TP_PROTO(bool *use_cma_first_check),
+	TP_ARGS(use_cma_first_check));
 #endif /* _TRACE_HOOK_MM_H */
 
 /* This part must be outside protection */
