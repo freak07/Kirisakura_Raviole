@@ -441,46 +441,6 @@ static void __vma_link_file(struct vm_area_struct *vma,
 	flush_dcache_mmap_unlock(mapping);
 }
 
-void vma_mas_store(struct vm_area_struct *vma, struct ma_state *mas)
-{
-	trace_vma_store(mas->tree, vma);
-	mas_set_range(mas, vma->vm_start, vma->vm_end - 1);
-	mas_store_prealloc(mas, vma);
-}
-
-/*
- * vma_mas_remove() - Remove a VMA from the maple tree.
- * @vma: The vm_area_struct
- * @mas: The maple state
- *
- * Efficient way to remove a VMA from the maple tree when the @mas has already
- * been established and points to the correct location.
- * Note: the end address is inclusive in the maple tree.
- */
-void vma_mas_remove(struct vm_area_struct *vma, struct ma_state *mas)
-{
-	trace_vma_mas_szero(mas->tree, vma->vm_start, vma->vm_end - 1);
-	mas->index = vma->vm_start;
-	mas->last = vma->vm_end - 1;
-	mas_store_prealloc(mas, NULL);
-}
-
-/*
- * vma_mas_szero() - Set a given range to zero.  Used when modifying a
- * vm_area_struct start or end.
- *
- * @mm: The struct_mm
- * @start: The start address to zero
- * @end: The end address to zero.
- */
-static inline void vma_mas_szero(struct ma_state *mas, unsigned long start,
-				unsigned long end)
-{
-	trace_vma_mas_szero(mas->tree, start, end - 1);
-	mas_set_range(mas, start, end - 1);
-	mas_store_prealloc(mas, NULL);
-}
-
 static int vma_link(struct mm_struct *mm, struct vm_area_struct *vma)
 {
 	VMA_ITERATOR(vmi, mm, 0);
@@ -819,7 +779,7 @@ int __vma_adjust_legacy(struct vm_area_struct *vma, unsigned long start,
 	bool vma_changed = false;
 	long adjust_next = 0;
 	int remove_next = 0;
-	MA_STATE(mas, &mm->mm_mt, 0, 0);
+	VMA_ITERATOR(vmi, mm, 0);
 	struct vm_area_struct *exporter = NULL, *importer = NULL;
 
 	if (next && !insert) {
@@ -903,8 +863,8 @@ int __vma_adjust_legacy(struct vm_area_struct *vma, unsigned long start,
 				return error;
 		}
 	}
-
-	if (mas_preallocate(&mas, GFP_KERNEL))
+	vma_iter_config(&vmi, vma->vm_start, vma->vm_end);
+	if (vma_iter_prealloc(&vmi, vma))
 		return -ENOMEM;
 
 	vma_adjust_trans_huge(orig_vma, start, end, adjust_next);
@@ -950,7 +910,8 @@ int __vma_adjust_legacy(struct vm_area_struct *vma, unsigned long start,
 	if (start != vma->vm_start) {
 		if ((vma->vm_start < start) &&
 		    (!insert || (insert->vm_end != start))) {
-			vma_mas_szero(&mas, vma->vm_start, start);
+			vma_iter_config(&vmi, vma->vm_start, start);
+			vma_iter_clear(&vmi);
 			VM_WARN_ON(insert && insert->vm_start > vma->vm_start);
 		} else {
 			vma_changed = true;
@@ -960,8 +921,9 @@ int __vma_adjust_legacy(struct vm_area_struct *vma, unsigned long start,
 	if (end != vma->vm_end) {
 		if (vma->vm_end > end) {
 			if (!insert || (insert->vm_start != end)) {
-				vma_mas_szero(&mas, end, vma->vm_end);
-				mas_reset(&mas);
+				vma_iter_config(&vmi, end, vma->vm_end);
+				vma_iter_set(&vmi, vma->vm_end);
+				vma_iter_clear(&vmi);
 				VM_WARN_ON(insert &&
 					   insert->vm_end < vma->vm_end);
 			}
@@ -972,13 +934,13 @@ int __vma_adjust_legacy(struct vm_area_struct *vma, unsigned long start,
 	}
 
 	if (vma_changed)
-		vma_mas_store(vma, &mas);
+		vma_iter_store(&vmi, vma);
 
 	vma->vm_pgoff = pgoff;
 	if (adjust_next) {
 		next->vm_start += adjust_next;
 		next->vm_pgoff += adjust_next >> PAGE_SHIFT;
-		vma_mas_store(next, &mas);
+		vma_iter_store(&vmi, next);
 	}
 
 	if (file) {
@@ -998,8 +960,7 @@ int __vma_adjust_legacy(struct vm_area_struct *vma, unsigned long start,
 		 * us to insert it before dropping the locks
 		 * (it may either follow vma or precede it).
 		 */
-		mas_reset(&mas);
-		vma_mas_store(insert, &mas);
+		vma_iter_store(&vmi, insert);
 		mm->map_count++;
 	}
 
@@ -1045,7 +1006,7 @@ again:
 	if (insert && file)
 		uprobe_mmap(insert);
 
-	mas_destroy(&mas);
+	vma_iter_free(&vmi);
 	validate_mm(mm);
 
 	return 0;
