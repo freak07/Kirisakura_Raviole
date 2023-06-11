@@ -71,7 +71,7 @@ static inline void wake_throttle_isolated(pg_data_t *pgdat)
 vm_fault_t do_swap_page(struct vm_fault *vmf);
 void activate_page(struct page *page);
 
-void free_pgtables(struct mmu_gather *tlb, struct maple_tree *mt,
+void free_pgtables(struct mmu_gather *tlb, struct ma_state *mas,
 		   struct vm_area_struct *start_vma, unsigned long floor,
 		   unsigned long ceiling, bool mm_wr_locked);
 
@@ -694,19 +694,37 @@ struct migration_target_control {
 	gfp_t gfp_mask;
 };
 
+static inline void vma_iter_config(struct vma_iterator *vmi,
+		unsigned long index, unsigned long last)
+{
+	MAS_BUG_ON(&vmi->mas, vmi->mas.node != MAS_START &&
+		   (vmi->mas.index > index || vmi->mas.last < index));
+	__mas_set_range(&vmi->mas, index, last - 1);
+}
+
 /*
  * VMA Iterator functions shared between nommu and mmap
  */
-static inline int vma_iter_prealloc(struct vma_iterator *vmi)
+static inline int vma_iter_prealloc(struct vma_iterator *vmi,
+		struct vm_area_struct *vma)
 {
-	return mas_preallocate(&vmi->mas, GFP_KERNEL);
+	return mas_preallocate(&vmi->mas, vma, GFP_KERNEL);
 }
 
-static inline void vma_iter_clear(struct vma_iterator *vmi,
-				  unsigned long start, unsigned long end)
+static inline void vma_iter_clear(struct vma_iterator *vmi)
 {
-	mas_set_range(&vmi->mas, start, end - 1);
 	mas_store_prealloc(&vmi->mas, NULL);
+}
+
+static inline int vma_iter_clear_gfp(struct vma_iterator *vmi,
+			unsigned long start, unsigned long end, gfp_t gfp)
+{
+	__mas_set_range(&vmi->mas, start, end - 1);
+	mas_store_gfp(&vmi->mas, NULL, gfp);
+	if (unlikely(mas_is_err(&vmi->mas)))
+		return -ENOMEM;
+
+	return 0;
 }
 
 static inline struct vm_area_struct *vma_iter_load(struct vma_iterator *vmi)
@@ -738,8 +756,7 @@ static inline void vma_iter_store(struct vma_iterator *vmi,
 	    ((vmi->mas.index > vma->vm_start) || (vmi->mas.last < vma->vm_start)))
 		vma_iter_invalidate(vmi);
 
-	vmi->mas.index = vma->vm_start;
-	vmi->mas.last = vma->vm_end - 1;
+	__mas_set_range(&vmi->mas, vma->vm_start, vma->vm_end - 1);
 	mas_store_prealloc(&vmi->mas, vma);
 }
 
@@ -750,14 +767,17 @@ static inline int vma_iter_store_gfp(struct vma_iterator *vmi,
 	    ((vmi->mas.index > vma->vm_start) || (vmi->mas.last < vma->vm_start)))
 		vma_iter_invalidate(vmi);
 
-	vmi->mas.index = vma->vm_start;
-	vmi->mas.last = vma->vm_end - 1;
+	__mas_set_range(&vmi->mas, vma->vm_start, vma->vm_end - 1);
 	mas_store_gfp(&vmi->mas, vma, gfp);
 	if (unlikely(mas_is_err(&vmi->mas)))
 		return -ENOMEM;
 
 	return 0;
 }
+
+void unmap_vmas(struct mmu_gather *tlb, struct ma_state *mas,
+		struct vm_area_struct *start_vma, unsigned long start,
+		unsigned long end, unsigned long tree_end, bool mm_wr_locked);
 
 /*
  * VMA lock generalization
