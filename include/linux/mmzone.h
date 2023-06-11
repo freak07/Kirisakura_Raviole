@@ -77,9 +77,11 @@ extern const char * const migratetype_names[MIGRATE_TYPES];
 	bool ret = (mt == MIGRATE_ISOLATE || mt == MIGRATE_CMA) ? true : false;	\
 	ret;									\
 })
+#  define get_cma_migrate_type() MIGRATE_CMA
 #else
 #  define is_migrate_cma(migratetype) false
 #  define is_migrate_cma_page(_page) false
+#  define get_cma_migrate_type() MIGRATE_MOVABLE
 #endif
 
 static inline bool is_migrate_movable(int mt)

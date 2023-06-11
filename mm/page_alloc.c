@@ -3109,32 +3109,33 @@ __rmqueue(struct zone *zone, unsigned int order, int migratetype,
 {
 	struct page *page;
 
-	if (IS_ENABLED(CONFIG_CMA)) {
-		/*
-		 * Balance movable allocations between regular and CMA areas by
-		 * allocating from CMA when over half of the zone's free memory
-		 * is in the CMA area.
-		 */
-		if (alloc_flags & ALLOC_CMA &&
-		    zone_page_state(zone, NR_FREE_CMA_PAGES) >
-		    zone_page_state(zone, NR_FREE_PAGES) / 2) {
-			page = __rmqueue_cma_fallback(zone, order);
-			if (page)
-				return page;
-		}
-	}
 retry:
 	page = __rmqueue_smallest(zone, order, migratetype);
-	if (unlikely(!page)) {
-		if (alloc_flags & ALLOC_CMA)
-			page = __rmqueue_cma_fallback(zone, order);
 
-		if (!page && __rmqueue_fallback(zone, order, migratetype,
-								alloc_flags))
-			goto retry;
-	}
+	if (unlikely(!page) && __rmqueue_fallback(zone, order, migratetype,
+						  alloc_flags))
+		goto retry;
+
 	return page;
 }
+
+#ifdef CONFIG_CMA
+static struct page *__rmqueue_cma(struct zone *zone, unsigned int order,
+				  int migratetype,
+				  unsigned int alloc_flags)
+{
+	struct page *page = __rmqueue_cma_fallback(zone, order);
+	trace_mm_page_alloc_zone_locked(page, order, MIGRATE_CMA);
+	return page;
+}
+#else
+static inline struct page *__rmqueue_cma(struct zone *zone, unsigned int order,
+					 int migratetype,
+					 unsigned int alloc_flags)
+{
+	return NULL;
+}
+#endif
 
 /*
  * Obtain a specified number of elements from the buddy allocator, all under
@@ -3150,8 +3151,18 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 
 	spin_lock_irqsave(&zone->lock, flags);
 	for (i = 0; i < count; ++i) {
-		struct page *page = __rmqueue(zone, order, migratetype,
-								alloc_flags);
+		struct page *page = NULL;
+
+		if (is_migrate_cma(migratetype)) {
+			bool is_cma_alloc = true;
+
+			trace_android_vh_cma_alloc_adjust(zone, &is_cma_alloc);
+			if (is_cma_alloc)
+				page = __rmqueue_cma(zone, order, migratetype,
+					     alloc_flags);
+		} else
+			page = __rmqueue(zone, order, migratetype, alloc_flags);
+
 		if (unlikely(page == NULL))
 			break;
 
@@ -3734,12 +3745,20 @@ struct page *rmqueue_buddy(struct zone *preferred_zone, struct zone *zone,
 		 * reserved for high-order atomic allocation, so order-0
 		 * request should skip it.
 		 */
-		if (alloc_flags & ALLOC_HIGHATOMIC)
+		if (alloc_flags & ALLOC_HIGHATOMIC) {
 			page = __rmqueue_smallest(zone, order, MIGRATE_HIGHATOMIC);
+			if (page)
+				trace_mm_page_alloc_zone_locked(page, order, migratetype);
+		}
 		if (!page) {
-			page = __rmqueue(zone, order, migratetype, alloc_flags);
-
-			/*
+			if (migratetype == MIGRATE_MOVABLE &&
+					alloc_flags & ALLOC_CMA)
+				page = __rmqueue_cma(zone, order, migratetype,
+						     alloc_flags);
+			if (!page)
+				page = __rmqueue(zone, order, migratetype,
+						 alloc_flags);
+						/*
 			 * If the allocation fails, allow OOM handling access
 			 * to HIGHATOMIC reserves as failing now is worse than
 			 * failing a high-order atomic allocation in the
@@ -3747,12 +3766,12 @@ struct page *rmqueue_buddy(struct zone *preferred_zone, struct zone *zone,
 			 */
 			if (!page && (alloc_flags & ALLOC_OOM))
 				page = __rmqueue_smallest(zone, order, MIGRATE_HIGHATOMIC);
-
-			if (!page) {
-				spin_unlock_irqrestore(&zone->lock, flags);
-				return NULL;
-			}
 		}
+		if (!page) {
+			spin_unlock_irqrestore(&zone->lock, flags);
+			return NULL;
+		}
+
 		__mod_zone_freepage_state(zone, -(1 << order),
 					  get_pcppage_migratetype(page));
 		spin_unlock_irqrestore(&zone->lock, flags);
@@ -3770,12 +3789,20 @@ struct page *__rmqueue_pcplist(struct zone *zone, unsigned int order,
 			int migratetype,
 			unsigned int alloc_flags,
 			struct per_cpu_pages *pcp,
-			struct list_head *list)
+			struct list_head *list,
+			gfp_t gfp_flags)
 {
 	struct page *page;
 
 	do {
-		if (list_empty(list)) {
+		if (list_empty(list) && migratetype == MIGRATE_MOVABLE &&
+				alloc_flags & ALLOC_CMA) {
+			pcp->count += rmqueue_bulk(zone, 0,
+					pcp->batch, list,
+					get_cma_migrate_type(), alloc_flags);
+		}
+
+		if (unlikely(list_empty(list))) {
 			int batch = READ_ONCE(pcp->batch);
 			int alloced;
 
@@ -3808,7 +3835,8 @@ struct page *__rmqueue_pcplist(struct zone *zone, unsigned int order,
 /* Lock and remove page from the per-cpu list */
 static struct page *rmqueue_pcplist(struct zone *preferred_zone,
 			struct zone *zone, unsigned int order,
-			int migratetype, unsigned int alloc_flags)
+			gfp_t gfp_flags, int migratetype,
+			unsigned int alloc_flags)
 {
 	struct per_cpu_pages *pcp;
 	struct list_head *list;
@@ -3830,7 +3858,8 @@ static struct page *rmqueue_pcplist(struct zone *preferred_zone,
 	 */
 	pcp->free_factor >>= 1;
 	list = &pcp->lists[order_to_pindex(migratetype, order)];
-	page = __rmqueue_pcplist(zone, order, migratetype, alloc_flags, pcp, list);
+	page = __rmqueue_pcplist(zone, order, migratetype, alloc_flags, pcp, list,
+				 gfp_flags);
 	pcp_spin_unlock(pcp);
 	pcp_trylock_finish(UP_flags);
 	if (page) {
@@ -3862,10 +3891,10 @@ struct page *rmqueue(struct zone *preferred_zone,
 		 * MIGRATE_MOVABLE pcplist could have the pages on CMA area and
 		 * we need to skip it when CMA area isn't allowed.
 		 */
-		if (!IS_ENABLED(CONFIG_CMA) || alloc_flags & ALLOC_CMA ||
+		if (!IS_ENABLED(CONFIG_CMA) || gfp_flags & __GFP_CMA ||
 				migratetype != MIGRATE_MOVABLE) {
 			page = rmqueue_pcplist(preferred_zone, zone, order,
-					migratetype, alloc_flags);
+					gfp_flags, migratetype, alloc_flags);
 			if (likely(page))
 				goto out;
 		}
@@ -4192,7 +4221,8 @@ static inline unsigned int gfp_to_alloc_flags_cma(gfp_t gfp_mask,
 						  unsigned int alloc_flags)
 {
 #ifdef CONFIG_CMA
-	if (gfp_migratetype(gfp_mask) == MIGRATE_MOVABLE)
+
+	if (gfp_migratetype(gfp_mask) == MIGRATE_MOVABLE && gfp_mask & __GFP_CMA)
 		alloc_flags |= ALLOC_CMA;
 #endif
 	return alloc_flags;
@@ -5498,7 +5528,7 @@ unsigned long __alloc_pages_bulk(gfp_t gfp, int preferred_nid,
 		}
 
 		page = __rmqueue_pcplist(zone, 0, ac.migratetype, alloc_flags,
-								pcp, pcp_list);
+								pcp, pcp_list, alloc_gfp);
 		if (unlikely(!page)) {
 			/* Try and allocate at least one page */
 			if (!nr_account) {
