@@ -3125,7 +3125,11 @@ static struct page *__rmqueue_cma(struct zone *zone, unsigned int order,
 				  unsigned int alloc_flags)
 {
 	struct page *page = __rmqueue_cma_fallback(zone, order);
-	trace_mm_page_alloc_zone_locked(page, order, MIGRATE_CMA);
+
+	if (page)
+		trace_mm_page_alloc_zone_locked(page, order, MIGRATE_CMA,
+				pcp_allowed_order(order) &&
+				migratetype < MIGRATE_PCPTYPES);
 	return page;
 }
 #else
@@ -3751,8 +3755,7 @@ struct page *rmqueue_buddy(struct zone *preferred_zone, struct zone *zone,
 				trace_mm_page_alloc_zone_locked(page, order, migratetype);
 		}
 		if (!page) {
-			if (migratetype == MIGRATE_MOVABLE &&
-					alloc_flags & ALLOC_CMA)
+			if (alloc_flags & ALLOC_CMA && migratetype == MIGRATE_MOVABLE)
 				page = __rmqueue_cma(zone, order, migratetype,
 						     alloc_flags);
 			if (!page)
@@ -3815,9 +3818,12 @@ struct page *__rmqueue_pcplist(struct zone *zone, unsigned int order,
 			 */
 			if (batch > 1)
 				batch = max(batch >> order, 2);
-			alloced = rmqueue_bulk(zone, order,
-					batch, list,
-					migratetype, alloc_flags);
+			if (migratetype == MIGRATE_MOVABLE && alloc_flags & ALLOC_CMA)
+				alloced = rmqueue_bulk(zone, order, batch, list,
+						       get_cma_migrate_type(), alloc_flags);
+			if (unlikely(list_empty(list)))
+				alloced = rmqueue_bulk(zone, order, batch, list, migratetype,
+						       alloc_flags);
 
 			pcp->count += alloced << order;
 			if (unlikely(list_empty(list)))
