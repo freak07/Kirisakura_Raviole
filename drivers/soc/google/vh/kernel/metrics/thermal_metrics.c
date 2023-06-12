@@ -227,7 +227,7 @@ EXPORT_SYMBOL_GPL(temp_residency_stats_set_thresholds);
 /* Linear Model to approximate temperature residency */
 int temp_residency_stats_update(tr_handle instance, int temp)
 {
-	int index, k, last_temp, curr_bucket;
+	int index, k, last_temp, curr_bucket, stride_len;
 	ktime_t curr_time = ktime_get();
 	s64 latency_ms;
 	struct temperature_residency_stats *stats;
@@ -252,11 +252,15 @@ int temp_residency_stats_update(tr_handle instance, int temp)
 	last_temp = prev_sample->temp;
 	index = prev_sample->bucket;
 
-	while (index < curr_bucket) {
+	if (index < curr_bucket)
+		stride_len = 1;
+	else
+		stride_len = -1;
+	while (index != curr_bucket) {
 		atomic64_add(k * (stats->threshold[index] - last_temp),
 						&(stats->time_in_state_ms[index]));
 		last_temp = stats->threshold[index];
-		index = index + 1;
+		index = index + stride_len;
 	}
 	//for the last bucket
 	atomic64_add(k * (temp - last_temp), &(stats->time_in_state_ms[index]));
