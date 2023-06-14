@@ -1881,13 +1881,6 @@ static void cpu_enable_mte(struct arm64_cpu_capabilities const *cap)
 }
 #endif /* CONFIG_ARM64_MTE */
 
-#ifdef CONFIG_KVM
-static bool is_kvm_protected_mode(const struct arm64_cpu_capabilities *entry, int __unused)
-{
-	return kvm_get_mode() == KVM_MODE_PROTECTED;
-}
-#endif /* CONFIG_KVM */
-
 static void elf_hwcap_fixup(void)
 {
 #ifdef CONFIG_ARM64_ERRATUM_1742098
@@ -1895,6 +1888,13 @@ static void elf_hwcap_fixup(void)
 		compat_elf_hwcap2 &= ~COMPAT_HWCAP2_AES;
 #endif /* ARM64_ERRATUM_1742098 */
 }
+
+#ifdef CONFIG_KVM
+static bool is_kvm_protected_mode(const struct arm64_cpu_capabilities *entry, int __unused)
+{
+	return kvm_get_mode() == KVM_MODE_PROTECTED;
+}
+#endif /* CONFIG_KVM */
 
 /* Internal helper functions to match cpu capability type */
 static bool
