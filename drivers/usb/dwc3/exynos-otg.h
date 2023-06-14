@@ -14,6 +14,7 @@
 #include <linux/pm_qos.h>
 #include <misc/gvotable.h>
 #include <soc/google/exynos_pm_qos.h>
+#include <linux/power_supply.h>
 #include "dwc3-exynos.h"
 
 
@@ -60,10 +61,12 @@ struct dwc3_otg {
 	struct work_struct	recov_work;
 
 	struct notifier_block	pm_nb;
+	struct notifier_block	psy_notifier;
 	struct completion	resume_cmpl;
 	int			dwc3_suspended;
 	int			fsm_reset;
 	int			in_shutdown;
+	bool			skip_retry;
 
 	struct mutex lock;
 	u16 combo_phy_control;
@@ -118,6 +121,7 @@ int dwc3_otg_start(struct dwc3 *dwc, struct dwc3_exynos *exynos);
 void dwc3_otg_stop(struct dwc3 *dwc, struct dwc3_exynos *exynos);
 int dwc3_otg_usb_recovery_reconn(struct dwc3_exynos *exynos);
 bool dwc3_otg_check_usb_suspend(struct dwc3_exynos *exynos);
+bool dwc3_otg_check_usb_activity(struct dwc3_exynos *exynos);
 
 extern void __iomem *phycon_base_addr;
 extern int exynos_usbdrd_pipe3_enable(struct phy *phy);
