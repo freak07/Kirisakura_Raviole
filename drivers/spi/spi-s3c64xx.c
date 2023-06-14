@@ -924,13 +924,6 @@ static int s3c64xx_spi_map_one_msg(struct s3c64xx_spi_driver_data *sdd,
 	return 0;
 }
 
-static size_t s3c64xx_spi_max_transfer_size(struct spi_device *spi)
-{
-	struct spi_controller *ctlr = spi->controller;
-
-	return ctlr->can_dma ? S3C64XX_SPI_PACKET_CNT_MASK : SIZE_MAX;
-}
-
 static void s3c64xx_spi_unmap_one_msg(struct s3c64xx_spi_driver_data *sdd,
 				      struct spi_message *msg,
 				      struct spi_transfer *xfer)
@@ -1171,6 +1164,13 @@ out:
 	spi_finalize_current_message(master);
 
 	return 0;
+}
+
+static size_t s3c64xx_spi_max_transfer_size(struct spi_device *spi)
+{
+	struct spi_controller *ctlr = spi->controller;
+
+	return ctlr->can_dma ? S3C64XX_SPI_PACKET_CNT_MASK : SIZE_MAX;
 }
 
 static struct s3c64xx_spi_csinfo *s3c64xx_get_slave_ctrldata
