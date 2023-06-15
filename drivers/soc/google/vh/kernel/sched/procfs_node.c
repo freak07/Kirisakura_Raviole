@@ -1104,10 +1104,16 @@ static int update_uclamp_fork_reset(const char *buf, bool val)
 	if (task_on_rq_queued(p)) {
 		vrq = get_vendor_rq_struct(rq);
 
-		if (!vp->uclamp_fork_reset && val)
+		if (!vp->uclamp_fork_reset && val) {
 			atomic_inc(&vrq->num_adpf_tasks);
-		else if (vp->uclamp_fork_reset && !val)
+
+			/*
+			 * Tell the scheduler that this tasks really wants to run next
+			 */
+			set_next_buddy(&p->se);
+		} else if (vp->uclamp_fork_reset && !val) {
 			atomic_dec(&vrq->num_adpf_tasks);
+		}
 	}
 
 	if (vp->uclamp_fork_reset != val) {

@@ -182,6 +182,8 @@ DECLARE_STATIC_KEY_FALSE(tapered_dvfs_headroom_enable);
  */
 extern struct uclamp_se uclamp_default[UCLAMP_CNT];
 
+void set_next_buddy(struct sched_entity *se);
+
 static inline unsigned long task_util(struct task_struct *p)
 {
 	return READ_ONCE(p->se.avg.util_avg);

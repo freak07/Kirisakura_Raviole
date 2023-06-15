@@ -249,6 +249,18 @@ u64 sched_slice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	return slice;
 }
 
+void set_next_buddy(struct sched_entity *se)
+{
+	if (entity_is_task(se) && unlikely(task_has_idle_policy(task_of(se))))
+		return;
+
+	for_each_sched_entity(se) {
+		if (SCHED_WARN_ON(!se->on_rq))
+			return;
+		cfs_rq_of(se)->next = se;
+	}
+}
+
 /*****************************************************************************/
 /*                       New Code Section                                    */
 /*****************************************************************************/
@@ -2155,6 +2167,30 @@ void initialize_vendor_group_property(void)
 #endif
 }
 
+void rvh_check_preempt_wakeup_pixel_mod(void *data, struct rq *rq, struct task_struct *p,
+			bool *preempt, bool *nopreempt, int wake_flags, struct sched_entity *se,
+			struct sched_entity *pse, int next_buddy_marked, unsigned int granularity)
+{
+	unsigned long ideal_runtime, delta_exec;
+
+	if (entity_is_task(pse) || entity_is_task(se))
+		return;
+
+	ideal_runtime = sched_slice(cfs_rq_of(se), se);
+	delta_exec = se->sum_exec_runtime - se->prev_sum_exec_runtime;
+	/*
+	 * If the current group has run enough time for its slice and the new
+	 * group has bigger weight, go ahead and preempt.
+	 */
+	if (ideal_runtime <= delta_exec && se->load.weight < pse->load.weight) {
+		if (!next_buddy_marked)
+			set_next_buddy(pse);
+
+		*preempt = true;
+	}
+
+}
+
 #if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 void rvh_util_est_update_pixel_mod(void *data, struct cfs_rq *cfs_rq, struct task_struct *p,
 				    bool task_sleep, int *ret)
@@ -2736,8 +2772,14 @@ void rvh_enqueue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_stru
 	struct vendor_rq_struct *vrq = get_vendor_rq_struct(rq);
 	bool force_cpufreq_update = false;
 
-	if (vp->uclamp_fork_reset)
+	if (vp->uclamp_fork_reset) {
 		atomic_inc(&vrq->num_adpf_tasks);
+
+		/*
+		 * Tell the scheduler that this tasks really wants to run next
+		 */
+		set_next_buddy(&p->se);
+	}
 
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	if (likely(sched_feat(UTIL_EST))) {
