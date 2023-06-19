@@ -1776,7 +1776,7 @@ static void __mfc_core_nal_q_get_img_size(struct mfc_core *core, struct mfc_ctx 
 			ctx->raw_buf.stride_2bits[i] = pOutStr->Dpb2bitStrideSize[i];
 	}
 
-	mfc_debug(2, "[NALQ][FRAME] resolution changed, %dx%d => %dx%d (stride: %d)\n", w, h,
+	mfc_debug(2, "[NALQ][FRAME][DRC] resolution changed, %dx%d => %dx%d (stride: %d)\n", w, h,
 			ctx->img_width, ctx->img_height, ctx->raw_buf.stride[0]);
 
 	if (img_size == MFC_GET_RESOL_DPB_SIZE) {
@@ -1921,11 +1921,14 @@ static struct mfc_buf *__mfc_core_nal_q_handle_frame_output_del(struct mfc_core 
 		}
 
 		if (is_disp_res_change) {
-			mfc_ctx_info("[NALQ][FRAME] display resolution changed\n");
+			mfc_ctx_info("[NALQ][FRAME][DRC] display resolution changed\n");
+			mutex_lock(&ctx->drc_wait_mutex);
 			ctx->wait_state = WAIT_G_FMT;
 			__mfc_core_nal_q_get_img_size(core, ctx, pOutStr, MFC_GET_RESOL_SIZE);
-			dec->disp_res_change = 1;
+			dec->disp_res_change++;
+			mfc_debug(2, "[NALQ][DRC] disp_res_change %d\n", dec->disp_res_change);
 			mfc_set_mb_flag(dst_mb, MFC_FLAG_DISP_RES_CHANGE);
+			mutex_unlock(&ctx->drc_wait_mutex);
 		}
 
 		if (is_hdr10_plus_sei) {
@@ -2372,11 +2375,13 @@ void __mfc_core_nal_q_handle_frame(struct mfc_core *core, struct mfc_core_ctx *c
 	}
 	if (res_change) {
 		mfc_debug(2, "[NALQ][DRC] Resolution change set to %d\n", res_change);
+		mutex_lock(&ctx->drc_wait_mutex);
 		mfc_change_state(core_ctx, MFCINST_RES_CHANGE_INIT);
 		ctx->wait_state = WAIT_G_FMT | WAIT_STOP;
 		core->nal_q_stop_cause |= (1 << NALQ_EXCEPTION_DRC);
 		core->nal_q_handle->nal_q_exception = 1;
 		mfc_ctx_info("[NALQ][DRC] nal_q_exception is set (res change)\n");
+		mutex_unlock(&ctx->drc_wait_mutex);
 		goto leave_handle_frame;
 	}
 	if (need_empty_dpb) {
@@ -2389,12 +2394,14 @@ void __mfc_core_nal_q_handle_frame(struct mfc_core *core, struct mfc_core_ctx *c
 	}
 	if (need_dpb_change || need_scratch_change) {
 		mfc_ctx_info("[NALQ][DRC] Interframe resolution changed\n");
+		mutex_lock(&ctx->drc_wait_mutex);
 		ctx->wait_state = WAIT_G_FMT | WAIT_STOP;
 		__mfc_core_nal_q_get_img_size(core, ctx, pOutStr, MFC_GET_RESOL_DPB_SIZE);
 		dec->inter_res_change = 1;
 		mfc_ctx_info("[NALQ][DRC] nal_q_exception is set (interframe res change)\n");
 		core->nal_q_stop_cause |= (1 << NALQ_EXCEPTION_INTER_DRC);
 		core->nal_q_handle->nal_q_exception = 2;
+		mutex_unlock(&ctx->drc_wait_mutex);
 		goto leave_handle_frame;
 	}
 	if (is_interlaced && ctx->is_sbwc) {

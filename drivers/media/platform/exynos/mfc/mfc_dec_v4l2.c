@@ -462,7 +462,8 @@ static int __mfc_dec_update_disp_res(struct mfc_ctx *ctx, struct v4l2_format *f)
 	struct mfc_raw_info *raw;
 	int i;
 
-	dec->disp_res_change = 0;
+	dec->disp_res_change--;
+	mfc_debug(2, "[DRC] disp_res_change %d\n", dec->disp_res_change);
 
 	if (mfc_rm_query_state(ctx, EQUAL_BIGGER, MFCINST_RUNNING)) {
 		mfc_debug(2, "dec update disp_res\n");
@@ -539,24 +540,31 @@ static int mfc_dec_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 	MFC_TRACE_CTX("** DEC g_fmt(state:%d wait_state:%d)\n",
 			core_ctx->state, ctx->wait_state);
 
+	mutex_lock(&ctx->drc_wait_mutex);
 	if (dec->disp_res_change) {
-		if (__mfc_dec_update_disp_res(ctx, f) == 0)
+		if (__mfc_dec_update_disp_res(ctx, f) == 0) {
+			mutex_unlock(&ctx->drc_wait_mutex);
 			return 0;
+		}
 	}
+	mutex_unlock(&ctx->drc_wait_mutex);
 
 	if (core_ctx->state == MFCINST_GOT_INST ||
 	    core_ctx->state == MFCINST_RES_CHANGE_INIT ||
 	    core_ctx->state == MFCINST_RES_CHANGE_FLUSH ||
 	    core_ctx->state == MFCINST_RES_CHANGE_END) {
 		/* If there is no source buffer to parsing, we can't SEQ_START */
+		mutex_lock(&ctx->drc_wait_mutex);
 		if (((ctx->wait_state & WAIT_G_FMT) != 0) &&
 			mfc_is_queue_count_same(&ctx->buf_queue_lock,
 				&ctx->src_buf_ready_queue, 0) &&
 			mfc_is_queue_count_same(&ctx->buf_queue_lock,
 				&core_ctx->src_buf_queue, 0)) {
 			mfc_ctx_err("There is no source buffer to parsing, keep previous resolution\n");
+			mutex_unlock(&ctx->drc_wait_mutex);
 			return -EAGAIN;
 		}
+		mutex_unlock(&ctx->drc_wait_mutex);
 
 		/*
 		 * If the MFC is parsing the header,
@@ -651,11 +659,13 @@ static int mfc_dec_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 		}
 	}
 
+	mutex_lock(&ctx->drc_wait_mutex);
 	if ((ctx->wait_state & WAIT_G_FMT) != 0) {
 		ctx->wait_state &= ~(WAIT_G_FMT);
 		mfc_debug(2, "clear WAIT_G_FMT %d\n", ctx->wait_state);
 		MFC_TRACE_CTX("** DEC clear WAIT_G_FMT(wait_state %d)\n", ctx->wait_state);
 	}
+	mutex_unlock(&ctx->drc_wait_mutex);
 
 	mfc_debug_leave();
 
@@ -1406,7 +1416,9 @@ static int mfc_dec_s_ctrl(struct file *file, void *priv,
 		dec->is_dts_mode = ctrl->value;
 		break;
 	case V4L2_CID_MPEG_VIDEO_DECODER_WAIT_DECODING_START:
+		mutex_lock(&ctx->drc_wait_mutex);
 		ctx->wait_state = ctrl->value;
+		mutex_unlock(&ctx->drc_wait_mutex);
 		break;
 	case V4L2_CID_MPEG_MFC_SET_DUAL_DPB_MODE:
 		mfc_ctx_err("[DPB] not supported CID: 0x%x\n", ctrl->id);
