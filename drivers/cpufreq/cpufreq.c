@@ -65,15 +65,34 @@ static int batterysaver = 0; // 0 - 1 - 3
 // 1 medium cutback, 2 full cutback, 3 full cutback and disable touch freq min boost
 static int batterysaver_level = 0; // 0 - 1 - 3
 static bool batterysaver_touch_limiting = false;
+static bool batterysaver_skip_only_google_cam = false;
+static bool batterysaver_no_skip = false;
+static bool gcam_detected = false;
 #define BATTERY_SAVER_MAX_LEVEL 3
 
 static void uci_user_listener(void) {
     batterysaver = !!uci_get_user_property_int_mm("batterysaver", 0,0,1);
     batterysaver_level = uci_get_user_property_int_mm("batterysaver_level", 0,0,BATTERY_SAVER_MAX_LEVEL);
     batterysaver_touch_limiting = !!uci_get_user_property_int_mm("batterysaver_touch_limiting", 0,0,1);
+    batterysaver_skip_only_google_cam = !!uci_get_user_property_int_mm("batterysaver_skip_only_google_cam", 0,0,1);
+    batterysaver_no_skip = !!uci_get_user_property_int_mm("batterysaver_no_skip", 0,0,1);
 }
 
-static bool suspend_batterysaver = false;
+static void uci_sys_listener(void) {
+	const char* new_fg_process0 = uci_get_sys_property_str("active_process0","");
+	if (new_fg_process0) {
+		if (strstr(new_fg_process0, "GoogleCamera")) {
+			gcam_detected = true;
+		} else {
+			gcam_detected = false;
+		}
+	} else {
+		gcam_detected = false;
+	}
+
+}
+
+static bool camera_on = false;
 
 static void ntf_listener(char* event, int num_param, char* str_param) {
         if (strcmp(event,NTF_EVENT_CHARGE_LEVEL) && strcmp(event, NTF_EVENT_INPUT)) {
@@ -84,10 +103,11 @@ static void ntf_listener(char* event, int num_param, char* str_param) {
                 if (!!num_param) {
                         // camera on..
 			pr_info("%s suspending battery saver, camera on\n",__func__);
-			suspend_batterysaver = true;
+			gcam_detected = false;
+			camera_on = true;
 		} else {
 			pr_info("%s stop suspending battery saver, camera off\n",__func__);
-			suspend_batterysaver = false;
+			camera_on = false;
 		}
 	}
 }
@@ -615,6 +635,10 @@ static int get_cpu_max_for_core(unsigned int cpu, int batterysaverlevel) {
 	    return -EINVAL;
 	}
 }
+
+static bool get_suspend_saving(void) {
+	return camera_on && (!batterysaver_skip_only_google_cam || gcam_detected) && !batterysaver_no_skip;
+}
 #endif
 
 /**
@@ -634,7 +658,8 @@ unsigned int cpufreq_driver_resolve_freq(struct cpufreq_policy *policy,
 	unsigned int old_target_freq = target_freq;
 
 #ifdef CONFIG_UCI
-	if (!suspend_batterysaver && batterysaver>0) {
+	bool suspend_saving = get_suspend_saving();
+	if (!suspend_saving && batterysaver>0) {
 		unsigned int cpu = policy->cpu;
 		int max = 0;
 		max = get_cpu_max_for_core(cpu,batterysaver_level);
@@ -2576,6 +2601,9 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	struct cpufreq_policy_data new_data;
 	struct cpufreq_governor *old_gov;
 	int ret;
+#ifdef CONFIG_UCI
+	bool suspend_saving = get_suspend_saving();
+#endif
 
 	memcpy(&new_data.cpuinfo, &policy->cpuinfo, sizeof(policy->cpuinfo));
 	new_data.freq_table = policy->freq_table;
@@ -2601,7 +2629,7 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	policy->min = new_data.min;
 	policy->max = new_data.max;
 #ifdef CONFIG_UCI
-	if (!suspend_batterysaver && batterysaver && batterysaver_touch_limiting) {
+	if (!suspend_saving && batterysaver && batterysaver_touch_limiting) {
 		unsigned int cpu = policy->cpu;
 		int max = 0;
 		pr_debug("%s [cleanslate_policy] new min and max freqs are %u - %u kHz\n",__func__,
@@ -3000,6 +3028,7 @@ static int __init cpufreq_core_init(void)
 
 #ifdef CONFIG_UCI
 	uci_add_user_listener(uci_user_listener);
+	uci_add_sys_listener(uci_sys_listener);
 	ntf_add_listener(ntf_listener);
 #endif
 	return 0;
