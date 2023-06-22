@@ -1193,21 +1193,21 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd, unsig
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
 /* If a task_group is over its group limit on a particular CPU with margin considered */
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
-static inline bool group_overutilized(int cpu, struct task_struct *p)
+static inline bool group_overutilized(int cpu, struct task_struct *p, unsigned long util)
 {
 	unsigned long group_capacity = cap_scale(get_task_group_throttle(p),
 						 arch_scale_cpu_capacity(cpu));
-	unsigned long util = get_group_util(cpu, p, group_capacity, false);
+
 	return cpu_overutilized(util, group_capacity, cpu);
 }
 #else
-static inline bool group_overutilized(int cpu, struct task_group *tg)
+static inline bool group_overutilized(int cpu, struct task_group *tg, unsigned long util)
 {
 
 	unsigned long group_capacity = cap_scale(get_group_throttle(tg),
 					arch_scale_cpu_capacity(cpu));
-	unsigned long group_util = READ_ONCE(tg->cfs_rq[cpu]->avg.util_avg);
-	return cpu_overutilized(group_util, group_capacity, cpu);
+
+	return cpu_overutilized(util, group_capacity, cpu);
 }
 #endif
 #endif
@@ -1557,7 +1557,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 	int pd_max_spare_cap_cpu, pd_best_idle_cpu, pd_most_unimportant_cpu, pd_best_packing_cpu;
 	int most_spare_cap_cpu = -1, unimportant_max_spare_cap_cpu = -1, idle_max_cap_cpu = -1;
 	struct cpuidle_state *idle_state;
-	unsigned long util, unimportant_max_spare_cap = 0, idle_max_cap = 0;
+	unsigned long unimportant_max_spare_cap = 0, idle_max_cap = 0;
 	bool prefer_fit = prefer_idle && get_vendor_task_struct(p)->uclamp_fork_reset;
 	const cpumask_t *preferred_idle_mask;
 
@@ -1598,10 +1598,10 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 					   arch_scale_cpu_capacity(i));
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 			wake_group_util = get_group_util(i, p, group_capacity, true);
-			group_overutilize = group_overutilized(i, p);
+			group_overutilize = group_overutilized(i, p, wake_group_util);
 #else
 			wake_group_util = group_util_without(i, p, group_capacity);
-			group_overutilize = group_overutilized(i, task_group(p));
+			group_overutilize = group_overutilized(i, task_group(p), wake_group_util);
 #endif
 			spare_cap = min_t(unsigned long, capacity - wake_util,
 					  group_capacity - wake_group_util);
@@ -1610,7 +1610,6 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 #endif
 			task_fits = task_fits_capacity(p, i, sync_boost);
 			exit_lat = 0;
-			util = cpu_util(i);
 
 			if (is_idle) {
 				idle_state = idle_get_state(cpu_rq(i));
@@ -1619,12 +1618,12 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 			}
 
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
-			trace_sched_cpu_util_cfs(i, is_idle, exit_lat, cpu_importance, util,
+			trace_sched_cpu_util_cfs(i, is_idle, exit_lat, cpu_importance, cpu_util(i),
 						 capacity, wake_util, group_capacity,
 						 wake_group_util, spare_cap, task_fits,
 						 group_overutilize);
 #else
-			trace_sched_cpu_util_cfs(i, is_idle, exit_lat, cpu_importance, util,
+			trace_sched_cpu_util_cfs(i, is_idle, exit_lat, cpu_importance, cpu_util(i),
 						 capacity, wake_util, capacity,	wake_util,
 						 spare_cap, task_fits, false);
 #endif
@@ -1659,7 +1658,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 				util_max = max(rq_util_max, p_util_max);
 			}
 
-			util_fits = util_fits_cpu(util, util_min, util_max, i);
+			util_fits = util_fits_cpu(wake_util, util_min, util_max, i);
 
 			if (prefer_idle) {
 				/*
@@ -1767,6 +1766,11 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 					cpumask_set_cpu(i, &max_spare_cap);
 				}
 			} else { /* Below path is for non-prefer idle case */
+				if (spare_cap >= target_max_spare_cap) {
+					target_max_spare_cap = spare_cap;
+					most_spare_cap_cpu = i;
+				}
+
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
 				if (group_overutilize || !util_fits)
 					continue;
@@ -1774,11 +1778,6 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 				if (!util_fits)
 					continue;
 #endif
-
-				if (spare_cap >= target_max_spare_cap) {
-					target_max_spare_cap = spare_cap;
-					most_spare_cap_cpu = i;
-				}
 
 				if (!task_fits)
 					continue;
