@@ -185,6 +185,69 @@ prio_changed_fair(struct rq *rq, struct task_struct *p, int oldprio)
 		check_preempt_curr(rq, p, 0);
 }
 
+static inline void update_load_add(struct load_weight *lw, unsigned long inc)
+{
+	lw->weight += inc;
+	lw->inv_weight = 0;
+}
+#define WMULT_CONST	(~0U)
+#define WMULT_SHIFT	32
+static void __update_inv_weight(struct load_weight *lw)
+{
+	unsigned long w;
+	if (likely(lw->inv_weight))
+		return;
+	w = scale_load_down(lw->weight);
+	if (BITS_PER_LONG > 32 && unlikely(w >= WMULT_CONST))
+		lw->inv_weight = 1;
+	else if (unlikely(!w))
+		lw->inv_weight = WMULT_CONST;
+	else
+		lw->inv_weight = WMULT_CONST / w;
+}
+
+static u64 __calc_delta(u64 delta_exec, unsigned long weight, struct load_weight *lw)
+{
+	u64 fact = scale_load_down(weight);
+	int shift = WMULT_SHIFT;
+	__update_inv_weight(lw);
+	if (unlikely(fact >> 32)) {
+		while (fact >> 32) {
+			fact >>= 1;
+			shift--;
+		}
+	}
+	fact = mul_u32_u32(fact, lw->inv_weight);
+	while (fact >> 32) {
+		fact >>= 1;
+		shift--;
+	}
+	return mul_u64_u32_shr(delta_exec, fact, shift);
+}
+
+static u64 __sched_period(unsigned long nr_running);
+
+#define for_each_sched_entity(se) \
+		for (; se; se = se->parent)
+		
+u64 sched_slice(struct cfs_rq *cfs_rq, struct sched_entity *se)
+{
+	u64 slice = __sched_period(cfs_rq->nr_running + !se->on_rq);
+	for_each_sched_entity(se) {
+		struct load_weight *load;
+		struct load_weight lw;
+		cfs_rq = cfs_rq_of(se);
+		load = &cfs_rq->load;
+		if (unlikely(!se->on_rq)) {
+			lw = cfs_rq->load;
+			update_load_add(&lw, se->load.weight);
+			load = &lw;
+		}
+		slice = __calc_delta(slice, se->load.weight, load);
+	}
+	return slice;
+}
+
 /*****************************************************************************/
 /*                       New Code Section                                    */
 /*****************************************************************************/
@@ -1228,6 +1291,19 @@ static void get_uclamp_on_nice(struct task_struct *p, enum uclamp_id clamp_id,
  * This part of code is vendor hook functions, which modify or extend the original
  * functions.
  */
+
+unsigned int sysctl_sched_latency			= 6000000ULL;
+unsigned int sysctl_sched_base_slice			= 750000ULL;
+
+static u64 __sched_period(unsigned long nr_running)
+{
+	unsigned int sched_nr_latency = DIV_ROUND_UP(sysctl_sched_latency,
+					sysctl_sched_base_slice);
+	if (unlikely(nr_running > sched_nr_latency))
+		return nr_running * sysctl_sched_base_slice;
+	else
+		return sysctl_sched_latency;
+}
 
 /* UPSTREAM UCLAMP CODE - start */
 static inline unsigned int

@@ -1819,7 +1819,7 @@ extern int sched_lib_name_show(struct seq_file *m, void *v);
 PROC_OPS_RW(sched_lib_name);
 
 /* uclamp filters controls */
-static uclamp_min_filter_enable_show(struct seq_file *m, void *v)
+static int uclamp_min_filter_enable_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "%d\n", static_branch_likely(&uclamp_min_filter_enable) ? 1 : 0);
 	return 0;
@@ -1851,7 +1851,7 @@ static ssize_t uclamp_min_filter_enable_store(struct file *filp,
 }
 PROC_OPS_RW(uclamp_min_filter_enable);
 
-static uclamp_min_filter_us_show(struct seq_file *m, void *v)
+static int uclamp_min_filter_us_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "%d\n", sysctl_sched_uclamp_min_filter_us);
 	return 0;
@@ -1907,7 +1907,7 @@ static ssize_t uclamp_min_filter_rt_store(struct file *filp,
 }
 PROC_OPS_RW(uclamp_min_filter_rt);
 
-static uclamp_max_filter_enable_show(struct seq_file *m, void *v)
+static int uclamp_max_filter_enable_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "%d\n", static_branch_likely(&uclamp_max_filter_enable) ? 1 : 0);
 	return 0;
@@ -1939,7 +1939,7 @@ static ssize_t uclamp_max_filter_enable_store(struct file *filp,
 }
 PROC_OPS_RW(uclamp_max_filter_enable);
 
-static uclamp_max_filter_divider_show(struct seq_file *m, void *v)
+static int uclamp_max_filter_divider_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "%d\n", sysctl_sched_uclamp_max_filter_divider);
 	return 0;

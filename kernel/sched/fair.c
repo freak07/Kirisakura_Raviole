@@ -25,6 +25,11 @@
 #include <trace/hooks/sched.h>
 #include <linux/rbtree_augmented.h>
 
+unsigned int sysctl_sched_latency			= 6000000ULL;
+unsigned int sysctl_sched_idle_min_granularity = 750000ULL;
+static unsigned int sched_nr_latency = 8;
+EXPORT_SYMBOL_GPL(sysctl_sched_latency);
+
 /*
  * The initial- and re-scaling of tunables is configurable
  *
@@ -930,6 +935,66 @@ void set_latency_fair(struct sched_entity *se, int prio)
 	 * Smaller request gets better latency.
 	 */
 	se->slice = div_u64(base << SCHED_FIXEDPOINT_SHIFT, weight);
+}
+
+/*
+ * The idea is to set a period in which each task runs once.
+ *
+ * When there are too many tasks (sched_nr_latency) we have to stretch
+ * this period because otherwise the slices get too small.
+ *
+ * p = (nr <= nl) ? l : l*nr/nl
+ */
+static u64 __sched_period(unsigned long nr_running)
+{
+	if (unlikely(nr_running > sched_nr_latency))
+		return nr_running * sysctl_sched_base_slice;
+	else
+		return sysctl_sched_latency;
+}
+
+static bool sched_idle_cfs_rq(struct cfs_rq *cfs_rq);
+
+/*
+ * We calculate the wall-time slice from the period by taking a part
+ * proportional to the weight.
+ *
+ * s = p*P[w/rw]
+ */
+static u64 sched_slice(struct cfs_rq *cfs_rq, struct sched_entity *se)
+{
+	unsigned int nr_running = cfs_rq->nr_running;
+	struct sched_entity *init_se = se;
+	unsigned int min_gran;
+	u64 slice;
+
+	slice = __sched_period(nr_running + !se->on_rq);
+
+	for_each_sched_entity(se) {
+		struct load_weight *load;
+		struct load_weight lw;
+		struct cfs_rq *qcfs_rq;
+
+		qcfs_rq = cfs_rq_of(se);
+		load = &qcfs_rq->load;
+
+		if (unlikely(!se->on_rq)) {
+			lw = qcfs_rq->load;
+
+			update_load_add(&lw, se->load.weight);
+			load = &lw;
+		}
+		slice = __calc_delta(slice, se->load.weight, load);
+	}
+
+		if (se_is_idle(init_se) && !sched_idle_cfs_rq(cfs_rq))
+			min_gran = sysctl_sched_idle_min_granularity;
+		else
+			min_gran = sysctl_sched_base_slice;
+
+		slice = max_t(u64, slice, min_gran);
+
+	return slice;
 }
 
 /*
@@ -5903,6 +5968,17 @@ static int sched_idle_rq(struct rq *rq)
 			rq->nr_running);
 }
 
+/*
+ * Returns true if cfs_rq only has SCHED_IDLE entities enqueued. Note the use
+ * of idle_nr_running, which does not consider idle descendants of normal
+ * entities.
+ */
+static bool sched_idle_cfs_rq(struct cfs_rq *cfs_rq)
+{
+	return cfs_rq->nr_running &&
+		cfs_rq->nr_running == cfs_rq->idle_nr_running;
+}
+	
 #ifdef CONFIG_SMP
 static int sched_idle_cpu(int cpu)
 {
