@@ -1933,12 +1933,7 @@ EXPORT_SYMBOL_GPL(vh_arch_set_freq_scale_pixel_mod);
 
 void rvh_set_iowait_pixel_mod(void *data, struct task_struct *p, int *should_iowait_boost)
 {
-	unsigned int flags = SCHED_PIXEL_BLOCK_UPDATES;
-
 	*should_iowait_boost = p->in_iowait && uclamp_boosted(p);
-
-	if (*should_iowait_boost)
-		flags |= SCHED_CPUFREQ_IOWAIT;
 }
 
 void rvh_cpu_overutilized_pixel_mod(void *data, int cpu, int *overutilized)
