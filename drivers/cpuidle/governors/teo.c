@@ -139,6 +139,7 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/topology.h>
 #include <linux/tick.h>
+#include <linux/module.h>
 
 /*
  * The number of bits to shift the cpu's capacity by in order to determine
@@ -150,7 +151,6 @@
  * The resulting threshold is high enough to not be triggered by background
  * noise and low enough to react quickly when activity starts to ramp up.
  */
-#define UTIL_THRESHOLD_SHIFT 6
 
 
 /*
@@ -590,6 +590,10 @@ static void teo_reflect(struct cpuidle_device *dev, int state)
 		cpu_data->time_span_ns = local_clock() - cpu_data->time_span_ns;
 	}
 }
+
+static int UTIL_THRESHOLD_SHIFT = 6;
+module_param(UTIL_THRESHOLD_SHIFT, int, 0644);
+
 
 /**
  * teo_enable_device - Initialize the governor's data for the target CPU.
