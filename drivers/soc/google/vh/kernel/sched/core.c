@@ -52,8 +52,6 @@ unsigned int sysctl_sched_uclamp_max_filter_rt = 100;
 DEFINE_STATIC_KEY_FALSE(uclamp_min_filter_enable);
 DEFINE_STATIC_KEY_FALSE(uclamp_max_filter_enable);
 
-DEFINE_STATIC_KEY_FALSE(tapered_dvfs_headroom_enable);
-
 /*****************************************************************************/
 /*                       New Code Section                                    */
 /*****************************************************************************/
