@@ -141,9 +141,8 @@ struct vendor_group_list {
 	struct list_head *cur_iterator;
 };
 
-unsigned long apply_dvfs_headroom(unsigned long util, int cpu);
 unsigned long map_util_freq_pixel_mod(unsigned long util, unsigned long freq,
-				      unsigned long cap);
+				      unsigned long cap, int cpu);
 
 enum vendor_group_attribute {
 	VTA_TASK_GROUP,
