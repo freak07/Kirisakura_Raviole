@@ -1939,20 +1939,6 @@ void rvh_set_iowait_pixel_mod(void *data, struct task_struct *p, int *should_iow
 
 	if (*should_iowait_boost)
 		flags |= SCHED_CPUFREQ_IOWAIT;
-
-	/*
-	 * Tell sched pixel to ignore cpufreq updates. this happens at
-	 * enqueue_task_fair() entry.
-	 *
-	 * We want to defer all request to defer frequency updates until uclamp
-	 * filter is applied.
-	 *
-	 * Note that enqueue_task_fair() could request cpufreq updates when
-	 * calling update_load_avg(). Since this vh is called before those
-	 * - this strategic block will ensure all subsequent requests are
-	 *   ignored.
-	 */
-	cpufreq_update_util(task_rq(p), flags);
 }
 
 void rvh_cpu_overutilized_pixel_mod(void *data, int cpu, int *overutilized)
@@ -2513,14 +2499,13 @@ void rvh_enqueue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_stru
 	}
 
 	/*
-	 * We strategically tell schedutil to ignore requests to update
-	 * frequencies when we call rvh_set_iowait_pixel_mod().
+	/* XXX: sched_pixel rate limit could drop this if GKI
+	 * enqueue_task_fair() called cpufreq_update_util() due to iowait boost
 	 *
-	 * Now we have applied the uclamp filter, we'll unconditionally request
-	 * a frequency update which should take all changes into account in one
-	 * go.
+	 * We could try to suppress the call and delay it to be done here since
+	 * we already override iowait boost.
 	 */
-	cpufreq_update_util(rq, SCHED_PIXEL_RESUME_UPDATES);
+	cpufreq_update_util(rq, 0);
 }
 
 void rvh_dequeue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_struct *p, int flags)

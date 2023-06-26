@@ -164,9 +164,6 @@ extern struct vendor_group_property vg[VG_MAX];
 DECLARE_STATIC_KEY_FALSE(uclamp_min_filter_enable);
 DECLARE_STATIC_KEY_FALSE(uclamp_max_filter_enable);
 
-#define SCHED_PIXEL_BLOCK_UPDATES		BIT(8)
-#define SCHED_PIXEL_RESUME_UPDATES		BIT(9)
-
 /*****************************************************************************/
 /*                       Upstream Code Section                               */
 /*****************************************************************************/
