@@ -2874,19 +2874,8 @@ do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	if (next)
 		vma_iter_prev_range(vmi);
 
-	/*
-	 * Do not downgrade mmap_lock if we are next to VM_GROWSDOWN or
-	 * VM_GROWSUP VMA. Such VMAs can change their size under
-	 * down_read(mmap_lock) and collide with the VMA we are about to unmap.
-	 */
-	if (downgrade) {
-		if (next && (next->vm_flags & VM_GROWSDOWN))
-			downgrade = false;
-		else if (prev && (prev->vm_flags & VM_GROWSUP))
-			downgrade = false;
-		else
-			mmap_write_downgrade(mm);
-	}
+	if (downgrade)
+		mmap_write_downgrade(mm);
 
 	/*
 	 * We can free page tables without write-locking mmap_lock because VMAs
