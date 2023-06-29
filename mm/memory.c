@@ -5159,6 +5159,10 @@ int __access_remote_vm(struct task_struct *tsk, struct mm_struct *mm,
 	if (mmap_read_lock_killable(mm))
 		return 0;
 
+	/* Avoid triggering the temporary warning in __get_user_pages */
+	if (!vma_lookup(mm, addr) && !expand_stack(mm, addr))
+		return 0;
+
 	/* We might need to expand the stack to access it */
 	vma = vma_lookup(mm, addr);
 	if (!vma) {
