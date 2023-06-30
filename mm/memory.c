@@ -3454,13 +3454,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		goto out_release;
 	}
 
-	locked = lock_page_or_retry(page, vma->vm_mm, vmf->flags);
-
+	ret |= lock_page_or_retry(page, vmf);
 	delayacct_clear_flag(DELAYACCT_PF_SWAPIN);
-	if (!locked) {
-		ret |= VM_FAULT_RETRY;
+	if (ret & VM_FAULT_RETRY)
 		goto out_release;
-	}
 
 	/*
 	 * Make sure try_to_free_swap or reuse_swap_page or swapoff did not
