@@ -2577,14 +2577,13 @@ void rvh_enqueue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_stru
 	}
 
 	/*
-	 * We strategically tell schedutil to ignore requests to update
-	 * frequencies when we call rvh_set_iowait_pixel_mod().
+	/* XXX: sched_pixel rate limit could drop this if GKI
+	 * enqueue_task_fair() called cpufreq_update_util() due to iowait boost
 	 *
-	 * Now we have applied the uclamp filter, we'll unconditionally request
-	 * a frequency update which should take all changes into account in one
-	 * go.
+	 * We could try to suppress the call and delay it to be done here since
+	 * we already override iowait boost.
 	 */
-	cpufreq_update_util(rq, SCHED_PIXEL_RESUME_UPDATES);
+	cpufreq_update_util(rq, 0);
 }
 
 void rvh_dequeue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_struct *p, int flags)
