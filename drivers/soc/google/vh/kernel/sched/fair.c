@@ -1971,20 +1971,6 @@ EXPORT_SYMBOL_GPL(vh_arch_set_freq_scale_pixel_mod);
 void rvh_set_iowait_pixel_mod(void *data, struct task_struct *p, int *should_iowait_boost)
 {
 	*should_iowait_boost = p->in_iowait && uclamp_boosted(p);
-
-	/*
-	 * Tell sched pixel to ignore cpufreq updates. this happens at
-	 * enqueue_task_fair() entry.
-	 *
-	 * We want to defer all request to defer frequency updates until uclamp
-	 * filter is applied.
-	 *
-	 * Note that enqueue_task_fair() could request cpufreq updates when
-	 * calling update_load_avg(). Since this vh is called before those
-	 * - this strategic block will ensure all subsequent requests are
-	 *   ignored.
-	 */
-	cpufreq_update_util(task_rq(p), SCHED_PIXEL_BLOCK_UPDATES);
 }
 
 void rvh_cpu_overutilized_pixel_mod(void *data, int cpu, int *overutilized)
