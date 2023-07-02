@@ -6892,7 +6892,8 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
 	 * its pd list and will not be accounted by compute_energy().
 	 */
 	for_each_cpu_and(cpu, pd_mask, cpu_online_mask) {
-		unsigned long cpu_util, util_cfs = cpu_util(cpu, p, dst_cpu, 1);
+		unsigned long util, util_cfs = cpu_util(cpu, p, dst_cpu, 1);
+		unsigned long cpu_util;
 		struct task_struct *tsk = cpu == dst_cpu ? p : NULL;
 
 		/*
@@ -6913,7 +6914,7 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
 		 */
 		cpu_util = effective_cpu_util(cpu, util_cfs, cpu_cap,
 					      FREQUENCY_UTIL, tsk);
-		max_util = max(max_util, cpu_util);
+		max_util = max(max_util, util);
 	}
 
 	trace_android_vh_em_cpu_energy(pd->em_pd, max_util, sum_util, &energy);
