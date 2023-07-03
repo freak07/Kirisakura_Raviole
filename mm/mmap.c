@@ -2879,11 +2879,10 @@ do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	mas_set(&mas_detach, 0);
 	remove_mt(mm, &mas_detach);
 	__mt_destroy(&mt_detach);
+	validate_mm(mm);
 	if (unlock)
 		mmap_read_unlock(mm);
 
-
-	validate_mm(mm);
 	return 0;
 
 userfaultfd_error:
