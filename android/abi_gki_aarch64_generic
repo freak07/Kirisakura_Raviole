@@ -316,6 +316,7 @@
   cpus_read_unlock
   cpu_subsys
   cpu_topology
+  cpu_util_cfs_boost
   crc32_le
   crc8
   crc8_populate_msb
