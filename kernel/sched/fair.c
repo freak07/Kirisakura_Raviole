@@ -6843,6 +6843,7 @@ unsigned long cpu_util_cfs_boost(int cpu)
 {
 	return cpu_util(cpu, NULL, -1, 1);
 }
+EXPORT_SYMBOL_GPL(cpu_util_cfs_boost);
 
 /*
  * cpu_util_without: compute cpu utilization without any contributions from *p
