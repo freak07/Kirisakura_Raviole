@@ -282,6 +282,7 @@
   cpufreq_remove_update_util_hook
   cpufreq_table_index_unsorted
   cpufreq_this_cpu_can_update
+  cpufreq_update_util_data
   __cpuhp_remove_state
   __cpuhp_setup_state
   __cpuhp_setup_state_cpuslocked
@@ -315,6 +316,7 @@
   cpus_read_unlock
   cpu_subsys
   cpu_topology
+  cpu_util_cfs_boost
   crc32_le
   crc8
   crc8_populate_msb
@@ -1819,9 +1821,11 @@
   __request_percpu_irq
   __request_region
   request_threaded_irq
+  resched_curr
   resume_cpus
   return_address
   revalidate_disk_size
+  reweight_task
   rfkill_alloc
   rfkill_destroy
   rfkill_init_sw_state
@@ -2096,6 +2100,7 @@
   sscanf
   __stack_chk_fail
   static_key_disable
+  static_key_enable
   static_key_slow_dec
   static_key_slow_inc
   stop_machine
@@ -2193,6 +2198,7 @@
   thermal_cdev_update
   thermal_cooling_device_unregister
   thermal_of_cooling_device_register
+  thermal_pressure
   thermal_zone_device_disable
   thermal_zone_device_enable
   thermal_zone_device_is_enabled
@@ -2240,13 +2246,17 @@
   __traceiter_android_rvh_post_init_entity_util_avg
   __traceiter_android_rvh_preempt_disable
   __traceiter_android_rvh_preempt_enable
+  __traceiter_android_rvh_prepare_prio_fork
   __traceiter_android_rvh_remove_entity_load_avg
+  __traceiter_android_rvh_rtmutex_prepare_setprio
   __traceiter_android_rvh_sched_fork
   __traceiter_android_rvh_sched_newidle_balance
   __traceiter_android_rvh_select_task_rq_fair
   __traceiter_android_rvh_select_task_rq_rt
   __traceiter_android_rvh_set_iowait
+  __traceiter_android_rvh_setscheduler
   __traceiter_android_rvh_set_task_cpu
+  __traceiter_android_rvh_set_user_nice
   __traceiter_android_rvh_typec_tcpci_chk_contaminant
   __traceiter_android_rvh_typec_tcpci_get_vbus
   __traceiter_android_rvh_uclamp_eff_get
@@ -2374,13 +2384,17 @@
   __tracepoint_android_rvh_post_init_entity_util_avg
   __tracepoint_android_rvh_preempt_disable
   __tracepoint_android_rvh_preempt_enable
+  __tracepoint_android_rvh_prepare_prio_fork
   __tracepoint_android_rvh_remove_entity_load_avg
+  __tracepoint_android_rvh_rtmutex_prepare_setprio
   __tracepoint_android_rvh_sched_fork
   __tracepoint_android_rvh_sched_newidle_balance
   __tracepoint_android_rvh_select_task_rq_fair
   __tracepoint_android_rvh_select_task_rq_rt
   __tracepoint_android_rvh_set_iowait
+  __tracepoint_android_rvh_setscheduler
   __tracepoint_android_rvh_set_task_cpu
+  __tracepoint_android_rvh_set_user_nice
   __tracepoint_android_rvh_typec_tcpci_chk_contaminant
   __tracepoint_android_rvh_typec_tcpci_get_vbus
   __tracepoint_android_rvh_uclamp_eff_get
