@@ -319,11 +319,9 @@ static irqreturn_t cp_active_handler(int irq, void *data)
 	mif_err("[PHONE_ACTIVE Handler] state:%s cp_active:%d\n",
 			cp_state_str(mc->phone_state), cp_active);
 
-	if (cp_active == 1) {
+	if (cp_active == 1)
 		mif_err("ERROR - cp_active is not low, state:%s cp_active:%d\n",
 				cp_state_str(mc->phone_state), cp_active);
-		return IRQ_HANDLED;
-	}
 
 	if (timer_pending(&mld->crash_ack_timer))
 		del_timer(&mld->crash_ack_timer);
@@ -787,10 +785,55 @@ static void gpio_power_offon_cp(struct modem_ctl *mc)
 static void gpio_power_wreset_cp(struct modem_ctl *mc)
 {
 #if !IS_ENABLED(CONFIG_CP_WRESET_WA)
-	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_CP_WRST_N], 0, 50);
-	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_PM_WRST_N], 0, 50);
-	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_CP_WRST_N], 1, 50);
+	int i = 0, val;
+
+	mif_info("warm reset sequence start\n");
+	val = mif_gpio_get_value(&mc->cp_gpio[CP_GPIO_CP2AP_CP_WRST_N],
+		false);
+	if (!val)
+		mif_err("cp2ap_cp_wrst level is low before warm reset\n");
+
+	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_PM_WRST_N], 1, 5);
+	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_CP_WRST_N], 0,
+		val ? 0 : 1);
+
+	while (i++ < 20) {
+		if (!mif_gpio_get_value(&mc->cp_gpio[CP_GPIO_CP2AP_CP_WRST_N],
+				false))
+			break;
+		mif_info("Wait for cp2ap_cp_wrst pulled to low\n");
+		usleep_range(1000, 1100);
+	}
+
+	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_PM_WRST_N], 0, 5);
+	mif_gpio_set_value(&mc->cp_gpio[CP_GPIO_AP2CP_CP_WRST_N], 1, 45);
+
+	mif_info("warm reset sequence end\n");
 #endif
+}
+
+static void clear_boot_stage(struct modem_ctl *mc)
+{
+	struct link_device *ld = get_current_link(mc->iod);
+	struct mem_link_device *mld = to_mem_link_device(ld);
+	int val;
+
+	if (mld->attrs & LINK_ATTR_XMIT_BTDLR_PCIE) {
+		if (!mld->msi_reg_base) {
+			u32 cp_num = ld->mdm_data->cp_num;
+			mld->msi_reg_base = cp_shmem_get_region(cp_num, SHMEM_MSI);
+			if (!mld->msi_reg_base) {
+				mif_err("Failed to get valid msi reg base.\n");
+				return;
+			}
+		}
+
+		iowrite32(0, mld->msi_reg_base +
+			offsetof(struct msi_reg_type, boot_stage));
+		val = ioread32(mld->msi_reg_base +
+			offsetof(struct msi_reg_type, boot_stage));
+		mif_info("Clear boot_stage == 0x%X\n", val);
+	}
 }
 
 static int power_on_cp(struct modem_ctl *mc)
@@ -800,6 +843,8 @@ static int power_on_cp(struct modem_ctl *mc)
 	struct mem_link_device *mld = to_mem_link_device(ld);
 
 	mif_info("%s: +++\n", mc->name);
+
+	clear_boot_stage(mc);
 
 	mif_disable_irq(&mc->cp_gpio_irq[CP_GPIO_IRQ_CP2AP_CP_ACTIVE]);
 	mif_disable_irq(&mc->cp_gpio_irq[CP_GPIO_IRQ_CP2AP_WAKEUP]);
@@ -896,6 +941,8 @@ static int power_reset_dump_cp(struct modem_ctl *mc)
 	struct mem_link_device *mld = to_mem_link_device(ld);
 
 	mif_info("%s: +++\n", mc->name);
+
+	clear_boot_stage(mc);
 
 	if (ld->sbd_ipc && hrtimer_active(&mld->sbd_print_timer))
 		hrtimer_cancel(&mld->sbd_print_timer);
@@ -1765,6 +1812,7 @@ static int s5100_get_pdata(struct modem_ctl *mc, struct modem_data *pdata)
 	mc->cp_gpio[CP_GPIO_AP2CP_AP_ACTIVE].label = "AP2CP_AP_ACTIVE";
 #if !IS_ENABLED(CONFIG_CP_WRESET_WA)
 	mc->cp_gpio[CP_GPIO_AP2CP_CP_WRST_N].label = "AP2CP_CP_WRST_N";
+	mc->cp_gpio[CP_GPIO_CP2AP_CP_WRST_N].label = "CP2AP_CP_WRST_N";
 	mc->cp_gpio[CP_GPIO_AP2CP_PM_WRST_N].label = "AP2CP_PM_WRST_N";
 #endif
 	mc->cp_gpio[CP_GPIO_CP2AP_PS_HOLD].label = "CP2AP_PS_HOLD";
@@ -1779,6 +1827,7 @@ static int s5100_get_pdata(struct modem_ctl *mc, struct modem_data *pdata)
 	mc->cp_gpio[CP_GPIO_AP2CP_AP_ACTIVE].node_name = "gpio_ap2cp_pda_active";
 #if !IS_ENABLED(CONFIG_CP_WRESET_WA)
 	mc->cp_gpio[CP_GPIO_AP2CP_CP_WRST_N].node_name = "gpio_ap2cp_cp_wrst_n";
+	mc->cp_gpio[CP_GPIO_CP2AP_CP_WRST_N].node_name = "gpio_cp2ap_cp_wrst_n";
 	mc->cp_gpio[CP_GPIO_AP2CP_PM_WRST_N].node_name = "gpio_ap2cp_pm_wrst_n";
 #endif
 	mc->cp_gpio[CP_GPIO_CP2AP_PS_HOLD].node_name = "gpio_cp2ap_cp_ps_hold";
