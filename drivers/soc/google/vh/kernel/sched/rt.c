@@ -18,7 +18,6 @@ extern int cpu_is_idle(int cpu);
 extern int sched_cpu_idle(int cpu);
 extern bool get_prefer_high_cap(struct task_struct *p);
 
-extern unsigned int sched_capacity_margin[CPU_NUM];
 extern int ___update_load_sum(u64 now, struct sched_avg *sa,
 			  unsigned long load, unsigned long runnable, int running);
 extern int ___update_load_avg(struct sched_avg *sa, unsigned long load);
@@ -101,6 +100,7 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 	bool is_idle;
 	bool check_fit = false;
 	bool fit_and_non_overutilized_found = false, fit_and_overutilized_found = false;
+	unsigned long rq_util_min, rq_util_max;
 
 	if (cpumask_weight(lowest_mask) == 1)
 		return cpumask_first(lowest_mask);
@@ -123,6 +123,8 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 		capacity[cpu] = capacity_cap(cpu);
 		cpu_importance[cpu] = READ_ONCE(cpu_rq(cpu)->uclamp[UCLAMP_MIN].value) +
 				 READ_ONCE(cpu_rq(cpu)->uclamp[UCLAMP_MAX].value);
+		rq_util_min = uclamp_rq_get(cpu_rq(cpu), UCLAMP_MIN);
+		rq_util_max = uclamp_rq_get(cpu_rq(cpu), UCLAMP_MAX);
 
 		if (is_idle) {
 			idle = idle_get_state(cpu_rq(cpu));
@@ -141,8 +143,8 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 			util[cpu] += task_util(p);
 
 		task_fits[cpu] = rt_task_fits_capacity(p, cpu);
-		overutilize[cpu] = cpu_overutilized(uclamp_rq_util_with(cpu_rq(cpu), util[cpu], p),
-						    capacity[cpu], cpu);
+		overutilize[cpu] = !util_fits_cpu(util[cpu],
+						  rq_util_min, rq_util_max, cpu);
 
 		trace_sched_cpu_util_rt(cpu, capacity[cpu], util[cpu], exit_lat[cpu],
 					cpu_importance[cpu], task_fits[cpu], overutilize[cpu]);
@@ -256,7 +258,9 @@ static inline bool rt_task_fits_uclamp_min(struct task_struct *p, int cpu)
 
 static inline bool rt_task_fits_capacity(struct task_struct *p, int cpu)
 {
-	unsigned long util;
+	unsigned long uclamp_min = uclamp_eff_value(p, UCLAMP_MIN);
+	unsigned long uclamp_max = uclamp_eff_value(p, UCLAMP_MAX);
+	unsigned long util = task_util(p);
 
 	if (cpu >= MAX_CAPACITY_CPU)
 		return true;
@@ -264,10 +268,7 @@ static inline bool rt_task_fits_capacity(struct task_struct *p, int cpu)
 	if (get_prefer_high_cap(p) && cpu < MID_CAPACITY_CPU)
 		return false;
 
-	util = clamp(task_util(p), uclamp_eff_value(p, UCLAMP_MIN),
-		     uclamp_eff_value(p, UCLAMP_MAX));
-
-	return capacity_cap(cpu) * SCHED_CAPACITY_SCALE > util * sched_capacity_margin[cpu];
+	return util_fits_cpu(util, uclamp_min, uclamp_max, cpu);
 }
 
 static int find_lowest_rq(struct task_struct *p, struct cpumask *backup_mask)

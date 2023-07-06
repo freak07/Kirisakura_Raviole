@@ -26,6 +26,7 @@
 
 #if IS_ENABLED(CONFIG_VH_SCHED)
 extern struct pixel_em_profile **vendor_sched_pixel_em_profile;
+extern struct pixel_idle_em *vendor_sched_pixel_idle_em;
 extern void vh_arch_set_freq_scale_pixel_mod(void *data,
 					     const struct cpumask *cpus,
 					     unsigned long freq,
@@ -41,7 +42,6 @@ extern struct pixel_em_profile **exynos_cpu_cooling_pixel_em_profile;
 extern struct pixel_em_profile **exynos_acme_pixel_em_profile;
 #endif
 
-static int pixel_em_max_cpu;
 static int pixel_em_num_clusters;
 
 static struct mutex profile_list_lock;
@@ -90,8 +90,6 @@ static int pixel_em_init_cpu_layout(void)
 	if (num_clusters <= 0)
 		return num_clusters;
 	pixel_em_num_clusters = num_clusters;
-
-	pixel_em_max_cpu = cpumask_last(cpu_possible_mask);
 
 	return 0;
 }
@@ -223,6 +221,39 @@ static bool update_em_entry(struct pixel_em_profile *profile,
 
 	return false;
 }
+
+#if IS_ENABLED(CONFIG_VH_SCHED)
+static bool update_idle_em_entry(struct pixel_idle_em *idle_em,
+			    int cpu,
+			    unsigned int freq,
+			    unsigned int power)
+{
+	int cluster_id;
+	int opp_id;
+
+	for (cluster_id = 0; cluster_id < idle_em->num_clusters; cluster_id++) {
+		struct pixel_em_cluster *cluster = &idle_em->clusters[cluster_id];
+		unsigned long max_freq = cluster->opps[cluster->num_opps - 1].freq;
+
+		if (!cpumask_test_cpu(cpu, &cluster->cpus))
+			continue;
+
+		for (opp_id = 0; opp_id < cluster->num_opps; opp_id++) {
+			if (cluster->opps[opp_id].freq == freq) {
+				cluster->opps[opp_id].power = power;
+				cluster->opps[opp_id].cost = (max_freq * power) / freq;
+				return true;
+			}
+		}
+	}
+
+	pr_err("Could not find OPP for CPU %d, freq %u in idle em!\n",
+	       cpu,
+	       freq);
+
+	return false;
+}
+#endif
 
 static void update_profile(struct pixel_em_profile *dst, const struct pixel_em_profile *src)
 {
@@ -356,7 +387,7 @@ static int parse_profile(const char *profile_input, int profile_input_length)
 				res = -EINVAL;
 				goto early_return;
 			}
-			if (current_cpu_id < 0 || current_cpu_id > pixel_em_max_cpu) {
+			if (current_cpu_id < 0 || current_cpu_id >= CONFIG_VH_SCHED_CPU_NR) {
 				pr_err("Invalid CPU specified on line '%s'!\n", skipped_blanks);
 				res = -EINVAL;
 				goto early_return;
@@ -478,7 +509,7 @@ static struct pixel_em_profile *generate_default_em_profile(const char *name)
 	if (!res->clusters)
 		goto failed_clusters_allocation;
 
-	res->cpu_to_cluster = kcalloc(pixel_em_max_cpu + 1,
+	res->cpu_to_cluster = kcalloc(CONFIG_VH_SCHED_CPU_NR,
 				      sizeof(*res->cpu_to_cluster),
 				      GFP_KERNEL);
 	if (!res->cpu_to_cluster)
@@ -526,6 +557,151 @@ failed_name_allocation:
 failed_res_allocation:
 	return NULL;
 }
+
+#if IS_ENABLED(CONFIG_VH_SCHED)
+static struct pixel_idle_em *generate_idle_em(void)
+{
+	struct pixel_idle_em *idle_em;
+	cpumask_t unmatched_cpus;
+	int current_cluster_id = 0;
+
+	idle_em = kzalloc(sizeof(*idle_em), GFP_KERNEL);
+	if (!idle_em)
+		goto failed_idle_em_allocation;
+
+	idle_em->num_clusters = pixel_em_num_clusters;
+
+	idle_em->clusters = kcalloc(pixel_em_num_clusters, sizeof(*idle_em->clusters), GFP_KERNEL);
+	if (!idle_em->clusters)
+		goto failed_clusters_allocation;
+
+	idle_em->cpu_to_cluster = kcalloc(CONFIG_VH_SCHED_CPU_NR, sizeof(*idle_em->cpu_to_cluster),
+					  GFP_KERNEL);
+	if (!idle_em->cpu_to_cluster)
+		goto failed_cpu_to_cluster_allocation;
+
+
+	cpumask_copy(&unmatched_cpus, cpu_possible_mask);
+
+	while (!cpumask_empty(&unmatched_cpus)) {
+		int first_cpu = cpumask_first(&unmatched_cpus);
+		struct em_perf_domain *pd = em_cpu_get(first_cpu);
+		// pd is guaranteed not to be NULL, as pixel_em_count_clusters completed earlier.
+		int pd_cpu;
+
+		if (!generate_em_cluster(&idle_em->clusters[current_cluster_id], pd)) {
+			do {
+				deallocate_em_cluster(&idle_em->clusters[current_cluster_id]);
+			} while (--current_cluster_id >= 0);
+			goto failed_cluster_generation;
+		}
+
+		for_each_cpu(pd_cpu, em_span_cpus(pd)) {
+			idle_em->cpu_to_cluster[pd_cpu] = &idle_em->clusters[current_cluster_id];
+		}
+
+		cpumask_xor(&unmatched_cpus, &unmatched_cpus, em_span_cpus(pd));
+		current_cluster_id++;
+	}
+
+	return idle_em;
+
+failed_cluster_generation:
+	kfree(idle_em->cpu_to_cluster);
+
+failed_cpu_to_cluster_allocation:
+	kfree(idle_em->clusters);
+
+failed_clusters_allocation:
+	kfree(idle_em);
+
+failed_idle_em_allocation:
+	return NULL;
+
+}
+
+static bool parse_idle_em_body(struct pixel_idle_em *idle_em, const char *idle_em_body,
+			       int idle_em_body_length)
+{
+	char *idle_em_body_dup = kstrndup(idle_em_body, idle_em_body_length, GFP_KERNEL);
+	char *cur_line;
+	char *sep_iterator = idle_em_body_dup;
+	int current_cpu_id = -1;
+	int ret = idle_em_body_length;
+
+	if (!idle_em_body_dup) {
+		ret = -ENOMEM;
+		goto early_return;
+	}
+
+	while ((cur_line = strsep(&sep_iterator, "\n"))) {
+		char *skipped_blanks = skip_spaces(cur_line);
+
+		if (skipped_blanks[0] == '\0' || skipped_blanks[0] == '}') {
+			continue;
+		} else if (strncasecmp(skipped_blanks, "cpu", 3) == 0) {
+			// Expecting a CPU line here...
+			if (sscanf(skipped_blanks + 3, "%d", &current_cpu_id) != 1) {
+				pr_err("Error when parsing '%s'!\n", skipped_blanks);
+				ret = -EINVAL;
+				goto early_return;
+			}
+			if (current_cpu_id < 0 || current_cpu_id >= CONFIG_VH_SCHED_CPU_NR) {
+				pr_err("Invalid CPU specified on line '%s'!\n", skipped_blanks);
+				ret = -EINVAL;
+				goto early_return;
+			}
+			pr_debug("Setting active CPU to %d...\n", current_cpu_id);
+		} else if (skipped_blanks[0] != '\0' && skipped_blanks[0] != '}') {
+			unsigned int freq = 0;
+			unsigned int power = 0;
+
+			if (current_cpu_id == -1) {
+				pr_err("Error: no CPU id specified before parsing '%s'!\n",
+				       skipped_blanks);
+				ret = -EINVAL;
+				goto early_return;
+			}
+			if (sscanf(skipped_blanks, "%u %u", &freq, &power) != 2) {
+				pr_err("Error when parsing '%s'!\n", skipped_blanks);
+				ret = -EINVAL;
+				goto early_return;
+			}
+			if (freq == 0 || power == 0) {
+				pr_err("Illegal freq/power combination specified: %u, %u.\n",
+				       freq,
+				       power);
+				ret = -EINVAL;
+				goto early_return;
+			}
+
+			update_idle_em_entry(idle_em, current_cpu_id, freq, power);
+		}
+	}
+
+
+early_return:
+	kfree(idle_em_body_dup);
+	if (ret > 0)
+		pr_info("Successfully parsed idle em!\n");
+
+	return (ret > 0);
+}
+
+static int parse_idle_em(struct pixel_idle_em *idle_em, const struct device_node *np)
+{
+	int ret;
+	const char *idle_em_body;
+
+	ret = of_property_read_string(np, "idle_power", &idle_em_body);
+
+	if (ret == 0) {
+		ret = parse_idle_em_body(idle_em, idle_em_body, strlen(idle_em_body));
+	}
+
+	return ret;
+}
+#endif
 
 static ssize_t sysfs_write_profile_store(struct kobject *kobj,
 					 struct kobj_attribute *attr,
@@ -703,8 +879,26 @@ static void pixel_em_free_profile(struct pixel_em_profile *profile)
 		deallocate_em_cluster(&profile->clusters[cluster_id]);
 	}
 	kfree(profile->clusters);
+	kfree(profile->cpu_to_cluster);
 	kfree(profile);
 }
+
+#if IS_ENABLED(CONFIG_VH_SCHED)
+static void pixel_em_free_idle(struct pixel_idle_em *idle_em)
+{
+	int cluster_id;
+
+	if (!idle_em)
+		return;
+
+	for (cluster_id = 0; cluster_id < idle_em->num_clusters; cluster_id++) {
+		deallocate_em_cluster(&idle_em->clusters[cluster_id]);
+	}
+	kfree(idle_em->clusters);
+	kfree(idle_em->cpu_to_cluster);
+	kfree(idle_em);
+}
+#endif
 
 static void pixel_em_clean_up_sysfs_nodes(void)
 {
@@ -769,6 +963,10 @@ static void pixel_em_drv_undo_probe(void)
 	// happen (other than debugging).
 
 	pixel_em_clean_up_sysfs_nodes();
+#if IS_ENABLED(CONFIG_VH_SCHED)
+	pixel_em_free_idle(vendor_sched_pixel_idle_em);
+	vendor_sched_pixel_idle_em = NULL;
+#endif
 
 	if (!platform_dev) {
 		// 'platform_dev' gets set when probing is successful. When that point is reached,
@@ -803,6 +1001,19 @@ static int pixel_em_drv_probe(struct platform_device *dev)
 		pixel_em_drv_undo_probe();
 		return -ENOMEM;
 	}
+
+#if IS_ENABLED(CONFIG_VH_SCHED)
+	vendor_sched_pixel_idle_em = generate_idle_em();
+	if (vendor_sched_pixel_idle_em == NULL)
+		pr_info("Pixel idle em not generated!\n");
+
+	if (vendor_sched_pixel_idle_em &&
+	    parse_idle_em(vendor_sched_pixel_idle_em, dev->dev.of_node) < 0) {
+		pixel_em_free_idle(vendor_sched_pixel_idle_em);
+		vendor_sched_pixel_idle_em = NULL;
+		pr_info("Pixel idle em not parsed!\n");
+	}
+#endif
 
 	res = pixel_em_initialize_sysfs_nodes();
 	if (res < 0) {
@@ -842,7 +1053,7 @@ static int pixel_em_drv_probe(struct platform_device *dev)
 
 	active_profile = default_profile;
 
-	// Probe is successful => do not attempt to free pixel_em_max_cpu or cpu_to_em_pd.
+	// Probe is successful => do not attempt to free cpu_to_em_pd.
 	platform_dev = dev;
 
 	// Register EM table to all needed drivers here.

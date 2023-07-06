@@ -102,6 +102,8 @@ extern unsigned int pmu_poll_time_ms;
 
 static void pmu_poll_defer_work(u64 time);
 
+extern unsigned long cpu_util_cfs_boost(int cpu);
+
 #if defined(CONFIG_UCLAMP_TASK) && defined(CONFIG_FAIR_GROUP_SCHED)
 extern unsigned long cpu_util_cfs_group_mod(struct rq *rq);
 #else
@@ -142,7 +144,7 @@ static inline bool update_pmu_throttle_on_ignored_cpus(struct sugov_policy *sg_p
 	if (sg_policy->tunables->pmu_limit_enable && sg_policy->under_pmu_throttle &&
 	    !sg_policy->relax_pmu_throttle &&
 	    cpumask_test_cpu(cpu, &sg_policy->pmu_ignored_mask) &&
-	    map_util_freq_pixel_mod(util, freq, cap, cpu) > sg_policy->tunables->limit_frequency) {
+	    map_util_freq_pixel_mod(util, freq, cap) > sg_policy->tunables->limit_frequency) {
 		sg_policy->relax_pmu_throttle = true;
 
 		return false;
@@ -449,7 +451,7 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 	struct cpufreq_policy *policy = sg_policy->policy;
 	unsigned int freq = policy->cpuinfo.max_freq;
 
-	freq = map_util_freq_pixel_mod(util, freq, max, policy->cpu);
+	freq = map_util_freq_pixel_mod(util, freq, max);
 	trace_sugov_next_freq(policy->cpu, util, max, freq);
 
 	if (freq == sg_policy->cached_raw_freq && !sg_policy->need_freq_update)
@@ -516,6 +518,7 @@ unsigned long schedutil_cpu_util_pixel_mod(int cpu, unsigned long util_cfs,
 	 */
 	util = util_cfs + cpu_util_rt(rq);
 	if (type == FREQUENCY_UTIL) {
+		util = apply_dvfs_headroom(util, cpu, true);
 		util = uclamp_rq_util_with(rq, util, p);
 		trace_schedutil_cpu_util_clamp(cpu, util_cfs, cpu_util_rt(rq), util, max);
 	}
@@ -549,9 +552,13 @@ unsigned long schedutil_cpu_util_pixel_mod(int cpu, unsigned long util_cfs,
 	 *              max - irq
 	 *   U' = irq + --------- * U
 	 *                 max
+	 *
+	 * We don't need to apply dvfs headroom to scale_irq_capacity() as util
+	 * (U) already got the headroom applied. Only the 'irq' part needs to
+	 * be multiplied by the headroom.
 	 */
 	util = scale_irq_capacity(util, irq, max);
-	util += irq;
+	util += type == FREQUENCY_UTIL ? apply_dvfs_headroom(irq, cpu, false) : irq;
 
 	/*
 	 * Bandwidth required by DEADLINE must always be granted while, for
@@ -564,7 +571,7 @@ unsigned long schedutil_cpu_util_pixel_mod(int cpu, unsigned long util_cfs,
 	 * an interface. So, we only do the latter for now.
 	 */
 	if (type == FREQUENCY_UTIL)
-		util += cpu_bw_dl(rq);
+		util += apply_dvfs_headroom(cpu_bw_dl(rq), cpu, false);
 
 	return min(max, util);
 }
@@ -572,7 +579,7 @@ unsigned long schedutil_cpu_util_pixel_mod(int cpu, unsigned long util_cfs,
 static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 {
 	struct rq *rq = cpu_rq(sg_cpu->cpu);
-	unsigned long util = cpu_util_cfs_group_mod(rq);
+	unsigned long util = cpu_util_cfs_boost(sg_cpu->cpu);
 	unsigned long max = arch_scale_cpu_capacity(sg_cpu->cpu);
 
 	sg_cpu->max = max;
@@ -701,7 +708,10 @@ static unsigned long sugov_iowait_apply(struct sugov_cpu *sg_cpu, u64 time,
 	 * into the same scale so we can compare.
 	 */
 	boost = (sg_cpu->iowait_boost * max) >> SCHED_CAPACITY_SHIFT;
-	return max(boost, util);
+	boost = max(boost, util);
+	boost = uclamp_rq_util_with(cpu_rq(sg_cpu->cpu), boost, NULL);
+
+	return boost;
 }
 
 #ifdef CONFIG_NO_HZ_COMMON
@@ -1047,7 +1057,7 @@ static void pmu_limit_work(struct kthread_work *work)
 			if (!check_pmu_limit_conditions(lcpi, spc, sg_policy)) {
 				sg_cpu = &per_cpu(sugov_cpu, ccpu);
 				freq = map_util_freq_pixel_mod(sugov_get_util(sg_cpu),
-					policy->cpuinfo.max_freq, sg_cpu->max, ccpu);
+					policy->cpuinfo.max_freq, sg_cpu->max);
 				// Ignore this cpu if freq is <= limit freq.
 				if (freq <= sg_policy->tunables->limit_frequency) {
 					cpumask_set_cpu(ccpu, &local_pmu_ignored_mask);

@@ -2940,17 +2940,8 @@ static inline unsigned long cpu_util_dl(struct rq *rq)
 	return READ_ONCE(rq->avg_dl.util_avg);
 }
 
-static inline unsigned long cpu_util_cfs(struct rq *rq)
-{
-	unsigned long util = READ_ONCE(rq->cfs.avg.util_avg);
-
-	if (sched_feat(UTIL_EST)) {
-		util = max_t(unsigned long, util,
-			     READ_ONCE(rq->cfs.avg.util_est.enqueued));
-	}
-
-	return util;
-}
+extern unsigned long cpu_util_cfs(int cpu);
+extern unsigned long cpu_util_cfs_boost(int cpu);
 
 static inline unsigned long cpu_util_rt(struct rq *rq)
 {
