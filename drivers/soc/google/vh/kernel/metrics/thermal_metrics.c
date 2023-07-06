@@ -227,11 +227,12 @@ EXPORT_SYMBOL_GPL(temp_residency_stats_set_thresholds);
 /* Linear Model to approximate temperature residency */
 int temp_residency_stats_update(tr_handle instance, int temp)
 {
-	int index, k, last_temp, curr_bucket;
+	int index, k, last_temp, curr_bucket, stride_len;
 	ktime_t curr_time = ktime_get();
 	s64 latency_ms;
 	struct temperature_residency_stats *stats;
 	struct temperature_bucket_sample *prev_sample;
+
 	if (instance < 0 || instance > MAX_NUM_SUPPORTED_THERMAL_ZONES)
 		return -EINVAL;
 	stats = &residency_stat_array[instance];
@@ -248,18 +249,34 @@ int temp_residency_stats_update(tr_handle instance, int temp)
 		atomic64_add(latency_ms, &(stats->time_in_state_ms[curr_bucket]));
 		goto end;
 	}
-	k = latency_ms / (temp - prev_sample->temp);
+
+	k = mult_frac(1000, latency_ms, temp - prev_sample->temp);
 	last_temp = prev_sample->temp;
 	index = prev_sample->bucket;
 
-	while (index < curr_bucket) {
-		atomic64_add(k * (stats->threshold[index] - last_temp),
-						&(stats->time_in_state_ms[index]));
-		last_temp = stats->threshold[index];
-		index = index + 1;
+	//stride_len is set to -1 if temperature decrease.
+	stride_len = (index < curr_bucket) ? 1 : -1;
+
+	while (index != curr_bucket) {
+		if (stride_len == 1) {
+			atomic64_add(
+				mult_frac(k,
+				stats->threshold[index] - last_temp, 1000),
+				&(stats->time_in_state_ms[index]));
+			last_temp = stats->threshold[index];
+		} else {
+			atomic64_add(
+				mult_frac(k,
+				stats->threshold[index - 1]- last_temp, 1000),
+				&(stats->time_in_state_ms[index]));
+			last_temp = stats->threshold[index - 1];
+		}
+		index = index + stride_len;
 	}
 	//for the last bucket
-	atomic64_add(k * (temp - last_temp), &(stats->time_in_state_ms[index]));
+	atomic64_add(mult_frac(k, temp - last_temp, 1000),
+		&(stats->time_in_state_ms[index]));
+
 end:
 	prev_sample->update_time = curr_time;
 	prev_sample->temp = temp;
