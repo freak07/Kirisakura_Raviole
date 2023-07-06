@@ -208,7 +208,8 @@ static bool update_em_entry(struct pixel_em_profile *profile,
 			if (cluster->opps[opp_id].freq == freq) {
 				cluster->opps[opp_id].capacity = cap;
 				cluster->opps[opp_id].power = power;
-				cluster->opps[opp_id].cost = (max_freq * power) / freq;
+				cluster->opps[opp_id].cost = (max_freq * em_scale_power(power))
+							     / freq;
 				return true;
 			}
 		}
@@ -241,7 +242,8 @@ static bool update_idle_em_entry(struct pixel_idle_em *idle_em,
 		for (opp_id = 0; opp_id < cluster->num_opps; opp_id++) {
 			if (cluster->opps[opp_id].freq == freq) {
 				cluster->opps[opp_id].power = power;
-				cluster->opps[opp_id].cost = (max_freq * power) / freq;
+				cluster->opps[opp_id].cost = (max_freq * em_scale_power(power))
+							     / freq;
 				return true;
 			}
 		}
