@@ -2001,7 +2001,8 @@ void rvh_cpu_overutilized_pixel_mod(void *data, int cpu, int *overutilized)
  * running on the CPU don't go to sleep, they'll grow in that additional
  * headroom until we do the next frequency update to a higher one.
  */
-unsigned long apply_dvfs_headroom(unsigned long util, int cpu, bool tapered)
+unsigned long __always_inline
+apply_dvfs_headroom(unsigned long util, int cpu, bool tapered)
 {
 	if (tapered && static_branch_unlikely(&tapered_dvfs_headroom_enable)) {
 		unsigned long capacity = capacity_orig_of(cpu);
