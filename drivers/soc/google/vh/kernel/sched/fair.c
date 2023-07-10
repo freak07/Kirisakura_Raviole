@@ -689,7 +689,7 @@ static inline unsigned long cpu_util_cfs_group_mod_no_est(struct rq *rq)
 	return util;
 }
 
-unsigned long cpu_util_cfs_group_mod(struct rq *rq)
+unsigned long __always_inline cpu_util_cfs_group_mod(int cpu)
 {
 	unsigned long util = cpu_util_cfs_group_mod_no_est(rq);
 
