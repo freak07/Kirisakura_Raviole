@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include "../../include/sched.h"
+#include <asm/atomic.h>
 
 #define MIN_CAPACITY_CPU    CONFIG_VH_MIN_CAPACITY_CPU
 #define MID_CAPACITY_CPU    CONFIG_VH_MID_CAPACITY_CPU
@@ -168,8 +169,7 @@ DECLARE_STATIC_KEY_FALSE(uclamp_max_filter_enable);
 
 DECLARE_STATIC_KEY_FALSE(tapered_dvfs_headroom_enable);
 
-#define SCHED_PIXEL_BLOCK_UPDATES		BIT(8)
-#define SCHED_PIXEL_RESUME_UPDATES		BIT(9)
+#define SCHED_PIXEL_FORCE_UPDATE		BIT(8)
 
 /*****************************************************************************/
 /*                       Upstream Code Section                               */
@@ -391,6 +391,7 @@ static inline struct vendor_task_group_struct *get_vendor_task_group_struct(stru
 struct vendor_rq_struct {
 	raw_spinlock_t lock;
 	unsigned long util_removed;
+	atomic_t num_adpf_tasks;
 };
 
 ANDROID_VENDOR_CHECK_SIZE_ALIGN(u64 android_vendor_data1[96], struct vendor_rq_struct t);
