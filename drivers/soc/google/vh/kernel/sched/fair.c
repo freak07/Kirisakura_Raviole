@@ -7,6 +7,7 @@
  */
 #include <kernel/sched/sched.h>
 #include <kernel/sched/pelt.h>
+#include <linux/moduleparam.h>
 #include <trace/events/power.h>
 
 #include "sched_priv.h"
@@ -34,6 +35,9 @@ extern int vendor_sched_ug_bg_auto_prio;
 extern unsigned int vendor_sched_util_post_init_scale;
 extern bool vendor_sched_npi_packing;
 extern bool vendor_sched_idle_balancer;
+
+static unsigned int early_boot_boost_uclamp_min = 650;
+module_param(early_boot_boost_uclamp_min, uint, 0644);
 
 unsigned int sched_capacity_margin[CPU_NUM] = { [0 ... CPU_NUM - 1] = DEF_UTIL_THRESHOLD };
 unsigned int sched_dvfs_headroom[CPU_NUM] = { [0 ... CPU_NUM - 1] = DEF_UTIL_THRESHOLD };
@@ -2136,8 +2140,12 @@ void initialize_vendor_group_property(void)
 		vg[i].uclamp_max_on_nice_high_prio = DEFAULT_PRIO;
 		vg[i].uclamp_min_on_nice_enable = false;
 		vg[i].uclamp_max_on_nice_enable = false;
-		vg[i].uc_req[UCLAMP_MIN].value = min_val;
-		vg[i].uc_req[UCLAMP_MIN].bucket_id = get_bucket_id(min_val);
+		if (i == VG_SYSTEM) {
+			vg[i].uc_req[UCLAMP_MIN].value = early_boot_boost_uclamp_min;
+		} else {
+			vg[i].uc_req[UCLAMP_MIN].value = min_val;
+		}
+		vg[i].uc_req[UCLAMP_MIN].bucket_id = get_bucket_id(vg[i].uc_req[UCLAMP_MIN].value);
 		vg[i].uc_req[UCLAMP_MIN].user_defined = false;
 		vg[i].uc_req[UCLAMP_MAX].value = max_val;
 		vg[i].uc_req[UCLAMP_MAX].bucket_id = get_bucket_id(max_val);
