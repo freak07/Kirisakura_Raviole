@@ -586,7 +586,7 @@ static inline bool wake_page_match(struct wait_page_queue *wait_page,
 extern void __lock_page(struct page *page);
 extern int __lock_page_killable(struct page *page);
 extern int __lock_page_async(struct page *page, struct wait_page_queue *wait);
-extern vm_fault_t int __lock_page_or_retry(struct page *page, struct vm_fault *vmf);
+extern vm_fault_t __lock_page_or_retry(struct page *page, struct vm_fault *vmf);
 extern void unlock_page(struct page *page);
 
 /*
@@ -644,7 +644,7 @@ static inline __sched int lock_page_async(struct page *page,
  * Return value and mmap_lock implications depend on flags; see
  * __lock_page_or_retry().
  */
-static inline __sched vm_fault_t int lock_page_or_retry(struct page *page,
+static inline __sched vm_fault_t lock_page_or_retry(struct page *page,
 					     struct vm_fault *vmf)
 {
 	might_sleep();
