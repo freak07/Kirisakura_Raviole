@@ -1576,7 +1576,7 @@ __sched int __lock_page_async(struct page *page, struct wait_page_queue *wait)
  * If neither ALLOW_RETRY nor KILLABLE are set, will always return 0
  * with the folio locked and the mmap_lock/per-VMA lock is left unperturbed.
  */
-__sched int vm_fault_t __lock_page_or_retry(struct page *page, struct vm_fault *vmf)
+__sched vm_fault_t __lock_page_or_retry(struct page *page, struct vm_fault *vmf)
 {
 	unsigned int flags = vmf->flags;
 
