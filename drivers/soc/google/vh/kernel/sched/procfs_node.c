@@ -28,6 +28,7 @@ bool __read_mostly vendor_sched_idle_balancer = true; //prefer vendor idle balan
 bool __read_mostly vendor_sched_reduce_prefer_idle = true;
 bool __read_mostly vendor_sched_boost_adpf_prio = true;
 struct proc_dir_entry *vendor_sched;
+struct proc_dir_entry *group_dirs[VG_MAX];
 extern struct vendor_group_list vendor_group_list[VG_MAX];
 
 extern void initialize_vendor_group_property(void);
@@ -59,6 +60,11 @@ extern unsigned int sysctl_sched_uclamp_max_filter_divider;
 
 static const char *GRP_NAME[VG_MAX] = {"sys", "ta", "fg", "cam", "cam_power", "bg", "sys_bg",
 				       "nnapi", "rt", "dex2oat", "ota", "sf"};
+
+enum vendor_procfs_type {
+	DEFAULT_TYPE = 0,
+	GROUPED_CONTROL,
+};
 
 #define PROC_OPS_RW(__name) \
 		static int __name##_proc_open(\
@@ -103,7 +109,69 @@ static const char *GRP_NAME[VG_MAX] = {"sys", "ta", "fg", "cam", "cam_power", "b
 			.proc_write	= __name##_store,\
 		}
 
-#define PROC_ENTRY(__name) {__stringify(__name), &__name##_proc_ops}
+#define PROC_ENTRY(__name) {__stringify(__name), DEFAULT_TYPE, -1, &__name##_proc_ops}
+
+#define __PROC_GROUP_ENTRY(__name, __group_name, __vg) \
+		{__stringify(__name), GROUPED_CONTROL, __vg, &__group_name##_##__name##_proc_ops}
+
+#define __PROC_SET_GROUP_ENTRY(__name, __group_name, __vg) \
+		{__stringify(__name), GROUPED_CONTROL, __vg, &__name##_##__group_name##_proc_ops}
+
+/*
+ * Keep the old group procfs nodes temporarily for compatiblility with current platform
+ * usage. Once platform usage updated, they will be removed.
+ */
+#define PROC_GROUP_ENTRIES(__group_name, __vg)	\
+		__PROC_GROUP_ENTRY(prefer_idle, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(prefer_high_cap, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(task_spreading, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(preferred_idle_mask_low, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(preferred_idle_mask_mid, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(preferred_idle_mask_high, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_min, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_min_on_nice_enable, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_min_on_nice_low_value, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_min_on_nice_mid_value, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_min_on_nice_high_value, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_min_on_nice_low_prio, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_min_on_nice_mid_prio, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_min_on_nice_high_prio, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_max, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_max_on_nice_enable, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_max_on_nice_low_value, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_max_on_nice_mid_value, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_max_on_nice_high_value, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_max_on_nice_low_prio, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_max_on_nice_mid_prio, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(uclamp_max_on_nice_high_prio, __group_name, __vg),	\
+		__PROC_GROUP_ENTRY(ug, __group_name, __vg),	\
+		__PROC_SET_GROUP_ENTRY(set_task_group, __group_name, __vg),	\
+		__PROC_SET_GROUP_ENTRY(set_proc_group, __group_name, __vg),	\
+		PROC_ENTRY(__group_name##_prefer_idle),	\
+		PROC_ENTRY(__group_name##_prefer_high_cap),	\
+		PROC_ENTRY(__group_name##_task_spreading),	\
+		PROC_ENTRY(__group_name##_preferred_idle_mask_low),	\
+		PROC_ENTRY(__group_name##_preferred_idle_mask_mid),	\
+		PROC_ENTRY(__group_name##_preferred_idle_mask_high),	\
+		PROC_ENTRY(__group_name##_uclamp_min),	\
+		PROC_ENTRY(__group_name##_uclamp_min_on_nice_enable),	\
+		PROC_ENTRY(__group_name##_uclamp_min_on_nice_low_value),	\
+		PROC_ENTRY(__group_name##_uclamp_min_on_nice_mid_value),	\
+		PROC_ENTRY(__group_name##_uclamp_min_on_nice_high_value),	\
+		PROC_ENTRY(__group_name##_uclamp_min_on_nice_low_prio),	\
+		PROC_ENTRY(__group_name##_uclamp_min_on_nice_mid_prio),	\
+		PROC_ENTRY(__group_name##_uclamp_min_on_nice_high_prio),	\
+		PROC_ENTRY(__group_name##_uclamp_max),	\
+		PROC_ENTRY(__group_name##_uclamp_max_on_nice_enable),	\
+		PROC_ENTRY(__group_name##_uclamp_max_on_nice_low_value),	\
+		PROC_ENTRY(__group_name##_uclamp_max_on_nice_mid_value),	\
+		PROC_ENTRY(__group_name##_uclamp_max_on_nice_high_value),	\
+		PROC_ENTRY(__group_name##_uclamp_max_on_nice_low_prio),	\
+		PROC_ENTRY(__group_name##_uclamp_max_on_nice_mid_prio),	\
+		PROC_ENTRY(__group_name##_uclamp_max_on_nice_high_prio),	\
+		PROC_ENTRY(__group_name##_ug),	\
+		PROC_ENTRY(set_task_group_##__group_name),	\
+		PROC_ENTRY(set_proc_group_##__group_name)
 
 #define SET_VENDOR_GROUP_STORE(__grp, __vg)						      \
 		static ssize_t set_task_group_##__grp##_store(struct file *filp, \
@@ -2123,333 +2191,58 @@ PROC_OPS_RW(ug_bg_auto_prio);
 
 struct pentry {
 	const char *name;
+	enum vendor_procfs_type type;
+	/*
+	 * Vendor group the procfs belongs to.
+	 *  -1 if it doesn't follow into any group.
+	 */
+	const int vg;
 	const struct proc_ops *fops;
 };
 static struct pentry entries[] = {
-	// Topapp group attributes
-	PROC_ENTRY(ta_prefer_idle),
-	PROC_ENTRY(ta_prefer_high_cap),
-	PROC_ENTRY(ta_task_spreading),
+	PROC_GROUP_ENTRIES(sys, VG_SYSTEM),
+	PROC_GROUP_ENTRIES(ta, VG_TOPAPP),
+	PROC_GROUP_ENTRIES(fg, VG_FOREGROUND),
+	PROC_GROUP_ENTRIES(cam, VG_CAMERA),
+	PROC_GROUP_ENTRIES(cam_power, VG_CAMERA_POWER),
+	PROC_GROUP_ENTRIES(bg, VG_BACKGROUND),
+	PROC_GROUP_ENTRIES(sysbg, VG_SYSTEM_BACKGROUND),
+	PROC_GROUP_ENTRIES(nnapi, VG_NNAPI_HAL),
+	PROC_GROUP_ENTRIES(rt, VG_RT),
+	PROC_GROUP_ENTRIES(dex2oat, VG_DEX2OAT),
+	PROC_GROUP_ENTRIES(ota, VG_OTA),
+	PROC_GROUP_ENTRIES(sf, VG_SF),
 #if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
-	PROC_ENTRY(ta_group_throttle),
-#endif
-	PROC_ENTRY(ta_preferred_idle_mask_low),
-	PROC_ENTRY(ta_preferred_idle_mask_mid),
-	PROC_ENTRY(ta_preferred_idle_mask_high),
-	PROC_ENTRY(ta_uclamp_min),
-	PROC_ENTRY(ta_uclamp_max),
-	PROC_ENTRY(ta_uclamp_min_on_nice_low_value),
-	PROC_ENTRY(ta_uclamp_min_on_nice_mid_value),
-	PROC_ENTRY(ta_uclamp_min_on_nice_high_value),
-	PROC_ENTRY(ta_uclamp_max_on_nice_low_value),
-	PROC_ENTRY(ta_uclamp_max_on_nice_mid_value),
-	PROC_ENTRY(ta_uclamp_max_on_nice_high_value),
-	PROC_ENTRY(ta_uclamp_min_on_nice_low_prio),
-	PROC_ENTRY(ta_uclamp_min_on_nice_mid_prio),
-	PROC_ENTRY(ta_uclamp_min_on_nice_high_prio),
-	PROC_ENTRY(ta_uclamp_max_on_nice_low_prio),
-	PROC_ENTRY(ta_uclamp_max_on_nice_mid_prio),
-	PROC_ENTRY(ta_uclamp_max_on_nice_high_prio),
-	PROC_ENTRY(ta_uclamp_min_on_nice_enable),
-	PROC_ENTRY(ta_uclamp_max_on_nice_enable),
-	PROC_ENTRY(ta_ug),
-	// Foreground group attributes
-	PROC_ENTRY(fg_prefer_idle),
-	PROC_ENTRY(fg_prefer_high_cap),
-	PROC_ENTRY(fg_task_spreading),
-#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
-	PROC_ENTRY(fg_group_throttle),
-#endif
-	PROC_ENTRY(fg_preferred_idle_mask_low),
-	PROC_ENTRY(fg_preferred_idle_mask_mid),
-	PROC_ENTRY(fg_preferred_idle_mask_high),
-	PROC_ENTRY(fg_uclamp_min),
-	PROC_ENTRY(fg_uclamp_max),
-	PROC_ENTRY(fg_uclamp_min_on_nice_low_value),
-	PROC_ENTRY(fg_uclamp_min_on_nice_mid_value),
-	PROC_ENTRY(fg_uclamp_min_on_nice_high_value),
-	PROC_ENTRY(fg_uclamp_max_on_nice_low_value),
-	PROC_ENTRY(fg_uclamp_max_on_nice_mid_value),
-	PROC_ENTRY(fg_uclamp_max_on_nice_high_value),
-	PROC_ENTRY(fg_uclamp_min_on_nice_low_prio),
-	PROC_ENTRY(fg_uclamp_min_on_nice_mid_prio),
-	PROC_ENTRY(fg_uclamp_min_on_nice_high_prio),
-	PROC_ENTRY(fg_uclamp_max_on_nice_low_prio),
-	PROC_ENTRY(fg_uclamp_max_on_nice_mid_prio),
-	PROC_ENTRY(fg_uclamp_max_on_nice_high_prio),
-	PROC_ENTRY(fg_uclamp_min_on_nice_enable),
-	PROC_ENTRY(fg_uclamp_max_on_nice_enable),
-	PROC_ENTRY(fg_ug),
-	// System group attributes
-	PROC_ENTRY(sys_prefer_idle),
-	PROC_ENTRY(sys_prefer_high_cap),
-	PROC_ENTRY(sys_task_spreading),
-#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
+	__PROC_GROUP_ENTRY(group_throttle, sys, VG_SYSTEM),
+	__PROC_GROUP_ENTRY(group_throttle, ta, VG_TOPAPP),
+	__PROC_GROUP_ENTRY(group_throttle, fg, VG_FOREGROUND),
+	__PROC_GROUP_ENTRY(group_throttle, cam, VG_CAMERA),
+	__PROC_GROUP_ENTRY(group_throttle, cam_power, VG_CAMERA_POWER),
+	__PROC_GROUP_ENTRY(group_throttle, bg, VG_BACKGROUND),
+	__PROC_GROUP_ENTRY(group_throttle, sysbg, VG_SYSTEM_BACKGROUND),
+	__PROC_GROUP_ENTRY(group_throttle, nnapi, VG_NNAPI_HAL),
+	__PROC_GROUP_ENTRY(group_throttle, rt, VG_RT),
+	__PROC_GROUP_ENTRY(group_throttle, dex2oat, VG_DEX2OAT),
+	__PROC_GROUP_ENTRY(group_throttle, ota, VG_OTA),
+	__PROC_GROUP_ENTRY(group_throttle, sf, VG_SF),
+	/*
+	 * Keep the old procfs nodes temporarily for compatiblility
+	 * with current platform usage. Once platform usage updated, they
+	 * will be removed.
+	 */
 	PROC_ENTRY(sys_group_throttle),
-#endif
-	PROC_ENTRY(sys_preferred_idle_mask_low),
-	PROC_ENTRY(sys_preferred_idle_mask_mid),
-	PROC_ENTRY(sys_preferred_idle_mask_high),
-	PROC_ENTRY(sys_uclamp_min),
-	PROC_ENTRY(sys_uclamp_max),
-	PROC_ENTRY(sys_uclamp_min_on_nice_low_value),
-	PROC_ENTRY(sys_uclamp_min_on_nice_mid_value),
-	PROC_ENTRY(sys_uclamp_min_on_nice_high_value),
-	PROC_ENTRY(sys_uclamp_max_on_nice_low_value),
-	PROC_ENTRY(sys_uclamp_max_on_nice_mid_value),
-	PROC_ENTRY(sys_uclamp_max_on_nice_high_value),
-	PROC_ENTRY(sys_uclamp_min_on_nice_low_prio),
-	PROC_ENTRY(sys_uclamp_min_on_nice_mid_prio),
-	PROC_ENTRY(sys_uclamp_min_on_nice_high_prio),
-	PROC_ENTRY(sys_uclamp_max_on_nice_low_prio),
-	PROC_ENTRY(sys_uclamp_max_on_nice_mid_prio),
-	PROC_ENTRY(sys_uclamp_max_on_nice_high_prio),
-	PROC_ENTRY(sys_uclamp_min_on_nice_enable),
-	PROC_ENTRY(sys_uclamp_max_on_nice_enable),
-	PROC_ENTRY(sys_ug),
-	// Camera group attributes
-	PROC_ENTRY(cam_prefer_idle),
-	PROC_ENTRY(cam_prefer_high_cap),
-	PROC_ENTRY(cam_task_spreading),
-#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
+	PROC_ENTRY(ta_group_throttle),
+	PROC_ENTRY(fg_group_throttle),
 	PROC_ENTRY(cam_group_throttle),
-#endif
-	PROC_ENTRY(cam_preferred_idle_mask_low),
-	PROC_ENTRY(cam_preferred_idle_mask_mid),
-	PROC_ENTRY(cam_preferred_idle_mask_high),
-	PROC_ENTRY(cam_uclamp_min),
-	PROC_ENTRY(cam_uclamp_max),
-	PROC_ENTRY(cam_uclamp_min_on_nice_low_value),
-	PROC_ENTRY(cam_uclamp_min_on_nice_mid_value),
-	PROC_ENTRY(cam_uclamp_min_on_nice_high_value),
-	PROC_ENTRY(cam_uclamp_max_on_nice_low_value),
-	PROC_ENTRY(cam_uclamp_max_on_nice_mid_value),
-	PROC_ENTRY(cam_uclamp_max_on_nice_high_value),
-	PROC_ENTRY(cam_uclamp_min_on_nice_low_prio),
-	PROC_ENTRY(cam_uclamp_min_on_nice_mid_prio),
-	PROC_ENTRY(cam_uclamp_min_on_nice_high_prio),
-	PROC_ENTRY(cam_uclamp_max_on_nice_low_prio),
-	PROC_ENTRY(cam_uclamp_max_on_nice_mid_prio),
-	PROC_ENTRY(cam_uclamp_max_on_nice_high_prio),
-	PROC_ENTRY(cam_uclamp_min_on_nice_enable),
-	PROC_ENTRY(cam_uclamp_max_on_nice_enable),
-	PROC_ENTRY(cam_ug),
-	// Camera_power group attributes
-	PROC_ENTRY(cam_power_prefer_idle),
-	PROC_ENTRY(cam_power_prefer_high_cap),
-	PROC_ENTRY(cam_power_task_spreading),
-#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	PROC_ENTRY(cam_power_group_throttle),
-#endif
-	PROC_ENTRY(cam_power_preferred_idle_mask_low),
-	PROC_ENTRY(cam_power_preferred_idle_mask_mid),
-	PROC_ENTRY(cam_power_preferred_idle_mask_high),
-	PROC_ENTRY(cam_power_uclamp_min),
-	PROC_ENTRY(cam_power_uclamp_max),
-	PROC_ENTRY(cam_power_uclamp_min_on_nice_low_value),
-	PROC_ENTRY(cam_power_uclamp_min_on_nice_mid_value),
-	PROC_ENTRY(cam_power_uclamp_min_on_nice_high_value),
-	PROC_ENTRY(cam_power_uclamp_max_on_nice_low_value),
-	PROC_ENTRY(cam_power_uclamp_max_on_nice_mid_value),
-	PROC_ENTRY(cam_power_uclamp_max_on_nice_high_value),
-	PROC_ENTRY(cam_power_uclamp_min_on_nice_low_prio),
-	PROC_ENTRY(cam_power_uclamp_min_on_nice_mid_prio),
-	PROC_ENTRY(cam_power_uclamp_min_on_nice_high_prio),
-	PROC_ENTRY(cam_power_uclamp_max_on_nice_low_prio),
-	PROC_ENTRY(cam_power_uclamp_max_on_nice_mid_prio),
-	PROC_ENTRY(cam_power_uclamp_max_on_nice_high_prio),
-	PROC_ENTRY(cam_power_uclamp_min_on_nice_enable),
-	PROC_ENTRY(cam_power_uclamp_max_on_nice_enable),
-	PROC_ENTRY(cam_power_ug),
-	// Background group attributes
-	PROC_ENTRY(bg_prefer_idle),
-	PROC_ENTRY(bg_prefer_high_cap),
-	PROC_ENTRY(bg_task_spreading),
-#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	PROC_ENTRY(bg_group_throttle),
-#endif
-	PROC_ENTRY(bg_preferred_idle_mask_low),
-	PROC_ENTRY(bg_preferred_idle_mask_mid),
-	PROC_ENTRY(bg_preferred_idle_mask_high),
-	PROC_ENTRY(bg_uclamp_min),
-	PROC_ENTRY(bg_uclamp_max),
-	PROC_ENTRY(bg_uclamp_min_on_nice_low_value),
-	PROC_ENTRY(bg_uclamp_min_on_nice_mid_value),
-	PROC_ENTRY(bg_uclamp_min_on_nice_high_value),
-	PROC_ENTRY(bg_uclamp_max_on_nice_low_value),
-	PROC_ENTRY(bg_uclamp_max_on_nice_mid_value),
-	PROC_ENTRY(bg_uclamp_max_on_nice_high_value),
-	PROC_ENTRY(bg_uclamp_min_on_nice_low_prio),
-	PROC_ENTRY(bg_uclamp_min_on_nice_mid_prio),
-	PROC_ENTRY(bg_uclamp_min_on_nice_high_prio),
-	PROC_ENTRY(bg_uclamp_max_on_nice_low_prio),
-	PROC_ENTRY(bg_uclamp_max_on_nice_mid_prio),
-	PROC_ENTRY(bg_uclamp_max_on_nice_high_prio),
-	PROC_ENTRY(bg_uclamp_min_on_nice_enable),
-	PROC_ENTRY(bg_uclamp_max_on_nice_enable),
-	PROC_ENTRY(bg_ug),
-	// System Background group attributes
-	PROC_ENTRY(sysbg_prefer_idle),
-	PROC_ENTRY(sysbg_prefer_high_cap),
-	PROC_ENTRY(sysbg_task_spreading),
-#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	PROC_ENTRY(sysbg_group_throttle),
-#endif
-	PROC_ENTRY(sysbg_preferred_idle_mask_low),
-	PROC_ENTRY(sysbg_preferred_idle_mask_mid),
-	PROC_ENTRY(sysbg_preferred_idle_mask_high),
-	PROC_ENTRY(sysbg_uclamp_min),
-	PROC_ENTRY(sysbg_uclamp_max),
-	PROC_ENTRY(sysbg_uclamp_min_on_nice_low_value),
-	PROC_ENTRY(sysbg_uclamp_min_on_nice_mid_value),
-	PROC_ENTRY(sysbg_uclamp_min_on_nice_high_value),
-	PROC_ENTRY(sysbg_uclamp_max_on_nice_low_value),
-	PROC_ENTRY(sysbg_uclamp_max_on_nice_mid_value),
-	PROC_ENTRY(sysbg_uclamp_max_on_nice_high_value),
-	PROC_ENTRY(sysbg_uclamp_min_on_nice_low_prio),
-	PROC_ENTRY(sysbg_uclamp_min_on_nice_mid_prio),
-	PROC_ENTRY(sysbg_uclamp_min_on_nice_high_prio),
-	PROC_ENTRY(sysbg_uclamp_max_on_nice_low_prio),
-	PROC_ENTRY(sysbg_uclamp_max_on_nice_mid_prio),
-	PROC_ENTRY(sysbg_uclamp_max_on_nice_high_prio),
-	PROC_ENTRY(sysbg_uclamp_min_on_nice_enable),
-	PROC_ENTRY(sysbg_uclamp_max_on_nice_enable),
-	PROC_ENTRY(sysbg_ug),
-	// Nnapi-HAL group attributes
-	PROC_ENTRY(nnapi_prefer_idle),
-	PROC_ENTRY(nnapi_prefer_high_cap),
-	PROC_ENTRY(nnapi_task_spreading),
-#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	PROC_ENTRY(nnapi_group_throttle),
-#endif
-	PROC_ENTRY(nnapi_preferred_idle_mask_low),
-	PROC_ENTRY(nnapi_preferred_idle_mask_mid),
-	PROC_ENTRY(nnapi_preferred_idle_mask_high),
-	PROC_ENTRY(nnapi_uclamp_min),
-	PROC_ENTRY(nnapi_uclamp_max),
-	PROC_ENTRY(nnapi_uclamp_min_on_nice_low_value),
-	PROC_ENTRY(nnapi_uclamp_min_on_nice_mid_value),
-	PROC_ENTRY(nnapi_uclamp_min_on_nice_high_value),
-	PROC_ENTRY(nnapi_uclamp_max_on_nice_low_value),
-	PROC_ENTRY(nnapi_uclamp_max_on_nice_mid_value),
-	PROC_ENTRY(nnapi_uclamp_max_on_nice_high_value),
-	PROC_ENTRY(nnapi_uclamp_min_on_nice_low_prio),
-	PROC_ENTRY(nnapi_uclamp_min_on_nice_mid_prio),
-	PROC_ENTRY(nnapi_uclamp_min_on_nice_high_prio),
-	PROC_ENTRY(nnapi_uclamp_max_on_nice_low_prio),
-	PROC_ENTRY(nnapi_uclamp_max_on_nice_mid_prio),
-	PROC_ENTRY(nnapi_uclamp_max_on_nice_high_prio),
-	PROC_ENTRY(nnapi_uclamp_min_on_nice_enable),
-	PROC_ENTRY(nnapi_uclamp_max_on_nice_enable),
-	PROC_ENTRY(nnapi_ug),
-	// RT group attributes
-	PROC_ENTRY(rt_prefer_idle),
-	PROC_ENTRY(rt_prefer_high_cap),
-	PROC_ENTRY(rt_task_spreading),
-#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	PROC_ENTRY(rt_group_throttle),
-#endif
-	PROC_ENTRY(rt_preferred_idle_mask_low),
-	PROC_ENTRY(rt_preferred_idle_mask_mid),
-	PROC_ENTRY(rt_preferred_idle_mask_high),
-	PROC_ENTRY(rt_uclamp_min),
-	PROC_ENTRY(rt_uclamp_max),
-	PROC_ENTRY(rt_uclamp_min_on_nice_low_value),
-	PROC_ENTRY(rt_uclamp_min_on_nice_mid_value),
-	PROC_ENTRY(rt_uclamp_min_on_nice_high_value),
-	PROC_ENTRY(rt_uclamp_max_on_nice_low_value),
-	PROC_ENTRY(rt_uclamp_max_on_nice_mid_value),
-	PROC_ENTRY(rt_uclamp_max_on_nice_high_value),
-	PROC_ENTRY(rt_uclamp_min_on_nice_low_prio),
-	PROC_ENTRY(rt_uclamp_min_on_nice_mid_prio),
-	PROC_ENTRY(rt_uclamp_min_on_nice_high_prio),
-	PROC_ENTRY(rt_uclamp_max_on_nice_low_prio),
-	PROC_ENTRY(rt_uclamp_max_on_nice_mid_prio),
-	PROC_ENTRY(rt_uclamp_max_on_nice_high_prio),
-	PROC_ENTRY(rt_uclamp_min_on_nice_enable),
-	PROC_ENTRY(rt_uclamp_max_on_nice_enable),
-	PROC_ENTRY(rt_ug),
-	// DEX2OAT group attributes
-	PROC_ENTRY(dex2oat_prefer_idle),
-	PROC_ENTRY(dex2oat_prefer_high_cap),
-	PROC_ENTRY(dex2oat_task_spreading),
-#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	PROC_ENTRY(dex2oat_group_throttle),
-#endif
-	PROC_ENTRY(dex2oat_preferred_idle_mask_low),
-	PROC_ENTRY(dex2oat_preferred_idle_mask_mid),
-	PROC_ENTRY(dex2oat_preferred_idle_mask_high),
-	PROC_ENTRY(dex2oat_uclamp_min),
-	PROC_ENTRY(dex2oat_uclamp_max),
-	PROC_ENTRY(dex2oat_uclamp_min_on_nice_low_value),
-	PROC_ENTRY(dex2oat_uclamp_min_on_nice_mid_value),
-	PROC_ENTRY(dex2oat_uclamp_min_on_nice_high_value),
-	PROC_ENTRY(dex2oat_uclamp_max_on_nice_low_value),
-	PROC_ENTRY(dex2oat_uclamp_max_on_nice_mid_value),
-	PROC_ENTRY(dex2oat_uclamp_max_on_nice_high_value),
-	PROC_ENTRY(dex2oat_uclamp_min_on_nice_low_prio),
-	PROC_ENTRY(dex2oat_uclamp_min_on_nice_mid_prio),
-	PROC_ENTRY(dex2oat_uclamp_min_on_nice_high_prio),
-	PROC_ENTRY(dex2oat_uclamp_max_on_nice_low_prio),
-	PROC_ENTRY(dex2oat_uclamp_max_on_nice_mid_prio),
-	PROC_ENTRY(dex2oat_uclamp_max_on_nice_high_prio),
-	PROC_ENTRY(dex2oat_uclamp_min_on_nice_enable),
-	PROC_ENTRY(dex2oat_uclamp_max_on_nice_enable),
-	PROC_ENTRY(dex2oat_ug),
-	// OTA group attributes
-	PROC_ENTRY(ota_prefer_idle),
-	PROC_ENTRY(ota_prefer_high_cap),
-	PROC_ENTRY(ota_task_spreading),
-#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	PROC_ENTRY(ota_group_throttle),
-#endif
-	PROC_ENTRY(ota_preferred_idle_mask_low),
-	PROC_ENTRY(ota_preferred_idle_mask_mid),
-	PROC_ENTRY(ota_preferred_idle_mask_high),
-	PROC_ENTRY(ota_uclamp_min),
-	PROC_ENTRY(ota_uclamp_max),
-	PROC_ENTRY(ota_uclamp_min_on_nice_low_value),
-	PROC_ENTRY(ota_uclamp_min_on_nice_mid_value),
-	PROC_ENTRY(ota_uclamp_min_on_nice_high_value),
-	PROC_ENTRY(ota_uclamp_max_on_nice_low_value),
-	PROC_ENTRY(ota_uclamp_max_on_nice_mid_value),
-	PROC_ENTRY(ota_uclamp_max_on_nice_high_value),
-	PROC_ENTRY(ota_uclamp_min_on_nice_low_prio),
-	PROC_ENTRY(ota_uclamp_min_on_nice_mid_prio),
-	PROC_ENTRY(ota_uclamp_min_on_nice_high_prio),
-	PROC_ENTRY(ota_uclamp_max_on_nice_low_prio),
-	PROC_ENTRY(ota_uclamp_max_on_nice_mid_prio),
-	PROC_ENTRY(ota_uclamp_max_on_nice_high_prio),
-	PROC_ENTRY(ota_uclamp_min_on_nice_enable),
-	PROC_ENTRY(ota_uclamp_max_on_nice_enable),
-	PROC_ENTRY(ota_ug),
-	// SF group attributes
-	PROC_ENTRY(sf_prefer_idle),
-	PROC_ENTRY(sf_prefer_high_cap),
-	PROC_ENTRY(sf_task_spreading),
-#if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	PROC_ENTRY(sf_group_throttle),
 #endif
-	PROC_ENTRY(sf_preferred_idle_mask_low),
-	PROC_ENTRY(sf_preferred_idle_mask_mid),
-	PROC_ENTRY(sf_preferred_idle_mask_high),
-	PROC_ENTRY(sf_uclamp_min),
-	PROC_ENTRY(sf_uclamp_max),
-	PROC_ENTRY(sf_uclamp_min_on_nice_low_value),
-	PROC_ENTRY(sf_uclamp_min_on_nice_mid_value),
-	PROC_ENTRY(sf_uclamp_min_on_nice_high_value),
-	PROC_ENTRY(sf_uclamp_max_on_nice_low_value),
-	PROC_ENTRY(sf_uclamp_max_on_nice_mid_value),
-	PROC_ENTRY(sf_uclamp_max_on_nice_high_value),
-	PROC_ENTRY(sf_uclamp_min_on_nice_low_prio),
-	PROC_ENTRY(sf_uclamp_min_on_nice_mid_prio),
-	PROC_ENTRY(sf_uclamp_min_on_nice_high_prio),
-	PROC_ENTRY(sf_uclamp_max_on_nice_low_prio),
-	PROC_ENTRY(sf_uclamp_max_on_nice_mid_prio),
-	PROC_ENTRY(sf_uclamp_max_on_nice_high_prio),
-	PROC_ENTRY(sf_uclamp_min_on_nice_enable),
-	PROC_ENTRY(sf_uclamp_max_on_nice_enable),
-	PROC_ENTRY(sf_ug),
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	// FG util group attributes
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
@@ -2465,31 +2258,6 @@ static struct pentry entries[] = {
 	PROC_ENTRY(ug_bg_uclamp_max),
 	PROC_ENTRY(ug_bg_auto_prio),
 #endif
-	// Vendor group attributes
-	PROC_ENTRY(set_task_group_ta),
-	PROC_ENTRY(set_task_group_fg),
-	PROC_ENTRY(set_task_group_sys),
-	PROC_ENTRY(set_task_group_cam),
-	PROC_ENTRY(set_task_group_cam_power),
-	PROC_ENTRY(set_task_group_bg),
-	PROC_ENTRY(set_task_group_sysbg),
-	PROC_ENTRY(set_task_group_nnapi),
-	PROC_ENTRY(set_task_group_rt),
-	PROC_ENTRY(set_task_group_dex2oat),
-	PROC_ENTRY(set_task_group_ota),
-	PROC_ENTRY(set_task_group_sf),
-	PROC_ENTRY(set_proc_group_ta),
-	PROC_ENTRY(set_proc_group_fg),
-	PROC_ENTRY(set_proc_group_sys),
-	PROC_ENTRY(set_proc_group_cam),
-	PROC_ENTRY(set_proc_group_cam_power),
-	PROC_ENTRY(set_proc_group_bg),
-	PROC_ENTRY(set_proc_group_sysbg),
-	PROC_ENTRY(set_proc_group_nnapi),
-	PROC_ENTRY(set_proc_group_rt),
-	PROC_ENTRY(set_proc_group_dex2oat),
-	PROC_ENTRY(set_proc_group_ota),
-	PROC_ENTRY(set_proc_group_sf),
 	// Uclamp stats
 #if IS_ENABLED(CONFIG_UCLAMP_STATS)
 	PROC_ENTRY(uclamp_stats),
@@ -2536,11 +2304,25 @@ int create_procfs_node(void)
 	int i;
 	struct uclamp_se uc_max = {};
 	enum uclamp_id clamp_id;
+	struct proc_dir_entry *parent_directory;
+	struct proc_dir_entry *group_root_dir;
 
+	/* create vendor sched root directory */
 	vendor_sched = proc_mkdir("vendor_sched", NULL);
-
 	if (!vendor_sched)
 		goto out;
+
+	/* create vendor group directories */
+	group_root_dir = proc_mkdir("groups", vendor_sched);
+	if (!group_root_dir)
+		goto out;
+
+	for (i = 0; i < VG_MAX; i++) {
+		group_dirs[i] = proc_mkdir(GRP_NAME[i], group_root_dir);
+		if (!group_dirs[i]) {
+			goto out;
+		}
+	}
 
 	/* create procfs */
 	for (i = 0; i < ARRAY_SIZE(entries); i++) {
@@ -2554,8 +2336,18 @@ int create_procfs_node(void)
 			mode = 0644;
 		}
 
+		if (entries[i].type == GROUPED_CONTROL) {
+			if (entries[i].vg >= 0 && entries[i].vg < VG_MAX) {
+				parent_directory = group_dirs[entries[i].vg];
+			} else {
+				parent_directory = group_root_dir;
+			}
+		} else {
+			parent_directory = vendor_sched;
+		}
+
 		if (!proc_create(entries[i].name, mode,
-					vendor_sched, entries[i].fops)) {
+					parent_directory, entries[i].fops)) {
 			pr_debug("%s(), create %s failed\n",
 					__func__, entries[i].name);
 			remove_proc_entry("vendor_sched", NULL);
