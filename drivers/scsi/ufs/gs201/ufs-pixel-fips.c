@@ -330,13 +330,14 @@ static int ufs_pixel_fips_check_response(struct utp_upiu_rsp *resp, u8 ocs)
 		if (response_code == 0x70) {
 			uint8_t key = resp->sr.sense_data[2] & 0xF;
 			uint8_t asc = resp->sr.sense_data[12];
+			uint8_t ascq = resp->sr.sense_data[13];
 			if (!ocs && status == 2 && response == 1 && key == 6 && asc == 0x29)
 				pr_info("UA Reported\n");
 			else
-				pr_warn("I/O Result: OCS=%x status=%X resp=%X key=%X asc=%\n", ocs,
-					status, response, key, asc);
+				pr_warn("I/O Result: OCS=%x status=%X key=%X asc=%X ascq=%X\n",
+					ocs, status, key, asc, ascq);
 		} else {
-			pr_warn("I/O Result: OCS=%x status=%X resp=%X\n", ocs, status, response);
+			pr_warn("I/O Result: OCS=%x status=%X\n", ocs, status);
 		}
 		return -EIO;
 	}
