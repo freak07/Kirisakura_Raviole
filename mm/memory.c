@@ -4039,11 +4039,6 @@ static vm_fault_t do_read_fault(struct vm_fault *vmf)
 	struct vm_area_struct *vma = vmf->vma;
 	vm_fault_t ret = 0;
 
-	if (vmf->flags & FAULT_FLAG_VMA_LOCK) {
-		vma_end_read(vmf->vma);
-		return VM_FAULT_RETRY;
-	}
-
 	/*
 	 * Let's call ->map_pages() first and use ->fault() as fallback
 	 * if page by the offset is not ready to be mapped (cold cache or
@@ -4055,6 +4050,11 @@ static vm_fault_t do_read_fault(struct vm_fault *vmf)
 			if (ret)
 				return ret;
 		}
+	}
+
+	if (vmf->flags & FAULT_FLAG_VMA_LOCK) {
+		vma_end_read(vmf->vma);
+		return VM_FAULT_RETRY;
 	}
 
 	ret = __do_fault(vmf);
