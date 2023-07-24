@@ -1306,7 +1306,6 @@ void do_user_addr_fault(struct pt_regs *regs,
 	}
 #endif
 
-#ifdef CONFIG_PER_VMA_LOCK
 	if (!(flags & FAULT_FLAG_USER))
 		goto lock_mmap;
 
@@ -1337,7 +1336,6 @@ void do_user_addr_fault(struct pt_regs *regs,
 		return;
 	}
 lock_mmap:
-#endif /* CONFIG_PER_VMA_LOCK */
 
 retry:
 	vma = lock_mm_and_find_vma(mm, address, regs);
@@ -1394,9 +1392,7 @@ retry:
 	}
 
 	mmap_read_unlock(mm);
-#ifdef CONFIG_PER_VMA_LOCK
 done:
-#endif
 	if (unlikely(fault & VM_FAULT_ERROR)) {
 		mm_fault_error(regs, hw_error_code, address, fault);
 		return;
