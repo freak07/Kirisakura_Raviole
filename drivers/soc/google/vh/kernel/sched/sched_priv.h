@@ -16,6 +16,8 @@
 #define THREAD_PRIORITY_TOP_APP_BOOST 110
 #define THREAD_PRIORITY_BACKGROUND    130
 #define THREAD_PRIORITY_LOWEST        139
+#define LIST_QUEUED         0xa5a55a5a
+#define LIST_NOT_QUEUED     0x5a5aa5a5
 
 /*
  * For cpu running normal tasks, its uclamp.min will be 0 and uclamp.max will be 1024,
@@ -441,7 +443,7 @@ static inline void init_vendor_task_struct(struct vendor_task_struct *v_tsk)
 	v_tsk->group = VG_SYSTEM;
 	v_tsk->direct_reclaim_ts = 0;
 	INIT_LIST_HEAD(&v_tsk->node);
-	v_tsk->queued_to_list = false;
+	v_tsk->queued_to_list = LIST_NOT_QUEUED;
 	v_tsk->uclamp_fork_reset = false;
 	v_tsk->prefer_idle = false;
 	v_tsk->auto_uclamp_max_flags = 0;

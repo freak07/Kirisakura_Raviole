@@ -1220,17 +1220,23 @@ static int update_vendor_group_attribute(const char *buf, enum vendor_group_attr
 		rcu_read_unlock();
 		return -EACCES;
 	}
+	rcu_read_unlock();
 
 	switch (vta) {
 	case VTA_TASK_GROUP:
 		vp = get_vendor_task_struct(p);
-		old = vp->group;
 		raw_spin_lock_irqsave(&vp->lock, flags);
+		old = vp->group;
+		if (old == new) {
+			raw_spin_unlock_irqrestore(&vp->lock, flags);
+			break;
+		}
+
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 		if (p->prio >= MAX_RT_PRIO)
 			migrate_vendor_group_util(p, old, new);
 #endif
-		if (vp->queued_to_list) {
+		if (vp->queued_to_list == LIST_QUEUED) {
 			remove_from_vendor_group_list(&vp->node, old);
 			add_to_vendor_group_list(&vp->node, new);
 		}
@@ -1240,12 +1246,17 @@ static int update_vendor_group_attribute(const char *buf, enum vendor_group_attr
 			uclamp_update_active(p, clamp_id);
 		break;
 	case VTA_PROC_GROUP:
+		rcu_read_lock();
 		for_each_thread(p, t) {
 			get_task_struct(t);
 			vp = get_vendor_task_struct(t);
-			old = vp->group;
 			raw_spin_lock_irqsave(&vp->lock, flags);
-			if (vp->queued_to_list) {
+			old = vp->group;
+			if (old == new) {
+				raw_spin_unlock_irqrestore(&vp->lock, flags);
+				continue;
+			}
+			if (vp->queued_to_list == LIST_QUEUED) {
 				remove_from_vendor_group_list(&vp->node, old);
 				add_to_vendor_group_list(&vp->node, new);
 			}
@@ -1259,13 +1270,13 @@ static int update_vendor_group_attribute(const char *buf, enum vendor_group_attr
 				uclamp_update_active(t, clamp_id);
 			put_task_struct(t);
 		}
+		rcu_read_unlock();
 		break;
 	default:
 		break;
 	}
 
 	put_task_struct(p);
-	rcu_read_unlock();
 
 	return 0;
 }

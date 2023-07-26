@@ -61,7 +61,7 @@ struct vendor_task_struct {
 	enum vendor_group group;
 	unsigned long direct_reclaim_ts;
 	struct list_head node;
-	bool queued_to_list;
+	int queued_to_list;
 	bool uclamp_fork_reset;
 	bool prefer_idle;
 	int auto_uclamp_max_flags;	// Relative to cpu instead of absolute
