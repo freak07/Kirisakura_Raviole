@@ -122,10 +122,10 @@ void rvh_enqueue_task_pixel_mod(void *data, struct rq *rq, struct task_struct *p
 	int group;
 
 	raw_spin_lock(&vp->lock);
-	if (!vp->queued_to_list) {
+	if (vp->queued_to_list == LIST_NOT_QUEUED) {
 		group = get_vendor_group(p);
 		add_to_vendor_group_list(&vp->node, group);
-		vp->queued_to_list = true;
+		vp->queued_to_list = LIST_QUEUED;
 	}
 	raw_spin_unlock(&vp->lock);
 
@@ -149,10 +149,10 @@ void rvh_dequeue_task_pixel_mod(void *data, struct rq *rq, struct task_struct *p
 #endif
 
 	raw_spin_lock(&vp->lock);
-	if (vp->queued_to_list) {
+	if (vp->queued_to_list == LIST_QUEUED) {
 		group = get_vendor_group(p);
 		remove_from_vendor_group_list(&vp->node, group);
-		vp->queued_to_list = false;
+		vp->queued_to_list = LIST_NOT_QUEUED;
 	}
 	raw_spin_unlock(&vp->lock);
 
