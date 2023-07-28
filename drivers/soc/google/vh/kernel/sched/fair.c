@@ -1478,7 +1478,9 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 	cpumask_t idle_fit = { CPU_BITS_NONE }, idle_unfit = { CPU_BITS_NONE },
 		  unimportant_fit = { CPU_BITS_NONE }, unimportant_unfit = { CPU_BITS_NONE },
 		  max_spare_cap = { CPU_BITS_NONE }, packing = { CPU_BITS_NONE },
-		  idle_unpreferred = { CPU_BITS_NONE }, candidates = { CPU_BITS_NONE };
+		  idle_unpreferred = { CPU_BITS_NONE },
+		  max_spare_cap_running_rt = { CPU_BITS_NONE },
+		  candidates = { CPU_BITS_NONE };
 	int i, weight, best_energy_cpu = -1, this_cpu = smp_processor_id();
 	long cur_energy, best_energy = LONG_MAX;
 	unsigned long p_util_min = uclamp_is_used() ? uclamp_eff_value(p, UCLAMP_MIN) : 0;
@@ -1494,8 +1496,10 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 	bool group_overutilize;
 	unsigned long group_capacity, wake_group_util;
 #endif
-	unsigned long pd_max_spare_cap, pd_max_unimportant_spare_cap, pd_max_packing_spare_cap;
-	int pd_max_spare_cap_cpu, pd_best_idle_cpu, pd_most_unimportant_cpu, pd_best_packing_cpu;
+	unsigned long pd_max_spare_cap, pd_max_unimportant_spare_cap, pd_max_packing_spare_cap,
+		pd_max_spare_cap_running_rt;
+	int pd_max_spare_cap_cpu, pd_best_idle_cpu, pd_most_unimportant_cpu, pd_best_packing_cpu,
+		pd_max_spare_cap_running_rt_cpu;
 	int most_spare_cap_cpu = -1, unimportant_max_spare_cap_cpu = -1, idle_max_cap_cpu = -1;
 	struct cpuidle_state *idle_state;
 	unsigned long unimportant_max_spare_cap = 0, idle_max_cap = 0;
@@ -1512,10 +1516,12 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 	for (; pd; pd = pd->next) {
 		unsigned long util_min = p_util_min, util_max = p_util_max;
 		unsigned long rq_util_min, rq_util_max;
+		pd_max_spare_cap_running_rt = 0;
 		pd_max_spare_cap = 0;
 		pd_max_packing_spare_cap = 0;
 		pd_max_unimportant_spare_cap = 0;
 		pd_best_exit_lat = UINT_MAX;
+		pd_max_spare_cap_running_rt_cpu = -1;
 		pd_max_spare_cap_cpu = -1;
 		pd_best_idle_cpu = -1;
 		pd_most_unimportant_cpu = -1;
@@ -1635,6 +1641,14 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 
 				if (idle_target_found)
 					continue;
+
+				if (prefer_fit && task_fits && cpu_curr(i)->prio < MAX_RT_PRIO) {
+					if (spare_cap >= pd_max_spare_cap_running_rt) {
+						pd_max_spare_cap_running_rt = spare_cap;
+						pd_max_spare_cap_running_rt_cpu = i;
+					}
+					continue;
+				}
 
 				/* Find an unimportant cpu. */
 				if (task_importance > cpu_importance) {
@@ -1776,6 +1790,10 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 			}
 		}
 
+		if (pd_max_spare_cap_running_rt_cpu != -1) {
+			cpumask_set_cpu(pd_max_spare_cap_running_rt_cpu, &max_spare_cap_running_rt);
+		}
+
 		/* set the best_idle_cpu of each cluster */
 		if (pd_best_idle_cpu != -1) {
 			if (task_fits) {
@@ -1828,6 +1846,8 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 				cpumask_set_cpu(unimportant_max_spare_cap_cpu, &candidates);
 		} else if (!cpumask_empty(&max_spare_cap)) {
 			cpumask_copy(&candidates, &max_spare_cap);
+		} else if (!cpumask_empty(&max_spare_cap_running_rt)){
+			cpumask_copy(&candidates, &max_spare_cap_running_rt);
 		}
 	} else {
 		if (!cpumask_empty(&idle_fit)) {
