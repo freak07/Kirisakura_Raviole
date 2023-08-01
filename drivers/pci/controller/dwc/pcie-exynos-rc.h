@@ -395,4 +395,5 @@ int exynos_pcie_rc_set_outbound_atu(int ch_num, u32 target_addr, u32 offset, u32
 int exynos_pcie_rc_check_link_speed(int ch_num);
 int exynos_pcie_rc_change_link_speed(int ch_num, int target_speed);
 int exynos_pcie_l1_exit(int ch_num);
+void exynos_pcie_rc_register_dump(int ch_num);
 #endif
