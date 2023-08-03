@@ -3163,7 +3163,7 @@ retry:
 	if (exynos_pcie->use_cache_coherency)
 		exynos_pcie_rc_set_iocc(pp, 1);
 
-	logbuffer_logk(exynos_pcie->log, LOGLEVEL_INFO, "D state: %x, LTSSM: %x",
+	logbuffer_logk(exynos_pcie->log, LOGLEVEL_INFO, "D state: %x, LTSSM: %x (XO always on)",
 		exynos_elbi_read(exynos_pcie, PCIE_PM_DSTATE) & PCIE_PM_DSTATE_MASK,
 		exynos_elbi_read(exynos_pcie, PCIE_ELBI_RDLH_LINKUP) & PCIE_ELBI_LTSSM_STATE_MASK);
 
