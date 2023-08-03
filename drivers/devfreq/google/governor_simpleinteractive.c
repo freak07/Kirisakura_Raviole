@@ -159,7 +159,7 @@ static unsigned int mif_to_int_freq(struct devfreq_alt_dvfs_data *alt_data,
 	if (!alt_data->mif_int_tbl)
 		return 0;
 
-	for (i = 0; alt_data->map_row_cnt; i++) {
+	for (i = 0; i < alt_data->map_row_cnt; i++) {
 		if (freq > alt_data->mif_int_tbl[i].mif_freq)
 			break;
 	}
