@@ -709,6 +709,13 @@ void dbg_snapshot_init_log(void)
 {
 	struct dbg_snapshot_item *item = &dss_items[DSS_ITEM_KEVENTS_ID];
 	struct dbg_snapshot_log_item *log_item;
+	int i;
+
+	if (!item->entry.enabled) {
+		for (i = 0; i < ARRAY_SIZE(dss_log_items); i++)
+			dss_log_items[i].entry.enabled = false;
+		return;
+	}
 
 	log_item_set_filed(TASK, task);
 	log_item_set_filed(WORK, work);
