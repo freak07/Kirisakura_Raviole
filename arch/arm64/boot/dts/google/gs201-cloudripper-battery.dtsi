@@ -66,7 +66,7 @@
 				#thermal-sensor-cells = <0>;
 				#cooling-cells = <2>;
 				google,dc-irdrop;
-				google,fv-dc-ratio = <40>;
+				google,fv-dc-ratio = <35>;
 			};
 
 			google_bms {
