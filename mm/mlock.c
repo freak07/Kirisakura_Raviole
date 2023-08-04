@@ -545,8 +545,8 @@ success:
 	 * It's okay if try_to_unmap_one unmaps a page just after we
 	 * set VM_LOCKED, populate_vma_page_range will bring it back.
 	 */
-
 	if (lock)
+		vma_start_write(vma);
 		vm_flags_reset(vma, newflags);
 	else
 		munlock_vma_pages_range(vma, start, end);
