@@ -347,6 +347,7 @@ void init_vendor_group_data(void)
 	int group;
 	struct rq_flags rf;
 	struct task_struct *p;
+	u64 last_update_time;
 #endif
 
 	for (i = 0; i < VG_MAX; i++) {
@@ -368,8 +369,10 @@ void init_vendor_group_data(void)
 		}
 
 		rq_lock_irqsave(rq, &rf);
+		update_rq_clock(rq);
+		last_update_time = rq_clock_pelt(rq);
 		for (i = 0; i < UG_MAX - 1; i++)
-			vendor_cfs_util[i][j].avg.last_update_time = rq_clock_pelt(rq);
+			vendor_cfs_util[i][j].avg.last_update_time = last_update_time;
 
 		list_for_each_entry(p, &rq->cfs_tasks, se.group_node) {
 			group = get_utilization_group(p, get_vendor_group(p));
@@ -1349,30 +1352,6 @@ static inline void uclamp_idle_reset(struct rq *rq, enum uclamp_id clamp_id,
 	WRITE_ONCE(rq->uclamp[clamp_id].value, clamp_value);
 }
 
-static inline struct uclamp_se
-uclamp_tg_restrict(struct task_struct *p, enum uclamp_id clamp_id)
-{
-	struct uclamp_se uc_req = p->uclamp_req[clamp_id];
-#ifdef CONFIG_UCLAMP_TASK_GROUP
-	struct uclamp_se uc_max;
-
-	/*
-	 * Tasks in autogroups or root task group will be
-	 * restricted by system defaults.
-	 */
-	if (task_group_is_autogroup(task_group(p)))
-		return uc_req;
-	if (task_group(p) == &root_task_group)
-		return uc_req;
-
-	uc_max = task_group(p)->uclamp[clamp_id];
-	if (uc_req.value > uc_max.value || !uc_req.user_defined)
-		return uc_max;
-#endif
-
-	return uc_req;
-}
-
 /*
  * The effective clamp bucket index of a task depends on, by increasing
  * priority:
@@ -1384,21 +1363,14 @@ uclamp_tg_restrict(struct task_struct *p, enum uclamp_id clamp_id)
 static inline struct uclamp_se
 uclamp_eff_get(struct task_struct *p, enum uclamp_id clamp_id)
 {
-	struct uclamp_se uc_req = uclamp_tg_restrict(p, clamp_id);
 	struct uclamp_se uc_max = uclamp_default[clamp_id];
 	struct uclamp_se uc_eff;
-	int ret = 0;
+	int ret;
 
-	// Instead of calling trace_android_*, call vendor func directly
+	// This function will always return uc_eff
 	rvh_uclamp_eff_get_pixel_mod(NULL, p, clamp_id, &uc_max, &uc_eff, &ret);
-	if (ret)
-		return uc_eff;
 
-	/* System default restrictions always apply */
-	if (unlikely(uc_req.value > uc_max.value))
-		return uc_max;
-
-	return uc_req;
+	return uc_eff;
 }
 
 static inline
@@ -2049,7 +2021,17 @@ uclamp_tg_restrict_pixel_mod(struct task_struct *p, enum uclamp_id clamp_id)
 	get_uclamp_on_nice(p, UCLAMP_MAX, &nice_max);
 
 	// Task group restriction
-	tg_min = task_group(p)->uclamp[UCLAMP_MIN].value;
+	/*
+	 * Tasks in autogroups or root task group should have uclamp_min is 0.
+	 * uclamp_min is defined as a LIMIT rather than a PROTECTION at that
+	 * level.
+	 */
+	if (task_group_is_autogroup(task_group(p)))
+		tg_min = 0;
+	else if (task_group(p) == &root_task_group)
+		tg_min = 0;
+	else
+		tg_min = task_group(p)->uclamp[UCLAMP_MIN].value;
 	tg_max = task_group(p)->uclamp[UCLAMP_MAX].value;
 	// Vendor group restriction
 	vnd_min = vg[vp->group].uc_req[UCLAMP_MIN].value;
