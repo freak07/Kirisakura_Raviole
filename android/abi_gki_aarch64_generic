@@ -854,7 +854,6 @@
   file_path
   filp_close
   filp_open_block
-  find_extend_vma
   find_get_pid
   find_last_bit
   find_next_bit
