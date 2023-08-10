@@ -134,7 +134,7 @@ void rvh_enqueue_task_pixel_mod(void *data, struct rq *rq, struct task_struct *p
 	 * enqueue_task_fair() where we need cfs_rqs to be updated before we
 	 * can read sched_slice()
 	 */
-	if (uclamp_is_used() && rt_task(p))
+	if (uclamp_is_used() && rt_task(p) && p->sched_class->uclamp_enabled)
 		apply_uclamp_filters(rq, p);
 }
 
