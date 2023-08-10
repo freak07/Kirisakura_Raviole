@@ -1254,6 +1254,7 @@ static int update_vendor_group_attribute(const char *buf, enum vendor_group_attr
 			old = vp->group;
 			if (old == new) {
 				raw_spin_unlock_irqrestore(&vp->lock, flags);
+				put_task_struct(t);
 				continue;
 			}
 			if (vp->queued_to_list == LIST_QUEUED) {
