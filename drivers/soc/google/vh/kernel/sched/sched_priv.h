@@ -717,6 +717,10 @@ static inline bool apply_uclamp_filters(struct rq *rq, struct task_struct *p)
 		 * auto value
 		 */
 		uclamp_rq_inc_id(rq, p, UCLAMP_MAX);
+
+		/* Reset clamp idle holding when there is one RUNNABLE task */
+		if (rq->uclamp_flags & UCLAMP_FLAG_IDLE)
+			rq->uclamp_flags &= ~UCLAMP_FLAG_IDLE;
 	}
 
 	if (uclamp_can_ignore_uclamp_min(rq, p)) {
