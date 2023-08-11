@@ -47,6 +47,8 @@ aoc/usb: | aoc/alsa aoc
 
 power/reset: | bms
 
+touch/fts/ftm5: | touch/common
+
 touch/sec: | touch/common
 
 touch/fts/ftm5: | touch/common

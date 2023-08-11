@@ -38,6 +38,8 @@
 #define LIMIT_SINK_VOTER	"LIMIT_SINK_CURRENT_VOTER"
 #define LIMIT_ACCESSORY_VOTER	"LIMIT_ACCESSORY_CURRENT_VOTER"
 
+#define AICL_ACTIVE_EL "AICL_ACTIVE_EL"
+
 #define TCPC_RECEIVE_BUFFER_COUNT_OFFSET                0
 #define TCPC_RECEIVE_BUFFER_FRAME_TYPE_OFFSET           1
 #define TCPC_RECEIVE_BUFFER_RX_BYTE_BUF_OFFSET          2
@@ -64,6 +66,12 @@
 #define MAX77759_ENABLE_TOGGLE				0
 /* Vote value doesn't matter. Only status matters. */
 #define MAX77759_DISABLE_TOGGLE_VOTE			1
+
+/* Longer delay to accommodate additional Rp update latency during boot. */
+#define MAX77759_FIRST_RP_MISSING_TIMEOUT_MS           5000
+#define MAX77759_RP_MISSING_TIMEOUT_MS                 2000
+
+#define AICL_CHECK_MS				       10000
 
 /* system use cases */
 enum gbms_charger_modes {
@@ -139,7 +147,7 @@ spinlock_t g_caps_lock;
 static unsigned int sink_discovery_delay_ms;
 
 /* Callback for data_active changes */
-void (*data_active_callback)(void *data_active_payload);
+void (*data_active_callback)(void *data_active_payload, enum typec_data_role role, bool active);
 void *data_active_payload;
 /* Callback for orientation changes */
 void (*orientation_callback)(void *orientation_payload);
@@ -288,6 +296,16 @@ static ssize_t cc_toggle_enable_store(struct device *dev, struct device_attribut
 	return count;
 }
 static DEVICE_ATTR_RW(cc_toggle_enable);
+
+static ssize_t non_compliant_reasons_show(struct device *dev, struct device_attribute *attr,
+					  char *buf)
+{
+	struct max77759_plat *chip = i2c_get_clientdata(to_i2c_client(dev));
+
+	return compliance_warnings_to_buffer(chip->compliance_warnings, buf);
+};
+
+static DEVICE_ATTR_RO(non_compliant_reasons);
 
 static ssize_t contaminant_detection_status_show(struct device *dev, struct device_attribute *attr,
 						 char *buf)
@@ -480,6 +498,7 @@ static struct device_attribute *max77759_device_attrs[] = {
 	&dev_attr_contaminant_detection,
 	&dev_attr_contaminant_detection_status,
 	&dev_attr_cc_toggle_enable,
+	&dev_attr_non_compliant_reasons,
 	&dev_attr_usb_limit_sink_enable,
 	&dev_attr_usb_limit_sink_current,
 	&dev_attr_usb_limit_source_enable,
@@ -488,7 +507,9 @@ static struct device_attribute *max77759_device_attrs[] = {
 	NULL
 };
 
-void register_data_active_callback(void (*callback)(void *data_active_payload), void *data)
+void register_data_active_callback(void (*callback)(void *data_active_payload,
+						    enum typec_data_role role, bool active),
+				   void *data)
 {
 	data_active_callback = callback;
 	data_active_payload = data;
@@ -719,6 +740,76 @@ static int process_rx(struct max77759_plat *chip, u16 status)
 	return 0;
 }
 
+struct max77759_compliance_warnings *init_compliance_warnings(struct max77759_plat *chip)
+{
+	struct max77759_compliance_warnings *compliance_warnings;
+
+	compliance_warnings = devm_kzalloc(chip->dev, sizeof(*compliance_warnings), GFP_KERNEL);
+	if (!compliance_warnings)
+		return ERR_PTR(-ENOMEM);
+
+	compliance_warnings->chip = chip;
+
+	return compliance_warnings;
+}
+
+ssize_t compliance_warnings_to_buffer(struct max77759_compliance_warnings *compliance_warnings,
+				      char *buf)
+{
+	memset(buf, 0, PAGE_SIZE);
+	strncat(buf, "[", strlen("["));
+	if (compliance_warnings->other)
+		strncat(buf, "other, ", strlen("other, "));
+	if (compliance_warnings->debug_accessory)
+		strncat(buf, "debug-accessory, ", strlen("debug-accessory, "));
+	if (compliance_warnings->bc12)
+		strncat(buf, "bc12, ", strlen("bc12, "));
+	if (compliance_warnings->missing_rp)
+		strncat(buf, "missing_rp, ", strlen("missing_rp, "));
+	strncat(buf, "]", strlen("]"));
+	return strnlen(buf, PAGE_SIZE);
+}
+
+void update_compliance_warnings(struct max77759_plat *chip, int warning, bool value)
+{
+	bool compliance_warnings_changed = false;
+
+	switch (warning) {
+	case COMPLIANCE_WARNING_OTHER:
+		compliance_warnings_changed = (chip->compliance_warnings->other != value);
+		chip->compliance_warnings->other = value;
+		break;
+	case COMPLIANCE_WARNING_DEBUG_ACCESSORY:
+		compliance_warnings_changed = (chip->compliance_warnings->debug_accessory != value);
+		chip->compliance_warnings->debug_accessory = value;
+		break;
+	case COMPLIANCE_WARNING_BC12:
+		compliance_warnings_changed = (chip->compliance_warnings->bc12 != value);
+		chip->compliance_warnings->bc12 = value;
+		break;
+	case COMPLIANCE_WARNING_MISSING_RP:
+		compliance_warnings_changed = (chip->compliance_warnings->missing_rp != value);
+		chip->compliance_warnings->missing_rp = value;
+		break;
+	}
+
+	if (compliance_warnings_changed) {
+		kobject_uevent(&chip->dev->kobj, KOBJ_CHANGE);
+		logbuffer_log(chip->log, "compliance warning %d changed, new value: %d",
+			      warning, value);
+	}
+}
+
+static void max77759_non_compliant_bc12_callback(void *data, bool status)
+{
+	struct max77759_plat *chip = data;
+
+	/* Exclude Rp-1.5 or higher power sources */
+	if ((status && !(chip->cc1 == TYPEC_CC_RP_3_0 || chip->cc1 == TYPEC_CC_RP_1_5 ||
+			chip->cc2 == TYPEC_CC_RP_3_0 || chip->cc2 == TYPEC_CC_RP_1_5)) || !status)
+		update_compliance_warnings(chip, COMPLIANCE_WARNING_BC12, status);
+}
+
 static void enable_dp_pulse(struct max77759_plat *chip)
 {
 	struct regmap *regmap = chip->data.regmap;
@@ -748,25 +839,16 @@ void enable_data_path_locked(struct max77759_plat *chip)
 		return;
 	}
 
-	if (chip->alt_path_active) {
-		logbuffer_log(chip->log, "%s skipping as alt path is active", __func__);
-		return;
-	}
-
-	logbuffer_log(chip->log,
-		      "%s pd_data_capable:%u no_bc_12:%u bc12_data_capable:%u attached:%u debug_acc_conn:%u bc12_running:%u",
-		      __func__, chip->pd_data_capable ? 1 : 0, chip->no_bc_12 ? 1 : 0,
-		      chip->bc12_data_capable ? 1 : 0, chip->attached ? 1 : 0,
-		      chip->debug_acc_connected, chip->bc12_running ? 1 : 0);
-	dev_info(chip->dev,
-		 "TCPM_DEBUG %s pd_data_capable:%u no_bc_12:%u bc12_data_capable:%u attached:%u debug_acc_conn:%u bc12_running:%u",
-		 __func__, chip->pd_data_capable ? 1 : 0, chip->no_bc_12 ? 1 : 0,
-		 chip->bc12_data_capable ? 1 : 0, chip->attached ? 1 : 0,
-		 chip->debug_acc_connected, chip->bc12_running ? 1 : 0);
-
 	enable_data = ((chip->pd_data_capable || chip->no_bc_12 || chip->bc12_data_capable ||
 		       chip->debug_acc_connected) && !chip->bc12_running) ||
 		       chip->data_role == TYPEC_HOST;
+
+	logbuffer_logk(chip->log, LOGLEVEL_INFO,
+		       "pd_data_capable:%u no_bc_12:%u bc12_data_capable:%u attached:%u debug_acc:%u bc12_running:%u data_active:%u",
+		       chip->pd_data_capable ? 1 : 0, chip->no_bc_12 ? 1 : 0,
+		       chip->bc12_data_capable ? 1 : 0, chip->attached ? 1 : 0,
+		       chip->debug_acc_connected, chip->bc12_running ? 1 : 0,
+		       chip->data_active ? 1 : 0);
 
 	if (chip->attached && enable_data && !chip->data_active) {
 		/* Disable BC1.2 to prevent BC1.2 detection during PR_SWAP */
@@ -776,6 +858,23 @@ void enable_data_path_locked(struct max77759_plat *chip)
 		 * before BC12 started to run.
 		 */
 		chip->bc12_running = false;
+
+		if (chip->alt_path_active) {
+			logbuffer_log(chip->log, "%s skipping enabling as alt path is active",
+				      __func__);
+			/* Enable switch for Host mode because alt_path works for Host Mode only */
+			if (chip->data_role == TYPEC_HOST) {
+				ret = max77759_write8(regmap, TCPC_VENDOR_USBSW_CTRL,
+						      USBSW_CONNECT);
+				logbuffer_log(chip->log, "Turning on dp switches %s", ret < 0 ?
+					      "fail" : "success");
+			}
+
+			chip->active_data_role = chip->data_role;
+			if (data_active_callback)
+				(*data_active_callback)(data_active_payload, chip->data_role, true);
+			return;
+		}
 
 		/*
 		 * b/188614064: While swapping from host to device switches will not be configured
@@ -798,10 +897,19 @@ void enable_data_path_locked(struct max77759_plat *chip)
 		dev_info(chip->dev, "TCPM_DEBUG %s turning on %s", ret < 0 ? "Failed" : "Succeeded",
 			 chip->data_role == TYPEC_HOST ? "Host" : "Device");
 		chip->data_active = true;
-		if (data_active_callback)
-			(*data_active_callback)(data_active_payload);
 		chip->active_data_role = chip->data_role;
+		if (data_active_callback)
+			(*data_active_callback)(data_active_payload, chip->active_data_role, true);
 	} else if (chip->data_active && (!chip->attached || !enable_data)) {
+		if (chip->alt_path_active) {
+			logbuffer_log(chip->log, "%s skipping turning off as alt path is active",
+				      __func__);
+			if (data_active_callback)
+				(*data_active_callback)(data_active_payload,
+							chip->active_data_role, false);
+			return;
+		}
+
 		ret = extcon_set_state_sync(chip->extcon, chip->active_data_role == TYPEC_HOST ?
 					    EXTCON_USB_HOST : EXTCON_USB, 0);
 		logbuffer_log(chip->log, "%s turning off %s", ret < 0 ? "Failed" : "Succeeded",
@@ -810,7 +918,7 @@ void enable_data_path_locked(struct max77759_plat *chip)
 			 "Succeeded", chip->active_data_role == TYPEC_HOST ? "Host" : "Device");
 		chip->data_active = false;
 		if (data_active_callback)
-			(*data_active_callback)(data_active_payload);
+			(*data_active_callback)(data_active_payload, chip->active_data_role, false);
 		if  (chip->active_data_role == TYPEC_HOST) {
 			ret = max77759_write8(regmap, TCPC_VENDOR_USBSW_CTRL, USBSW_DISCONNECT);
 			logbuffer_log(chip->log, "Turning off dp switches %s", ret < 0 ? "fail" :
@@ -946,6 +1054,97 @@ static void vsafe0v_debounce_work(struct kthread_work *work)
 	tcpm_vbus_change(tcpci->port);
 }
 
+void disconnect_missing_rp_partner(struct max77759_plat *chip)
+{
+	union power_supply_propval val;
+	int ret;
+
+	logbuffer_log(chip->log, "Disconnect missing Rp partner");
+	val.intval = POWER_SUPPLY_USB_TYPE_UNKNOWN;
+	max77759_set_vbus(chip->tcpci, chip->tcpci->data, false, false);
+	update_compliance_warnings(chip, COMPLIANCE_WARNING_MISSING_RP, false);
+	/*
+	 * clear AICL warning for missing rp as detach will not be signalled for
+	 * MISSING_RP + OTHER(AICL)
+	 */
+	update_compliance_warnings(chip, COMPLIANCE_WARNING_OTHER, false);
+	chip->vbus_mv = 0;
+	/* val.intval does not matter */
+	ret = power_supply_set_property(chip->usb_psy, POWER_SUPPLY_PROP_VOLTAGE_MAX, &val);
+	if (ret < 0)
+		logbuffer_log(chip->log, "unable to set max voltage to %d, ret=%d",
+			      chip->vbus_mv, ret);
+	if (power_supply_set_property(chip->usb_psy, POWER_SUPPLY_PROP_USB_TYPE, &val))
+		logbuffer_log(chip->log, "missing_rp: usb_psy set unknown failed");
+	usb_psy_set_sink_state(chip->usb_psy_data, false);
+}
+
+static void check_missing_rp_work(struct kthread_work *work)
+{
+	struct max77759_plat *chip  =
+		container_of(container_of(work, struct kthread_delayed_work, work),
+			     struct max77759_plat, check_missing_rp_work);
+	union power_supply_propval val;
+	unsigned int pwr_status;
+	int ret;
+
+	ret = regmap_read(chip->data.regmap, TCPC_POWER_STATUS, &pwr_status);
+	if (ret < 0) {
+		logbuffer_log(chip->log,
+			      "Abort %s; TCPC_POWER_STATUS read error", __func__);
+		return;
+	}
+
+	if (!!(pwr_status & TCPC_POWER_STATUS_VBUS_PRES) &&
+	    (cc_open_or_toggling(chip->cc1, chip->cc2) ||
+	     (chip->cc1 == TYPEC_CC_RP_DEF && chip->cc2 == TYPEC_CC_RP_DEF)) &&
+	    !chip->compliance_warnings->missing_rp) {
+		logbuffer_log(chip->log, "%s: Missing or incorrect Rp partner detected. Enable WAR",
+			      __func__);
+		/* Assume DCP for missing Rp non-compliant power source */
+		val.intval = POWER_SUPPLY_USB_TYPE_DCP;
+		max77759_set_vbus(chip->tcpci, chip->tcpci->data, false, true);
+		if (power_supply_set_property(chip->usb_psy, POWER_SUPPLY_PROP_USB_TYPE, &val))
+			logbuffer_log(chip->log, "%s: usb_psy set dcp failed", __func__);
+		chip->vbus_mv = 5000;
+		/* val.intval does not matter */
+		ret = power_supply_set_property(chip->usb_psy, POWER_SUPPLY_PROP_VOLTAGE_MAX, &val);
+		if (ret < 0)
+			logbuffer_log(chip->log, "%s: unable to set max voltage to %d, ret=%d",
+				      chip->vbus_mv, ret, __func__);
+		update_compliance_warnings(chip, COMPLIANCE_WARNING_MISSING_RP, true);
+		usb_psy_set_sink_state(chip->usb_psy_data, true);
+	} else if (chip->compliance_warnings->missing_rp) {
+		if (!(pwr_status & TCPC_POWER_STATUS_VBUS_PRES))
+			disconnect_missing_rp_partner(chip);
+	}
+}
+
+static void check_missing_rp(struct max77759_plat *chip, bool vbus_present,
+			     enum typec_cc_status cc1, enum typec_cc_status cc2)
+{
+	unsigned int pwr_status;
+	int ret;
+
+	ret = regmap_read(chip->data.regmap, TCPC_POWER_STATUS, &pwr_status);
+	if (ret < 0) {
+		logbuffer_log(chip->log,
+			      "Abort %s; TCPC_POWER_STATUS read error", __func__);
+		return;
+	}
+
+	if (!!(pwr_status & TCPC_POWER_STATUS_VBUS_PRES) && cc_open_or_toggling(cc1, cc2)) {
+		kthread_mod_delayed_work(chip->wq, &chip->check_missing_rp_work,
+					 msecs_to_jiffies(chip->first_rp_missing_timeout ?
+					 MAX77759_FIRST_RP_MISSING_TIMEOUT_MS :
+					 MAX77759_RP_MISSING_TIMEOUT_MS));
+		chip->first_rp_missing_timeout = false;
+	} else if (chip->compliance_warnings->missing_rp) {
+		kthread_cancel_delayed_work_sync(&chip->check_missing_rp_work);
+		if (!(pwr_status & TCPC_POWER_STATUS_VBUS_PRES))
+			disconnect_missing_rp_partner(chip);
+	}
+}
 
 static void process_power_status(struct max77759_plat *chip)
 {
@@ -1001,6 +1200,8 @@ static void process_power_status(struct max77759_plat *chip)
 		chip->vbus_present = 0;
 	logbuffer_log(chip->log, "[%s]: vbus_present %d", __func__, chip->vbus_present);
 	tcpm_vbus_change(tcpci->port);
+	/* Check for missing-rp non compliant power source */
+	check_missing_rp(chip, !!(pwr_status & TCPC_POWER_STATUS_VBUS_PRES), chip->cc1, chip->cc2);
 
 	if (chip->quick_ramp_vbus_ovp && chip->vbus_present) {
 		kthread_cancel_delayed_work_sync(&chip->reset_ovp_work);
@@ -1031,6 +1232,11 @@ static void process_power_status(struct max77759_plat *chip)
 		chip->attached = chip->debug_acc_connected;
 		enable_data_path_locked(chip);
 		mutex_unlock(&chip->data_path_lock);
+
+		/* Log Debug Accessory to Device Compliance Warnings, or Remove from List. */
+		update_compliance_warnings(chip, COMPLIANCE_WARNING_DEBUG_ACCESSORY,
+					   chip->debug_acc_connected);
+
 		logbuffer_log(log, "Debug accessory %s", chip->debug_acc_connected ? "connected" :
 			      "disconnected");
 		if (!chip->debug_acc_connected && modparam_conf_sbu) {
@@ -1237,6 +1443,7 @@ static irqreturn_t _max77759_irq_locked(struct max77759_plat *chip, u16 status,
 	u8 reg_status;
 	bool contaminant_cc_update_handled = false;
 	bool invoke_tcpm_for_cc_update = false;
+	unsigned int pwr_status;
 
 	pm_wakeup_event(chip->dev, PD_ACTIVITY_TIMEOUT_MS);
 	logbuffer_log(log, "TCPC_ALERT status: %#x", status);
@@ -1367,6 +1574,10 @@ static irqreturn_t _max77759_irq_locked(struct max77759_plat *chip, u16 status,
 		if (invoke_tcpm_for_cc_update) {
 			tcpm_cc_change(tcpci->port);
 			max77759_cache_cc(chip);
+			/* Check for missing-rp non compliant power source */
+			if (!regmap_read(tcpci->regmap, TCPC_POWER_STATUS, &pwr_status))
+				check_missing_rp(chip, !!(pwr_status & TCPC_POWER_STATUS_VBUS_PRES),
+						 chip->cc1, chip->cc2);
 			/* TCPM has detected valid CC terminations */
 			if (!tcpm_is_toggling(tcpci->port)) {
 				chip->floating_cable_or_sink_detected = 0;
@@ -1880,7 +2091,7 @@ static int max77759_usb_set_role(struct usb_role_switch *sw, enum usb_role role)
 	enable_data = chip->pd_data_capable || chip->no_bc_12 || chip->bc12_data_capable ||
 		chip->data_role == TYPEC_HOST || chip->debug_acc_connected;
 
-	if (!chip->force_device_mode_on && chip->data_active &&
+	if (!chip->force_device_mode_on && chip->data_active && !chip->alt_path_active &&
 	    (chip->active_data_role != typec_data_role || !attached || !enable_data)) {
 		ret = extcon_set_state_sync(chip->extcon,
 					    chip->active_data_role ==
@@ -1893,7 +2104,7 @@ static int max77759_usb_set_role(struct usb_role_switch *sw, enum usb_role role)
 			      : "Device");
 		chip->data_active = false;
 		if (data_active_callback)
-			(*data_active_callback)(data_active_payload);
+			(*data_active_callback)(data_active_payload, chip->active_data_role, false);
 
 		if  (chip->active_data_role == TYPEC_HOST) {
 			ret = max77759_write8(chip->data.regmap, TCPC_VENDOR_USBSW_CTRL,
@@ -1923,6 +2134,18 @@ static int max77759_usb_set_role(struct usb_role_switch *sw, enum usb_role role)
 	 */
 	if (chip->attached && !attached && !bc12_get_status(chip->bc12))
 		bc12_enable(chip->bc12, true);
+
+	/*
+	 * Clear COMPLIANCE_WARNING_OTHER which tracks AICL_ACTIVE only upon disconnect.
+	 * This prevents the incommpatible charging notification to not change status
+	 * during the charging session. AICL active is system/battery load dependent and
+	 * hence can change status during a charge session.
+	 */
+	if (!attached) {
+		update_compliance_warnings(chip, COMPLIANCE_WARNING_OTHER, false);
+		/* Clear BC12 as fallback when hardware does not clear it on disconnect. */
+		update_compliance_warnings(chip, COMPLIANCE_WARNING_BC12, false);
+	}
 
 	return 0;
 }
@@ -2135,7 +2358,7 @@ static ssize_t force_device_mode_on_write(struct file *file, const char __user *
 			      "Host" : "Device");
 		chip->data_active = false;
 		if (data_active_callback)
-			(*data_active_callback)(data_active_payload);
+			(*data_active_callback)(data_active_payload, chip->active_data_role, false);
 	}
 
 	if (result && !chip->data_active) {
@@ -2143,10 +2366,9 @@ static ssize_t force_device_mode_on_write(struct file *file, const char __user *
 		logbuffer_log(chip->log, "%s: %s turning on device", __func__, ret < 0 ? "Failed" :
 			      "Succeeded");
 		chip->data_active = !ret;
-		if (data_active_callback)
-			(*data_active_callback)(data_active_payload);
 		chip->active_data_role = TYPEC_DEVICE;
-
+		if (data_active_callback)
+			(*data_active_callback)(data_active_payload, chip->active_data_role, true);
 	} else if (!result) {
 		enable_data_path_locked(chip);
 	}
@@ -2374,6 +2596,92 @@ exit:
 	return ALARMTIMER_NORESTART;
 }
 
+static bool is_aicl_limited(struct max77759_plat *chip)
+{
+	unsigned int vbus_present, snk_vbus, pwr_status;
+	union power_supply_propval current_now = {0};
+	int ret;
+	bool default_power, is_dcp;
+
+	ret = regmap_read(chip->data.regmap, TCPC_POWER_STATUS, &pwr_status);
+	if (ret < 0) {
+		logbuffer_log(chip->log,
+			      "Abort %s; TCPC_POWER_STATUS read error", __func__);
+		return false;
+	}
+
+	vbus_present = pwr_status & TCPC_POWER_STATUS_VBUS_PRES;
+	snk_vbus = pwr_status & TCPC_POWER_STATUS_SINKING_VBUS;
+	power_supply_get_property(chip->usb_psy, POWER_SUPPLY_PROP_CURRENT_NOW, &current_now);
+	default_power = !(chip->cc1 == TYPEC_CC_RP_3_0 || chip->cc1 == TYPEC_CC_RP_1_5 ||
+			  chip->cc2 == TYPEC_CC_RP_3_0 || chip->cc2 == TYPEC_CC_RP_1_5);
+	is_dcp = (get_usb_type(chip->bc12) == POWER_SUPPLY_USB_TYPE_DCP);
+
+	logbuffer_log(chip->log,
+		      "AICL %s active vbus_present:%c snk_vbus:%c current_now:%d default_power:%c DCP:%c",
+		      chip->aicl_active ? "" : "not", vbus_present ? 'y' : 'n',
+		      snk_vbus ? 'y' : 'n', current_now.intval, default_power ? 'y' : 'n',
+		      is_dcp ? 'y' : 'n');
+	/*
+	 * AICL_ACTIVE + Charging over USB + USB input current less than 500mA and charging from
+	 * default power sources.
+	 *
+	 * USB input current could be reported as 0 in scenarios such as charge full.
+	 * Exclude these cases as input current should not be 0 esp. when input current is limited.
+	 */
+	if (!current_now.intval)
+		return false;
+	else if (chip->aicl_active && vbus_present && snk_vbus && current_now.intval < 500000 &&
+		 default_power && is_dcp)
+		return true;
+
+	return false;
+}
+
+static void aicl_check_alarm_work_item(struct kthread_work *work)
+{
+	struct max77759_plat *chip = container_of(work, struct max77759_plat,
+						  aicl_check_alarm_work);
+
+	/*
+	 * Set here and clear COMPLIANCE_WARNING_OTHER which tracks AICL_ACTIVE only upon
+	 * disconnect. This prevents the incommpatible charging notification to not change status
+	 * during the charging session. AICL active is system/battery load dependent and hence
+	 * can change status during a charge session.
+	 */
+	if (is_aicl_limited(chip))
+		update_compliance_warnings(chip, COMPLIANCE_WARNING_OTHER, true);
+}
+
+static enum alarmtimer_restart aicl_check_alarm_handler(struct alarm *alarm, ktime_t time)
+{
+	struct max77759_plat *chip = container_of(alarm, struct max77759_plat, aicl_check_alarm);
+
+	logbuffer_log(chip->log, "timer fired: %s", __func__);
+	kthread_queue_work(chip->wq, &chip->aicl_check_alarm_work);
+	pm_wakeup_event(chip->dev, AICL_CHECK_MS);
+
+	return ALARMTIMER_NORESTART;
+}
+
+static int max77759_aicl_active_cb(struct gvotable_election *el, const char *reason, void *value)
+{
+	struct max77759_plat *chip = gvotable_get_data(el);
+	bool aicl_active = !!(long)value;
+
+	chip->aicl_active = aicl_active;
+
+	if (is_aicl_limited(chip)) {
+		/* Recheck after AICL_CHECK_MS */
+		alarm_start_relative(&chip->aicl_check_alarm, ms_to_ktime(AICL_CHECK_MS));
+	} else {
+		alarm_cancel(&chip->aicl_check_alarm);
+		kthread_cancel_work_sync(&chip->aicl_check_alarm_work);
+	}
+
+	return 0;
+}
+
 static int max77759_probe(struct i2c_client *client,
 			  const struct i2c_device_id *i2c_id)
 {
@@ -2408,6 +2716,9 @@ static int max77759_probe(struct i2c_client *client,
 			  reenable_auto_ultra_low_power_mode_work_item);
 	alarm_init(&chip->reenable_auto_ultra_low_power_mode_alarm, ALARM_BOOTTIME,
 		   reenable_auto_ultra_low_power_mode_alarm_handler);
+	kthread_init_work(&chip->aicl_check_alarm_work, aicl_check_alarm_work_item);
+	alarm_init(&chip->aicl_check_alarm, ALARM_BOOTTIME, aicl_check_alarm_handler);
+
 	dn = dev_of_node(&client->dev);
 	if (!dn) {
 		dev_err(&client->dev, "of node not found\n");
@@ -2457,6 +2768,7 @@ static int max77759_probe(struct i2c_client *client,
 	mutex_init(&chip->irq_status_lock);
 	spin_lock_init(&g_caps_lock);
 	chip->first_toggle = true;
+	chip->first_rp_missing_timeout = true;
 
 	ret = max77759_read8(chip->data.regmap, TCPC_POWER_STATUS,
 			     &power_status);
@@ -2487,6 +2799,13 @@ static int max77759_probe(struct i2c_client *client,
 	chip->data.init = tcpci_init;
 	chip->data.frs_sourcing_vbus = max77759_frs_sourcing_vbus;
 
+	chip->compliance_warnings = init_compliance_warnings(chip);
+	if (IS_ERR_OR_NULL(chip->compliance_warnings)) {
+		ret = PTR_ERR(chip->compliance_warnings);
+		dev_err(&client->dev, "init_compliance_warnings failed, ptr: %ld", ret);
+		return ret;
+	}
+
 	chip->log = logbuffer_register("usbpd");
 	if (IS_ERR_OR_NULL(chip->log)) {
 		dev_err(&client->dev, "logbuffer get failed");
@@ -2501,8 +2820,8 @@ static int max77759_probe(struct i2c_client *client,
 		max77759_set_vbus_voltage_max_mv;
 	chip->psy_ops.tcpc_set_port_data_capable =
 		max77759_set_port_data_capable;
-	chip->usb_psy_data = usb_psy_setup(client, chip->log,
-					   &chip->psy_ops);
+	chip->usb_psy_data = usb_psy_setup(client, chip->log, &chip->psy_ops, chip,
+					   &max77759_non_compliant_bc12_callback);
 	if (IS_ERR_OR_NULL(chip->usb_psy_data)) {
 		dev_err(&client->dev, "USB psy failed to initialize");
 		ret = PTR_ERR(chip->usb_psy_data);
@@ -2589,6 +2908,7 @@ static int max77759_probe(struct i2c_client *client,
 	kthread_init_delayed_work(&chip->enable_vbus_work, enable_vbus_work);
 	kthread_init_delayed_work(&chip->vsafe0v_work, vsafe0v_debounce_work);
 	kthread_init_delayed_work(&chip->max77759_io_error_work, max77759_io_error_work);
+	kthread_init_delayed_work(&chip->check_missing_rp_work, check_missing_rp_work);
 
 	/*
 	 * b/218797880 Some OVP chips are restricted to quick Vin ramp-up time which means that if
@@ -2622,11 +2942,20 @@ static int max77759_probe(struct i2c_client *client,
 		goto unreg_notifier;
 	}
 
+	chip->aicl_active_el =
+		gvotable_create_bool_election(AICL_ACTIVE_EL, max77759_aicl_active_cb, chip);
+	if (IS_ERR_OR_NULL(chip->aicl_active_el)) {
+		ret = PTR_ERR(chip->aicl_active_el);
+		dev_err(chip->dev, "Unable to create aicl_active_el(%d)\n", ret);
+		goto unreg_notifier;
+	}
+	gvotable_set_vote2str(chip->aicl_active_el, gvotable_v2s_int);
+
 	chip->tcpci = tcpci_register_port(chip->dev, &chip->data);
 	if (IS_ERR_OR_NULL(chip->tcpci)) {
 		dev_err(&client->dev, "TCPCI port registration failed");
 		ret = PTR_ERR(chip->tcpci);
-		goto unreg_notifier;
+		goto unreg_aicl_el;
 	}
 	chip->port = tcpci_get_tcpm_port(chip->tcpci);
 
@@ -2675,6 +3004,8 @@ remove_files:
 		device_remove_file(&client->dev, max77759_device_attrs[i]);
 unreg_port:
 	tcpci_unregister_port(chip->tcpci);
+unreg_aicl_el:
+	gvotable_destroy_election(chip->aicl_active_el);
 unreg_notifier:
 	power_supply_unreg_notifier(&chip->psy_notifier);
 destroy_worker:
@@ -2705,6 +3036,8 @@ static int max77759_remove(struct i2c_client *client)
 		device_remove_file(&client->dev, max77759_device_attrs[i]);
 	if (!IS_ERR_OR_NULL(chip->tcpci))
 		tcpci_unregister_port(chip->tcpci);
+	if (!IS_ERR_OR_NULL(chip->aicl_active_el))
+		gvotable_destroy_election(chip->aicl_active_el);
 	if (!IS_ERR_OR_NULL(chip->usb_psy))
 		power_supply_put(chip->usb_psy);
 	if (!IS_ERR_OR_NULL(chip->usb_psy_data))
@@ -2727,6 +3060,7 @@ static void max77759_shutdown(struct i2c_client *client)
 	int ret;
 
 	dev_info(&client->dev, "disabling Type-C upon shutdown\n");
+	kthread_cancel_delayed_work_sync(&chip->check_missing_rp_work);
 	/* Set current limit to 0. Will eventually happen after hi-Z as well */
 	max77759_vote_icl(chip, 0);
 	/* Prevent re-enabling toggling */

@@ -783,17 +783,18 @@ void __mfc_update_base_addr_dpb(struct mfc_ctx *ctx, struct mfc_buf *buf,
 					int index)
 {
 	struct mfc_dec *dec = ctx->dec_priv;
-	dma_addr_t start_raw;
-	size_t offset;
+	struct mfc_raw_info *raw;
+	size_t offset = 0;
 	int i;
 
 	if (ctx->dst_fmt->mem_planes == 1) {
-		start_raw = buf->addr[0][0];
+		raw = &ctx->raw_buf;
 
 		for (i = 0; i < ctx->dst_fmt->num_planes; i++) {
-			offset = buf->addr[0][i] - start_raw;
-			start_raw = buf->addr[0][i];
-			buf->addr[0][i] = dec->dpb[index].addr[i] + offset;
+			buf->addr[0][i] = dec->dpb[index].addr[0] + offset;
+			offset += raw->plane_size[i];
+			if (IS_2BIT_NEED(ctx))
+				offset += raw->plane_size_2bits[i];
 		}
 	} else {
 		for (i = 0; i < ctx->dst_fmt->mem_planes; i++)
@@ -1003,4 +1004,43 @@ int mfc_check_buf_mb_flag(struct mfc_core_ctx *core_ctx, enum mfc_mb_flag f)
 	spin_unlock_irqrestore(&core_ctx->buf_queue_lock, flags);
 
 	return 0;
+}
+
+void mfc_dec_drc_find_del_buf(struct mfc_core_ctx *core_ctx)
+{
+	struct mfc_ctx *ctx = core_ctx->ctx;
+	struct mfc_dec *dec = ctx->dec_priv;
+	struct mfc_core *core = core_ctx->core;
+	struct mfc_buf *dst_mb;
+	int i;
+
+	if (!dec || dec->disp_res_change)
+		return;
+
+	dst_mb = mfc_get_del_buf(ctx, &ctx->dst_buf_queue, MFC_BUF_NO_TOUCH_USED);
+	if (!dst_mb)
+		return;
+
+	mfc_ctx_info("[DRC] already stopped and dqbuf with DRC\n");
+	i = dst_mb->vb.vb2_buf.index;
+
+	mfc_clear_mb_flag(dst_mb);
+	dst_mb->vb.flags &= ~(V4L2_BUF_FLAG_KEYFRAME |
+			V4L2_BUF_FLAG_PFRAME |
+			V4L2_BUF_FLAG_BFRAME |
+			V4L2_BUF_FLAG_ERROR);
+
+	if (call_cop(ctx, core_get_buf_ctrls_val, core, ctx, &ctx->dst_ctrls[i]) < 0)
+		mfc_ctx_err("[DRC] failed in core_get_buf_ctrls\n");
+
+	call_cop(ctx, get_buf_update_val, ctx, &ctx->dst_ctrls[i],
+			V4L2_CID_MPEG_MFC51_VIDEO_DISPLAY_STATUS,
+			MFC_REG_DEC_STATUS_DECODING_EMPTY);
+	call_cop(ctx, get_buf_update_val, ctx, &ctx->dst_ctrls[i],
+			V4L2_CID_MPEG_MFC51_VIDEO_FRAME_TAG, UNUSED_TAG);
+
+	ctx->wait_state = WAIT_G_FMT | WAIT_STOP;
+	mfc_debug(2, "[DRC] Decoding waiting again! : %d\n", ctx->wait_state);
+	MFC_TRACE_CTX("[DRC] wait again\n");
+	vb2_buffer_done(&dst_mb->vb.vb2_buf, VB2_BUF_STATE_DONE);
 }

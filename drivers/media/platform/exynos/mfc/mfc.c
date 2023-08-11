@@ -35,6 +35,7 @@
 #include "mfc_meminfo.h"
 #include "mfc_memlog.h"
 
+#include "mfc_core_hwlock.h"
 #include "mfc_core_pm.h"
 #include "mfc_core_hw_reg_api.h"
 #include "mfc_llc.h"
@@ -197,7 +198,8 @@ static int __mfc_init_dec_ctx(struct mfc_ctx *ctx)
 
 	mfc_init_dpb_table(ctx);
 
-	dec->ref_info = vmalloc(sizeof(struct dec_dpb_ref_info) * MFC_MAX_BUFFERS);
+	dec->sh_handle_dpb.data_size = sizeof(struct dec_dpb_ref_info) * MFC_MAX_BUFFERS;
+	dec->ref_info = vmalloc(dec->sh_handle_dpb.data_size);
 	if (!dec->ref_info) {
 		mfc_ctx_err("failed to allocate decoder information data\n");
 		ret = -ENOMEM;
@@ -312,6 +314,9 @@ static int __mfc_init_enc_ctx(struct mfc_ctx *ctx)
 	enc->sh_handle_svc.fd = -1;
 	enc->sh_handle_roi.fd = -1;
 	enc->sh_handle_hdr.fd = -1;
+	enc->sh_handle_svc.data_size = sizeof(struct temporal_layer_info);
+	enc->sh_handle_roi.data_size = sizeof(struct mfc_enc_roi_info);
+	enc->sh_handle_hdr.data_size = sizeof(struct hdr10_plus_meta) * MFC_MAX_BUFFERS;
 
 	/* Init videobuf2 queue for OUTPUT */
 	ctx->vq_src.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
@@ -434,6 +439,7 @@ static int mfc_open(struct file *file)
 	spin_lock_init(&ctx->meminfo_queue_lock);
 	spin_lock_init(&ctx->corelock.lock);
 	mutex_init(&ctx->intlock.core_mutex);
+	mutex_init(&ctx->drc_wait_mutex);
 	init_waitqueue_head(&ctx->migrate_wq);
 	init_waitqueue_head(&ctx->corelock.wq);
 	init_waitqueue_head(&ctx->corelock.migrate_wq);
@@ -775,6 +781,12 @@ static int __mfc_parse_dt(struct device_node *np, struct mfc_dev *mfc)
 			&pdata->enc_idr_flag.support, 2);
 	of_property_read_u32_array(np, "min_quality_mode",
 			&pdata->min_quality_mode.support, 2);
+	of_property_read_u32_array(np, "hevc_pic_output_flag",
+			&pdata->hevc_pic_output_flag.support, 2);
+	of_property_read_u32_array(np, "metadata_interface",
+			&pdata->metadata_interface.support, 2);
+	of_property_read_u32_array(np, "hdr10_plus_full",
+			&pdata->hdr10_plus_full.support, 2);
 
 	/* Determine whether to enable AV1 decoder */
 	of_property_read_u32(np, "support_av1_dec", &pdata->support_av1_dec);
@@ -784,11 +796,12 @@ static int __mfc_parse_dt(struct device_node *np, struct mfc_dev *mfc)
 	if (!pdata->support_av1_dec)
 		pdata->av1_film_grain.support = 0;
 
-	/* Default 10bit format for decoding and dithering for display */
+	/* H/W limitation or option */
 	of_property_read_u32(np, "P010_decoding", &pdata->P010_decoding);
 	of_property_read_u32(np, "dithering_enable", &pdata->dithering_enable);
 	of_property_read_u32(np, "stride_align", &pdata->stride_align);
 	of_property_read_u32(np, "stride_type", &pdata->stride_type);
+	of_property_read_u32(np, "support_8K_cavlc", &pdata->support_8K_cavlc);
 
 	/* Formats */
 	of_property_read_u32(np, "support_10bit", &pdata->support_10bit);
@@ -1188,7 +1201,7 @@ static void mfc_shutdown(struct platform_device *pdev)
 {
 	struct mfc_dev *dev = platform_get_drvdata(pdev);
 	struct mfc_core *core;
-	int i;
+	int i, ret;
 
 	for (i = 0; i < dev->num_core; i++) {
 		core = dev->core[i];
@@ -1198,10 +1211,19 @@ static void mfc_shutdown(struct platform_device *pdev)
 		}
 
 		if (!core->shutdown) {
-			mfc_core_risc_off(core);
-			core->shutdown = 1;
-			mfc_clear_all_bits(&core->work_bits);
-			mfc_core_err("core forcibly shutdown\n");
+			ret = mfc_core_get_hwlock_dev(core);
+			if (ret < 0)
+				mfc_core_err("Failed to get hwlock\n");
+			if (!mfc_core_pm_get_pwr_ref_cnt(core)) {
+				core->shutdown = 1;
+				mfc_core_info("MFC is not running\n");
+			} else {
+				mfc_core_risc_off(core);
+				core->shutdown = 1;
+				mfc_clear_all_bits(&core->work_bits);
+				mfc_core_err("core forcibly shutdown\n");
+			}
+			mfc_core_release_hwlock_dev(core);
 		}
 	}
 

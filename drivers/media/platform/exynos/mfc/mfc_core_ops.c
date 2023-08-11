@@ -377,7 +377,6 @@ int __mfc_core_instance_init(struct mfc_core *core, struct mfc_ctx *ctx)
 	core_ctx->inst_no = MFC_NO_INSTANCE_SET;
 	core->core_ctx[core_ctx->num] = core_ctx;
 
-	init_waitqueue_head(&core_ctx->drc_wq);
 	init_waitqueue_head(&core_ctx->cmd_wq);
 	mfc_core_init_listable_wq_ctx(core_ctx);
 	spin_lock_init(&core_ctx->buf_queue_lock);
@@ -549,6 +548,7 @@ int mfc_core_instance_deinit(struct mfc_core *core, struct mfc_ctx *ctx)
 	if (ret)
 		goto err_release_try;
 
+	mfc_release_metadata_buffer(ctx);
 	mfc_release_codec_buffers(core_ctx);
 	mfc_release_instance_context(core_ctx);
 
@@ -598,17 +598,37 @@ static int __mfc_core_instance_open_dec(struct mfc_ctx *ctx,
 		return -ENOMEM;
 	}
 
+	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->metadata_interface)) {
+		ret = mfc_alloc_metadata_buffer(ctx);
+		if (ret) {
+			mfc_ctx_err("Failed to allocate metadata buffer\n");
+			ret = 0;
+		}
+	}
+
 	/* sh_handle: HDR10+ (HEVC or AV1) SEI meta */
-	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->hdr10_plus) &&
-			(IS_HEVC_DEC(ctx) || IS_AV1_DEC(ctx)))
-		dec->hdr10_plus_info = vmalloc(
-				(sizeof(struct hdr10_plus_meta) * MFC_MAX_DPBS));
+	if ((IS_HEVC_DEC(ctx) || IS_AV1_DEC(ctx))) {
+		if (MFC_FEATURE_SUPPORT(dev, dev->pdata->hdr10_plus_full) &&
+				dec->sh_handle_hdr.vaddr) {
+			dec->hdr10_plus_full = vmalloc(dec->sh_handle_hdr.data_size);
+			if (!dec->hdr10_plus_full)
+				mfc_ctx_err("failed to allocate hdr10 plus full information data");
+		} else if (dec->sh_handle_hdr.vaddr) {
+			dec->hdr10_plus_info = vmalloc(dec->sh_handle_hdr.data_size);
+			if (!dec->hdr10_plus_info)
+				mfc_ctx_err("failed to allocate hdr10 plus information data");
+		}
+	}
 
 	/* sh_handle: AV1 Film Grain SEI meta */
 	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->av1_film_grain) &&
-			IS_AV1_DEC(ctx))
-		dec->av1_film_grain_info = vmalloc(
-				(sizeof(struct av1_film_grain_meta) * MFC_MAX_DPBS));
+			IS_AV1_DEC(ctx)) {
+		if (dec->sh_handle_av1_film_grain.vaddr) {
+			dec->av1_film_grain_info = vmalloc(dec->sh_handle_av1_film_grain.data_size);
+			if (!dec->av1_film_grain_info)
+				mfc_ctx_err("failed to allocate AV1 film grain information data");
+		}
+	}
 
 	return 0;
 }
@@ -774,6 +794,27 @@ int mfc_core_instance_move_from(struct mfc_core *core, struct mfc_ctx *ctx)
 	return ret;
 }
 
+static void __mfc_core_cancel_drc(struct mfc_core *core, struct mfc_core_ctx *core_ctx)
+{
+	struct mfc_ctx *ctx = core_ctx->ctx;
+
+	mfc_ctx_info("[DRC] DRC is running yet (state: %d) cancel DRC\n", core_ctx->state);
+
+	mutex_lock(&ctx->drc_wait_mutex);
+	mfc_change_state(core_ctx, MFCINST_RES_CHANGE_END);
+
+	ctx->wait_state &= ~(WAIT_STOP);
+	mfc_debug(2, "clear WAIT_STOP %d\n", ctx->wait_state);
+	MFC_TRACE_CORE_CTX("** DEC clear WAIT_STOP(wait_state %d)\n",
+			ctx->wait_state);
+
+	if (ctx->wait_state != WAIT_G_FMT) {
+		ctx->wait_state = WAIT_G_FMT;
+		mfc_debug(2, "set WAIT_G_FMT only for inform to user that needs g_fmt\n");
+	}
+	mutex_unlock(&ctx->drc_wait_mutex);
+}
+
 void mfc_core_instance_dpb_flush(struct mfc_core *core, struct mfc_ctx *ctx)
 {
 	struct mfc_dec *dec = ctx->dec_priv;
@@ -793,27 +834,8 @@ void mfc_core_instance_dpb_flush(struct mfc_core *core, struct mfc_ctx *ctx)
 	}
 
 	if (core_ctx->state == MFCINST_RES_CHANGE_INIT ||
-			core_ctx->state == MFCINST_RES_CHANGE_FLUSH) {
-		mfc_ctx_info("[DRC] DRC is running yet (state: %d) wait while process is done\n",
-				core_ctx->state);
-		mfc_core_release_hwlock_ctx(core_ctx);
-		mfc_ctx_ready_set_bit(core_ctx, &core->work_bits);
-		if (mfc_core_is_work_to_do(core))
-			queue_work(core->butler_wq, &core->butler_work);
-
-		if (mfc_wait_for_done_drc(core_ctx)) {
-			mfc_err("[DRC] timed out waiting for DRC processing\n");
-			return;
-		}
-
-		ret = mfc_core_get_hwlock_ctx(core_ctx);
-		if (ret < 0) {
-			mfc_err("Failed to get hwlock after DRC\n");
-			MFC_TRACE_CTX_LT("[ERR][Release] failed to get hwlock (shutdown: %d)\n",
-					core->shutdown);
-			return;
-		}
-	}
+			core_ctx->state == MFCINST_RES_CHANGE_FLUSH)
+		__mfc_core_cancel_drc(core, core_ctx);
 
 	mfc_cleanup_queue(&ctx->buf_queue_lock, &ctx->dst_buf_queue);
 	mfc_cleanup_queue(&ctx->buf_queue_lock, &ctx->dst_buf_err_queue);
@@ -844,12 +866,14 @@ void mfc_core_instance_dpb_flush(struct mfc_core *core, struct mfc_ctx *ctx)
 		index++;
 	}
 
+	mutex_lock(&ctx->drc_wait_mutex);
 	if (ctx->wait_state & WAIT_STOP) {
 		ctx->wait_state &= ~(WAIT_STOP);
 		mfc_debug(2, "clear WAIT_STOP %d\n", ctx->wait_state);
 		MFC_TRACE_CORE_CTX("** DEC clear WAIT_STOP(wait_state %d)\n",
 				ctx->wait_state);
 	}
+	mutex_unlock(&ctx->drc_wait_mutex);
 
 	if (core_ctx->state == MFCINST_FINISHING)
 		mfc_change_state(core_ctx, MFCINST_RUNNING);
@@ -911,6 +935,10 @@ void mfc_core_instance_csd_parsing(struct mfc_core *core, struct mfc_ctx *ctx)
 		MFC_TRACE_CTX_LT("[ERR][Release] failed to get hwlock (shutdown: %d)\n", core->shutdown);
 		return;
 	}
+
+	if (core_ctx->state == MFCINST_RES_CHANGE_INIT ||
+			core_ctx->state == MFCINST_RES_CHANGE_FLUSH)
+		__mfc_core_cancel_drc(core, core_ctx);
 
 	/* Header parsed buffer is in src_buf_ready_queue */
 	mfc_move_buf_all(ctx, &core_ctx->src_buf_queue,
