@@ -17,6 +17,9 @@
 #include <linux/trusty/sm_err.h>
 #include <linux/trusty/trusty.h>
 
+#include "trusty-irq.h"
+#include "trusty-irq-trace.h"
+
 struct trusty_irq {
 	struct trusty_irq_state *is;
 	struct hlist_node node;
@@ -153,6 +156,7 @@ static irqreturn_t trusty_irq_handler(int irq, void *data)
 	dev_dbg(is->dev, "%s: irq %d, percpu %d, cpu %d, enable %d\n",
 		__func__, irq, trusty_irq->irq, smp_processor_id(),
 		trusty_irq->enable);
+	trace_trusty_irq(irq);
 
 	if (!trusty_irq->doorbell) {
 		if (trusty_irq->percpu) {
@@ -603,7 +607,7 @@ static struct platform_driver trusty_irq_driver = {
 	},
 };
 
-static int __init trusty_irq_driver_init(void)
+int __init trusty_irq_driver_init(void)
 {
 	int ret;
 
@@ -631,15 +635,12 @@ err_driver_register:
 	return ret;
 }
 
-static void __exit trusty_irq_driver_exit(void)
+void trusty_irq_driver_exit(void)
 {
 	platform_driver_unregister(&trusty_irq_driver);
 	cpuhp_remove_multi_state(trusty_irq_cpuhp_slot);
 	trusty_irq_cpuhp_slot = -1;
 }
 
-module_init(trusty_irq_driver_init);
-module_exit(trusty_irq_driver_exit);
-
-MODULE_LICENSE("GPL v2");
-MODULE_DESCRIPTION("Trusty IRQ driver");
+#define CREATE_TRACE_POINTS
+#include "trusty-irq-trace.h"

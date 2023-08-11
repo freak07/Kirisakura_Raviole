@@ -151,10 +151,8 @@ static int adv_tracer_s2d_set_disable_gpr(int disable)
 	cmd.cmd_raw.cmd = eS2D_IPC_CMD_SET_DISABLE_GPR;
 	cmd.buffer[1] = disable;
 	ret = adv_tracer_ipc_send_data(plugin_s2d.s2d_dev->id, &cmd);
-	if (ret < 0) {
+	if (ret < 0)
 		dev_err(plugin_s2d.dev, "ipc can't enable setting\n");
-		return ret;
-	}
 	return 0;
 }
 

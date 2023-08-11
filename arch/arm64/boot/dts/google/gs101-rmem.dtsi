@@ -57,6 +57,11 @@
 			no-map;
 		};
 
+		suspend_diag_log_reserved: suspend_diag_log_reserved@fd90c000 {
+			reg = <0 0xfd90c000 0x00001000>;
+			no-map;
+		};
+
 		ramoops_mem@fd3ff000 {
 			compatible = "ramoops";
 			reg = <0 0xfd3ff000 0x400000>;
@@ -66,11 +71,6 @@
 
 		bldr_log_reserved: bldr_log_reserved@fd800000 {
 			reg = <0 0xfd800000 0x00100000>;
-			no-map;
-		};
-
-		bldr_log_hist_reserved: bldr_log_hist_reserved@fd900000 {
-			reg = <0 0xfd900000 0x00002000>;
 			no-map;
 		};
 

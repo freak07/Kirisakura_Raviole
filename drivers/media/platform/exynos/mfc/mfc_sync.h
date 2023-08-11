@@ -17,7 +17,8 @@
 
 #define need_to_dpb_flush(core_ctx)		\
 	((core_ctx->state == MFCINST_FINISHING) ||	\
-	  (core_ctx->state == MFCINST_RUNNING))
+	 (core_ctx->state == MFCINST_RUNNING)	||	\
+	 (core_ctx->state == MFCINST_RES_CHANGE_END))
 #define need_to_wait_nal_abort(core_ctx)		 \
 	(core_ctx->state == MFCINST_ABORT_INST)
 #define need_to_special_parsing(core_ctx)		\
@@ -46,9 +47,6 @@ void mfc_wake_up_core(struct mfc_core *core, unsigned int reason,
 		unsigned int err);
 void mfc_wake_up_core_ctx(struct mfc_core_ctx *core_ctx, unsigned int reason,
 		unsigned int err);
-
-int mfc_wait_for_done_drc(struct mfc_core_ctx *core_ctx);
-void mfc_wake_up_drc_ctx(struct mfc_core_ctx *core_ctx);
 
 int mfc_core_get_new_ctx(struct mfc_core *core);
 int mfc_core_get_next_ctx(struct mfc_core *core);

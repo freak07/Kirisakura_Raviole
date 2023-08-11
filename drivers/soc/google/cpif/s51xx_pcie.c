@@ -168,13 +168,14 @@ send_doorbell_again:
 	return 0;
 
 check_cpl_timeout:
-	if (exynos_pcie_rc_get_cpl_timeout_state(s51xx_pcie->pcie_channel_num)) {
-		mif_err_limited("Can't send Interrupt(cto_retry_cnt: %d)!!!\n",
-				mc->pcie_cto_retry_cnt);
-		return 0;
-	}
+	if (exynos_pcie_rc_get_cpl_timeout_state(s51xx_pcie->pcie_channel_num) ||
+			exynos_pcie_rc_get_sudden_linkdown_state(s51xx_pcie->pcie_channel_num))
+		mif_err_limited("Can't send Interrupt(link_down_retry_cnt: %d, cto_retry_cnt: %d)!!!\n",
+				mc->pcie_linkdown_retry_cnt, mc->pcie_cto_retry_cnt);
+	else
+		exynos_pcie_rc_force_linkdown_work(s51xx_pcie->pcie_channel_num);
 
-	return -EAGAIN;
+	return 0;
 }
 
 void first_save_s51xx_status(struct pci_dev *pdev)
@@ -364,6 +365,7 @@ static void s51xx_pcie_event_cb(struct exynos_pcie_notify *noti)
 			queue_work_on(2, mc->wakeup_wq, &mc->wakeup_work);
 		} else {
 			mif_err("[%d] force crash !!!\n", mc->pcie_linkdown_retry_cnt);
+			exynos_pcie_rc_dump_all_status(mc->pcie_ch_num);
 			s5100_force_crash_exit_ext();
 		}
 	} else if (event & EXYNOS_PCIE_EVENT_CPL_TIMEOUT) {
@@ -375,6 +377,7 @@ static void s51xx_pcie_event_cb(struct exynos_pcie_notify *noti)
 			queue_work_on(2, mc->wakeup_wq, &mc->wakeup_work);
 		} else {
 			mif_err("[%d] force crash !!!\n", mc->pcie_cto_retry_cnt);
+			exynos_pcie_rc_dump_all_status(mc->pcie_ch_num);
 			s5100_force_crash_exit_ext();
 		}
 	}

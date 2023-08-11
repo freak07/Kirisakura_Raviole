@@ -35,6 +35,7 @@ struct task_log {
 	unsigned long long time;
 	struct task_struct *task;
 	char task_comm[TASK_COMM_LEN];
+	unsigned long se_exec_start;
 	int pid;
 };
 
@@ -61,9 +62,13 @@ struct suspend_log {
 	const char *dev;
 	int en;
 	int event;
+#if IS_ENABLED(CONFIG_PIXEL_SUSPEND_DIAG)
 	short core;
-	short delta_time_h;
-	int delta_time_l;
+	unsigned short delta_time_h;
+	unsigned int delta_time_l;
+#else
+	int core;
+#endif
 };
 
 struct irq_log {
@@ -188,13 +193,4 @@ struct dbg_snapshot_log_misc {
 	atomic_t print_log_idx;
 	atomic_t acpm_log_idx;
 };
-
-struct dbg_snapshot_suspend_diag {
-	unsigned int enable;
-	unsigned int force_panic;
-	unsigned long last_index;
-	unsigned long curr_index;
-	unsigned long long timeout;
-	char action[32];
-} __packed;
 #endif
