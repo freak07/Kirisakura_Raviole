@@ -365,6 +365,7 @@
   debugfs_create_dir
   debugfs_create_file
   debugfs_create_size_t
+  debugfs_create_symlink
   debugfs_create_u16
   debugfs_create_u32
   debugfs_create_u64
@@ -1240,6 +1241,7 @@
   kthread_bind_mask
   kthread_cancel_delayed_work_sync
   kthread_cancel_work_sync
+  kthread_create_on_cpu
   kthread_create_on_node
   kthread_create_worker
   kthread_delayed_work_timer_fn
@@ -1248,10 +1250,14 @@
   kthread_flush_worker
   __kthread_init_worker
   kthread_mod_delayed_work
+  kthread_park
+  kthread_parkme
   kthread_queue_delayed_work
   kthread_queue_work
+  kthread_should_park
   kthread_should_stop
   kthread_stop
+  kthread_unpark
   kthread_worker_fn
   ktime_get
   ktime_get_mono_fast_ns
