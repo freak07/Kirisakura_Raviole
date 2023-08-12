@@ -26,6 +26,8 @@
 #include "fsmap.h"
 #include <trace/events/ext4.h>
 
+#pragma clang diagnostic ignored "-Wint-conversion"
+
 /**
  * Swap memory between @a and @b for @len bytes.
  *
