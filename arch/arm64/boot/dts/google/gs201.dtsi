@@ -382,11 +382,13 @@
 		reg = <0x0 0x180D0000 0x1000>,
 			<0x0 0x180E0000 0x1000>,
 			<0x0 0x10540204 0x100>,
-			<0x0 0x18300000 0x100>;  /* GS_MAILBOX_AP_AOCA3_HOST */
+			<0x0 0x18300000 0x100>,  /* GS_MAILBOX_AP_AOCA3_HOST */
+			<0x0 0x18320000 0x100>;  /* GS_MAILBOX_AP_AOCF1_HOST */
 		reg-names = "gpio_alive_base",
 			"gpio_far_alive_base",
 			"gicd_ispendrn_base",
-			"mailbox_ap_aoc_host";
+			"mailbox_ap_aoca3_host",
+			"mailbox_ap_aocf1_host";
 		num-eint = <64>;	/* EINT_0 ~ 44 */
 		num-eint-far = <32>;	/* EINT_45 ~ 66 */
 		gpa-use = <8>, <7>, <5>, <4>, <4>, <7>, <8>, <2>, <8>, <4>, <8>, <2>;
@@ -598,9 +600,57 @@
 			/* vptid 2, size 0, priority 0 (highest), pbha 2 */
 			id_size_priority = < 0x2 0xffffffff 0x0 0x2 >;
 		};
-		GPU {
-			/* vptid 2, all size, priority 0 (highest), pbha 5 */
-			id_size_priority = < 0x2 0xffffffff 0x0 0x5 >;
+		/* vptid 40 breakdown:
+		 *     bit[0-2] default                            (0)
+		 *     bit[3]   force write allocate               (1)
+		 *     bit[4]   prevent read allocate              (0)
+		 *     bit[5]   special vptid                      (1)
+		 *     bit[6]   don't force optimal fetch on read  (0)
+		 *     bit[7]   don't force optimal fetch on write (0)
+		 */
+		gpu_g0_p0 {
+			/* vptid 40, max size 256KB, priority 0, pbha 5 */
+			id_size_priority = <0x28 0x00001001 0x0 0x5>;
+		};
+		gpu_g0_p1 {
+			/* vptid 40, max size 512KB, priority 0, pbha 5 */
+			id_size_priority = <0x28 0x00005001 0x0 0x5>;
+		};
+		gpu_g0_p2 {
+			/* vptid 40, max size 768KB, priority 0, pbha 5 */
+			id_size_priority = <0x28 0x0000d001 0x0 0x5>;
+		};
+		gpu_g0_p3 {
+			/* vptid 40, max size 1024KB, priority 0, pbha 5 */
+			id_size_priority = <0x28 0x0001d001 0x0 0x5>;
+		};
+		gpu_g0_p4 {
+			/* vptid 40, max size 1536KB, priority 0, pbha 5 */
+			id_size_priority = <0x28 0x0003d001 0x0 0x5>;
+		};
+		gpu_g0_p5 {
+			/* vptid 40, max size 2048KB, priority 0, pbha 5 */
+			id_size_priority = <0x28 0x0007d001 0x0 0x5>;
+		};
+		gpu_g0_p6 {
+			/* vptid 40, max size 3072KB, priority 0, pbha 5 */
+			id_size_priority = <0x28 0x000fd001 0x0 0x5>;
+		};
+		gpu_g0_p7 {
+			/* vptid 40, max size 4096KB, priority 0, pbha 5 */
+			id_size_priority = <0x28 0x001fd001 0x0 0x5>;
+		};
+		gpu_g0_p8 {
+			/* vptid 40, max size 6144KB, priority 0, pbha 5 */
+			id_size_priority = <0x28 0x003fd001 0x0 0x5>;
+		};
+		gpu_g0_p9 {
+			/* vptid 40, max size 8192KB, priority 0, pbha 5 */
+			id_size_priority = <0x28 0x007fd001 0x0 0x5>;
+		};
+		gpu_g1_p0 {
+			/* vptid 2, max size 8192KB, priority 0, pbha 6 */
+			id_size_priority = <0x2 0xffffffff 0x0 0x6>;
 		};
 		CAMERA2WAY {
 			/* vptid 3, size 512KB, priority 0 (highest), pbha 0 */
@@ -664,6 +714,7 @@
 		samsung,iommu-group = <&iommu_group_smfc>;
 		iommus = <&sysmmu_g2d2>;
 		dma-coherent;
+		smfc,int_qos_minlock = <533000>;
 	};
 
 	udc: usb@11210000 {
@@ -1108,6 +1159,7 @@
 
 		mif_cpu0_mem_lat: devfreq_mif_cpu0_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <0>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1124,6 +1176,7 @@
 
 		mif_cpu1_mem_lat: devfreq_mif_cpu1_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <1>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1140,6 +1193,7 @@
 
 		mif_cpu2_mem_lat: devfreq_mif_cpu2_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <2>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1156,6 +1210,7 @@
 
 		mif_cpu3_mem_lat: devfreq_mif_cpu3_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <3>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1173,6 +1228,7 @@
 
 		mif_cpu4_mem_lat: devfreq_mif_cpu4_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <4>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1189,6 +1245,7 @@
 
 		mif_cpu5_mem_lat: devfreq_mif_cpu5_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <5>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1205,6 +1262,7 @@
 
 		mif_cpu6_mem_lat: devfreq_mif_cpu6_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <6>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1221,6 +1279,7 @@
 
 		mif_cpu7_mem_lat: devfreq_mif_cpu7_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <7>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;

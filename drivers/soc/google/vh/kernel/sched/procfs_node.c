@@ -801,7 +801,6 @@ UTILIZATION_GROUP_UCLAMP_ATTRIBUTE(ug_bg, uclamp_max, UG_BG, UCLAMP_MAX);
  *   group or in an autogroup
  * - the system default clamp value, defined by the sysadmin
  */
-
 static inline void
 uclamp_update_active(struct task_struct *p, enum uclamp_id clamp_id)
 {

@@ -21,6 +21,17 @@ enum common_ev_idx {
 #define STALL_EV 0x24
 #define L3D_CACHE_REFILL_EV 0x2A
 
+#define to_mon(hwmon) container_of(hwmon, struct memlat_mon, hw)
+
+/**
+ * memlat cpuidle awareness state
+ */
+enum memlat_cpuidle_state_aware_state {
+	NO_MEMLAT_CPUIDLE_STATE_AWARE,
+	ALL_MEMLAT_CPUIDLE_STATE_AWARE,
+	DEEP_MEMLAT_CPUIDLE_STATE_AWARE,
+};
+
 /**
  * struct dev_stats - Device stats
  * @inst_count:			Number of instructions executed.
@@ -39,6 +50,19 @@ struct dev_stats {
 struct core_dev_map {
 	unsigned int core_mhz;
 	unsigned int target_freq;
+};
+
+struct memlat_node {
+	unsigned int ratio_ceil;
+	unsigned int stall_floor;
+	bool mon_started;
+	bool already_zero;
+	struct list_head list;
+	void *orig_data;
+	struct memlat_hwmon *hw;
+	struct devfreq_governor *gov;
+	struct attribute_group *attr_grp;
+	unsigned long resume_freq;
 };
 
 /**
@@ -69,6 +93,7 @@ struct memlat_hwmon {
 	struct device_node *(*get_child_of_node)(struct device *dev);
 	void (*request_update_ms)(struct memlat_hwmon *hw,
 				  unsigned int update_ms);
+	int (*get_cpu_idle_state)(unsigned int cpu);
 	struct device *dev;
 	struct device_node *of_node;
 
@@ -80,10 +105,45 @@ struct memlat_hwmon {
 	bool should_ignore_df_monitor;
 };
 
+/**
+ * struct memlat_mon - A specific consumer of cpu_grp generic counters.
+ *
+ * @is_active:                  Whether or not this mon is currently running
+ *                              memlat.
+ * @cpus:                       CPUs this mon votes on behalf of. Must be a
+ *                              subset of @cpu_grp's CPUs. If no CPUs provided,
+ *                              defaults to using all of @cpu_grp's CPUs.
+ * @miss_ev_id:                 The event code corresponding to the @miss_ev
+ *                              perf event. Will be 0 for compute.
+ * @miss_ev:                    The cache miss perf event exclusive to this
+ *                              mon. Will be NULL for compute.
+ * @requested_update_ms:        The mon's desired polling rate. The lowest
+ *                              @requested_update_ms of all mons determines
+ *                              @cpu_grp's update_ms.
+ * @hw:                         The memlat_hwmon struct corresponding to this
+ *                              mon's specific memlat instance.
+ * @cpu_grp:                    The cpu_grp who owns this mon.
+ */
+struct memlat_mon {
+	bool			is_active;
+	cpumask_t		cpus;
+	unsigned int		miss_ev_id;
+	unsigned int		requested_update_ms;
+	struct event_data	*miss_ev;
+	struct memlat_hwmon	hw;
+
+	struct memlat_cpu_grp	*cpu_grp;
+};
+
 #if IS_ENABLED(CONFIG_DEVFREQ_GOV_MEMLAT)
 int register_memlat(struct device *dev, struct memlat_hwmon *hw);
 int register_compute(struct device *dev, struct memlat_hwmon *hw);
 int update_memlat(struct memlat_hwmon *hw);
+int exynos_devfreq_get_boundary(unsigned int devfreq_type,
+				unsigned int *max_freq, unsigned int *min_freq);
+struct device **get_memlat_dev_array(void);
+struct exynos_pm_qos_request **get_memlat_cpu_qos_array(void);
+int *get_memlat_cpuidle_state_aware(void);
 #else
 static inline int register_memlat(struct device *dev,
 				  struct memlat_hwmon *hw)
@@ -98,6 +158,23 @@ static inline int register_compute(struct device *dev,
 static inline int update_memlat(struct memlat_hwmon *hw)
 {
 	return 0;
+}
+static int exynos_devfreq_get_boundary(unsigned int devfreq_type,
+				       unsigned int *max_freq, unsigned int *min_freq)
+{
+	return 0;
+}
+static struct device **get_memlat_dev_array(void)
+{
+	return NULL;
+}
+static struct exynos_pm_qos_request **get_memlat_cpu_qos_array(void)
+{
+	return NULL;
+}
+static int *get_memlat_cpuidle_state_aware(void)
+{
+	return NULL;
 }
 #endif
 

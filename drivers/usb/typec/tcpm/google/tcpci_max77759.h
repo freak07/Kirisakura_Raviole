@@ -15,12 +15,14 @@
 #include <linux/gpio/driver.h>
 #include <linux/usb/role.h>
 #include <linux/usb/typec_mux.h>
+#include <misc/gvotable.h>
 
 #include "usb_psy.h"
 
 struct gvotable_election;
 struct logbuffer;
 struct max77759_contaminant;
+struct max77759_compliance_warnings;
 struct tcpci_data;
 struct max77759_io_error;
 
@@ -134,6 +136,7 @@ struct max77759_plat {
 	struct kthread_delayed_work enable_vbus_work;
 	struct kthread_delayed_work vsafe0v_work;
 	struct kthread_delayed_work reset_ovp_work;
+	struct kthread_delayed_work check_missing_rp_work;
 
 	/* Notifier for data role */
 	struct usb_role_switch *usb_sw;
@@ -148,6 +151,25 @@ struct max77759_plat {
 	struct kthread_delayed_work max77759_io_error_work;
 	/* Hold before calling _max77759_irq */
 	struct mutex irq_status_lock;
+
+	/* non compliant reasons */
+	struct max77759_compliance_warnings *compliance_warnings;
+
+	/*
+	 * When set missing Rp detection has a longer delay to overcome
+	 * additional delay during boot.
+	 */
+	bool first_rp_missing_timeout;
+
+	/* Signal from charger when AICL is active. */
+	struct gvotable_election *aicl_active_el;
+
+	/* Timer to check for AICL status */
+	struct alarm aicl_check_alarm;
+	/* Bottom half for alarm */
+	struct kthread_work aicl_check_alarm_work;
+	/* AICL status from hardware */
+	bool aicl_active;
 
 	/* EXT_BST_EN exposed as GPIO */
 #ifdef CONFIG_GPIOLIB
@@ -205,6 +227,27 @@ enum tcpm_psy_online_states {
 
 void enable_data_path_locked(struct max77759_plat *chip);
 void data_alt_path_active(struct max77759_plat *chip, bool active);
-void register_data_active_callback(void (*callback)(void *data_active_payload), void *data);
+void register_data_active_callback(void (*callback)(void *data_active_payload,
+						    enum typec_data_role role, bool active),
+				   void *data);
 void register_orientation_callback(void (*callback)(void *orientation_payload), void *data);
+
+/* AICL_OK is tracked with COMPLIANCE_WARNING_OTHER */
+#define COMPLIANCE_WARNING_OTHER 0
+#define COMPLIANCE_WARNING_DEBUG_ACCESSORY 1
+#define COMPLIANCE_WARNING_BC12 2
+#define COMPLIANCE_WARNING_MISSING_RP 3
+
+struct max77759_compliance_warnings {
+	struct max77759_plat *chip;
+	bool other;
+	bool debug_accessory;
+	bool bc12;
+	bool missing_rp;
+};
+
+ssize_t compliance_warnings_to_buffer(struct max77759_compliance_warnings *compliance_warnings,
+				      char *buf);
+void update_compliance_warnings(struct max77759_plat *chip, int warning, bool value);
+
 #endif /* __TCPCI_MAX77759_H */

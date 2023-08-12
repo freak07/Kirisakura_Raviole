@@ -26,7 +26,6 @@
 				google,ttf-soc-table =  <50 57 70 73 80 84  91 100>;
 				google,ttf-elap-table = <39 47 55 66 78 89 138 178>;
 				google,ttf-tier-table = <0 57 74>;
-				google,aacr-disable;
 
 				google,batt-id-1-atl {
 					google,batt-id = <1>;
@@ -42,9 +41,9 @@
 			};
 
 			google_bms {
-				nvmem-names = "5-00500";
+				nvmem-names = "7-00500";
 				/* pack eeprom is available only with P20+ batteries */
-				google,bee-name = "5-00500";
+				google,bee-name = "7-00500";
 			};
 		};
 	};

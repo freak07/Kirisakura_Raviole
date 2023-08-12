@@ -42,9 +42,6 @@ extern void rvh_util_est_update_pixel_mod(void *data, struct cfs_rq *cfs_rq, str
 extern void rvh_cpu_cgroup_online_pixel_mod(void *data, struct cgroup_subsys_state *css);
 #endif
 extern void rvh_post_init_entity_util_avg_pixel_mod(void *data, struct sched_entity *se);
-extern void rvh_check_preempt_wakeup_pixel_mod(void *data, struct rq *rq, struct task_struct *p,
-			bool *preempt, bool *nopreempt, int wake_flags, struct sched_entity *se,
-			struct sched_entity *pse, int next_buddy_marked, unsigned int granularity);
 extern void vh_sched_setscheduler_uclamp_pixel_mod(void *data, struct task_struct *tsk,
 						   int clamp_id, unsigned int value);
 extern void init_uclamp_stats(void);
@@ -65,11 +62,10 @@ extern void vh_binder_set_priority_pixel_mod(void *data, struct binder_transacti
 	struct task_struct *task);
 extern void vh_binder_restore_priority_pixel_mod(void *data, struct binder_transaction *t,
 	struct task_struct *task);
-extern void rvh_rtmutex_prepare_setprio_pixel_mod(void *data, struct task_struct *p,
-	struct task_struct *pi_task);
 extern void rvh_cpumask_any_and_distribute(void *data, struct task_struct *p,
 	const struct cpumask *cpu_valid_mask, const struct cpumask *new_mask, int *dest_cpu);
-
+extern void rvh_rtmutex_prepare_setprio_pixel_mod(void *data, struct task_struct *p,
+	struct task_struct *pi_task);
 extern void vh_dump_throttled_rt_tasks_mod(void *data, int cpu, u64 clock, ktime_t rt_period,
 					   u64 rt_runtime, s64 rt_period_timer_expires);
 extern void android_vh_show_max_freq(void *unused, struct cpufreq_policy *policy,
@@ -252,17 +248,13 @@ static int vh_sched_init(void)
 		rvh_cpu_cgroup_online_pixel_mod, NULL);
 	if (ret)
 		return ret;
-
-	ret = register_trace_android_rvh_check_preempt_wakeup(
-		rvh_check_preempt_wakeup_pixel_mod, NULL);
-	if (ret)
-		return ret;
 #endif
 
 	ret = register_trace_android_rvh_post_init_entity_util_avg(
 		rvh_post_init_entity_util_avg_pixel_mod, NULL);
 	if (ret)
 		return ret;
+
 
 	ret = register_trace_android_rvh_select_task_rq_fair(rvh_select_task_rq_fair_pixel_mod,
 							     NULL);

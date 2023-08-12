@@ -31,6 +31,7 @@
 #if IS_ENABLED(CONFIG_GS_S2MPU)
 #include <soc/google/s2mpu.h>
 #endif
+#include <misc/logbuffer.h>
 #endif
 #include "modem_v1.h"
 
@@ -181,6 +182,8 @@ struct t_handover_block_info {
 #define IOCTL_HANDOVER_BLOCK_INFO	_IO('o', 0x57)
 
 #define IOCTL_SET_SPI_BOOT_MODE		_IO('o', 0x58)
+
+#define IOCTL_GET_OPENED_STATUS 	_IOR(IOCTL_MAGIC, 0x59, int)
 
 /*
  * Definitions for IO devices
@@ -727,6 +730,10 @@ struct modem_ctl {
 
 	struct cp_power_stats cp_power_stats;
 	spinlock_t power_stats_lock;
+#if defined(CPIF_WAKEPKT_SET_MARK)
+	atomic_t mark_skb_wakeup;
+#endif
+	struct logbuffer *log;
 };
 
 static inline bool cp_offline(struct modem_ctl *mc)

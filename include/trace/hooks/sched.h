@@ -257,11 +257,6 @@ DECLARE_RESTRICTED_HOOK(android_rvh_uclamp_rq_util_with,
 DECLARE_HOOK(android_vh_build_sched_domains,
 	TP_PROTO(bool has_asym),
 	TP_ARGS(has_asym));
-DECLARE_RESTRICTED_HOOK(android_rvh_check_preempt_tick,
-	TP_PROTO(struct task_struct *p, unsigned long *ideal_runtime, bool *skip_preempt,
-			unsigned long delta_exec, struct cfs_rq *cfs_rq, struct sched_entity *curr,
-			unsigned int granularity),
-	TP_ARGS(p, ideal_runtime, skip_preempt, delta_exec, cfs_rq, curr, granularity), 1);
 DECLARE_RESTRICTED_HOOK(android_rvh_check_preempt_wakeup_ignore,
 	TP_PROTO(struct task_struct *p, bool *ignore),
 	TP_ARGS(p, ignore), 1);

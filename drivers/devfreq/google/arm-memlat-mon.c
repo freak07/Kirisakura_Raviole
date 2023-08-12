@@ -32,6 +32,7 @@
 
 static DEFINE_PER_CPU(bool, is_idle);
 static DEFINE_PER_CPU(bool, is_on);
+static DEFINE_PER_CPU(int, cpu_idle_state);
 
 enum mon_type {
 	MEMLAT_CPU_GRP,
@@ -55,36 +56,6 @@ struct cpu_data {
 	unsigned long cyc;
 	unsigned long stall;
 	unsigned long cachemiss;
-};
-
-/**
- * struct memlat_mon - A specific consumer of cpu_grp generic counters.
- *
- * @is_active:			Whether or not this mon is currently running
- *				memlat.
- * @cpus:			CPUs this mon votes on behalf of. Must be a
- *				subset of @cpu_grp's CPUs. If no CPUs provided,
- *				defaults to using all of @cpu_grp's CPUs.
- * @miss_ev_id:			The event code corresponding to the @miss_ev
- *				perf event. Will be 0 for compute.
- * @miss_ev:			The cache miss perf event exclusive to this
- *				mon. Will be NULL for compute.
- * @requested_update_ms:	The mon's desired polling rate. The lowest
- *				@requested_update_ms of all mons determines
- *				@cpu_grp's update_ms.
- * @hw:				The memlat_hwmon struct corresponding to this
- *				mon's specific memlat instance.
- * @cpu_grp:			The cpu_grp who owns this mon.
- */
-struct memlat_mon {
-	bool			is_active;
-	cpumask_t		cpus;
-	unsigned int		miss_ev_id;
-	unsigned int		requested_update_ms;
-	struct event_data	*miss_ev;
-	struct memlat_hwmon	hw;
-
-	struct memlat_cpu_grp	*cpu_grp;
 };
 
 /**
@@ -139,7 +110,6 @@ struct memlat_mon_spec {
 	(cpu_grp->cpus_data[cpu - cpumask_first(&cpu_grp->cpus)].common_evs)
 #define to_devstats(mon, cpu) \
 	(&mon->hw.core_stats[cpu - cpumask_first(&mon->cpus)])
-#define to_mon(hwmon) container_of(hwmon, struct memlat_mon, hw)
 
 static struct workqueue_struct *memlat_wq;
 static LIST_HEAD(cpu_grp_list);
@@ -211,55 +181,15 @@ static inline void read_event_local(struct event_data *event)
 		pr_err("read event fail %d\n", ret);
 	else
 		event->total = total;
-
 }
-
-static void update_counts_idle_core(struct memlat_cpu_grp *cpu_grp, int cpu)
-{
-	unsigned int i;
-	struct memlat_mon *mon;
-	unsigned int mon_idx;
-	struct cpu_data *cpu_data = to_cpu_data(cpu_grp, cpu);
-	struct event_data *common_evs = cpu_data->common_evs;
-
-	for (i = 0; i < NUM_COMMON_EVS; i++)
-		read_event_local(&common_evs[i]);
-
-	for (i = 0; i < cpu_grp->num_mons; i++) {
-		mon = &cpu_grp->mons[i];
-
-		if (!mon->is_active || !mon->miss_ev)
-			continue;
-
-		mon_idx = cpu - cpumask_first(&mon->cpus);
-		read_event_local(&mon->miss_ev[mon_idx]);
-	}
-
-	spin_lock(&cpu_data->pmu_lock);
-	cpu_data->inst = common_evs[INST_IDX].last_delta;
-	cpu_data->cyc = common_evs[CYC_IDX].last_delta;
-	cpu_data->stall = common_evs[STALL_IDX].last_delta;
-	cpu_data->cachemiss = mon->miss_ev[mon_idx].last_delta;
-	spin_unlock(&cpu_data->pmu_lock);
-}
-
 
 static void vendor_update_event_cpu_idle_enter(void *data, int *state, struct cpuidle_device *dev)
 {
-	struct memlat_cpu_grp *cpu_grp;
-
 	if (!__this_cpu_read(is_on))
 		return;
 
-	list_for_each_entry(cpu_grp, &cpu_grp_list, node) {
-		if (!cpu_grp->initialized)
-			continue;
-		if (cpumask_test_cpu(dev->cpu, &cpu_grp->cpus)) {
-			update_counts_idle_core(cpu_grp, dev->cpu);
-			break;
-		}
-	}
 	__this_cpu_write(is_idle, true);
+	__this_cpu_write(cpu_idle_state, *state);
 }
 
 static void vendor_update_event_cpu_idle_exit(void *data, int state, struct cpuidle_device *dev)
@@ -267,6 +197,12 @@ static void vendor_update_event_cpu_idle_exit(void *data, int state, struct cpui
 	if (!__this_cpu_read(is_on))
 		return;
 	__this_cpu_write(is_idle, false);
+	__this_cpu_write(cpu_idle_state, state);
+}
+
+static int get_cpu_idle_state(unsigned int cpu)
+{
+	return per_cpu(is_idle, cpu) ? per_cpu(cpu_idle_state, cpu) : -1;
 }
 
 static void update_counts(struct memlat_cpu_grp *cpu_grp)
@@ -890,6 +826,7 @@ static int memlat_mon_probe(struct platform_device *pdev)
 	hw->start_hwmon = &start_hwmon;
 	hw->stop_hwmon = &stop_hwmon;
 	hw->get_cnt = &get_cnt;
+	hw->get_cpu_idle_state = &get_cpu_idle_state;
 	hw->request_update_ms = &request_update_ms;
 
 	mon->miss_ev =
