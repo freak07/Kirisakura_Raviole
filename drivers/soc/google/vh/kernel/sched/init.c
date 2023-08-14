@@ -181,7 +181,7 @@ static int vh_sched_init(void)
 	 *
 	 * stop_machine provides atomic way to guarantee this without races.
 	 */
-	ret = stop_machine(init_vendor_task_data, NULL, cpumask_of(smp_processor_id()));
+	ret = stop_machine(init_vendor_task_data, NULL, cpumask_of(raw_smp_processor_id()));
 	if (ret)
 		return ret;
 
