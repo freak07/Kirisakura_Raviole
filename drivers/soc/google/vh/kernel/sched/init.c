@@ -98,7 +98,6 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 extern void rvh_set_user_nice_pixel_mod(void *data, struct task_struct *p, long *nice,
 					bool *allowed);
 extern void rvh_setscheduler_pixel_mod(void *data, struct task_struct *p);
-extern void rvh_prepare_prio_fork_pixel_mod(void *data, struct task_struct *p);
 
 extern struct cpufreq_governor sched_pixel_gov;
 
@@ -355,10 +354,6 @@ static int vh_sched_init(void)
 		return ret;
 
 	ret = register_trace_android_rvh_setscheduler(rvh_setscheduler_pixel_mod, NULL);
-	if (ret)
-		return ret;
-
-	ret = register_trace_android_rvh_prepare_prio_fork(rvh_prepare_prio_fork_pixel_mod, NULL);
 	if (ret)
 		return ret;
 
