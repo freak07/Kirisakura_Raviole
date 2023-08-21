@@ -1321,8 +1321,8 @@ static int dump_task_show(struct seq_file *m, void *v)
 			grp_name = GRP_NAME[group];
 		uclamp_min = t->uclamp_req[UCLAMP_MIN].value;
 		uclamp_max = t->uclamp_req[UCLAMP_MAX].value;
-		uclamp_eff_min = uclamp_eff_value(t, UCLAMP_MIN);
-		uclamp_eff_max = uclamp_eff_value(t, UCLAMP_MAX);
+		uclamp_eff_min = uclamp_eff_value_pixel_mod(t, UCLAMP_MIN);
+		uclamp_eff_max = uclamp_eff_value_pixel_mod(t, UCLAMP_MAX);
 		pid = t->pid;
 		uclamp_fork_reset = vp->uclamp_fork_reset;
 		prefer_idle = vp->prefer_idle;

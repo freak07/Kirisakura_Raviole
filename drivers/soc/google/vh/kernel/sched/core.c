@@ -214,11 +214,11 @@ void rvh_rtmutex_prepare_setprio_pixel_mod(void *data, struct task_struct *p,
 
 	if (pi_task) {
 		unsigned long p_util = task_util(p);
-		unsigned long p_uclamp_min = uclamp_eff_value(p, UCLAMP_MIN);
-		unsigned long p_uclamp_max = uclamp_eff_value(p, UCLAMP_MAX);
+		unsigned long p_uclamp_min = uclamp_eff_value_pixel_mod(p, UCLAMP_MIN);
+		unsigned long p_uclamp_max = uclamp_eff_value_pixel_mod(p, UCLAMP_MAX);
 		unsigned long pi_util = task_util(pi_task);
-		unsigned long pi_uclamp_min = uclamp_eff_value(pi_task, UCLAMP_MIN);
-		unsigned long pi_uclamp_max = uclamp_eff_value(pi_task, UCLAMP_MAX);
+		unsigned long pi_uclamp_min = uclamp_eff_value_pixel_mod(pi_task, UCLAMP_MIN);
+		unsigned long pi_uclamp_max = uclamp_eff_value_pixel_mod(pi_task, UCLAMP_MAX);
 
 		/*
 		 * Take task's util into consideration first to do full

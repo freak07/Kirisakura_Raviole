@@ -160,6 +160,9 @@ struct vendor_group_list {
 unsigned long apply_dvfs_headroom(unsigned long util, int cpu, bool tapered);
 unsigned long map_util_freq_pixel_mod(unsigned long util, unsigned long freq,
 				      unsigned long cap);
+void rvh_uclamp_eff_get_pixel_mod(void *data, struct task_struct *p, enum uclamp_id clamp_id,
+				  struct uclamp_se *uclamp_max, struct uclamp_se *uclamp_eff,
+				  int *ret);
 
 enum vendor_group_attribute {
 	VTA_TASK_GROUP,
@@ -398,6 +401,23 @@ static inline struct cfs_rq *cfs_rq_of(struct sched_entity *se)
 }
 #endif
 
+static inline unsigned long
+uclamp_eff_value_pixel_mod(struct task_struct *p, enum uclamp_id clamp_id)
+{
+	struct uclamp_se uc_max = uclamp_default[clamp_id];
+	struct uclamp_se uc_eff;
+	int ret;
+
+	/* Task currently refcounted: use back-annotated (effective) value */
+	if (p->uclamp[clamp_id].active)
+		return (unsigned long)p->uclamp[clamp_id].value;
+
+	// This function will always return uc_eff
+	rvh_uclamp_eff_get_pixel_mod(NULL, p, clamp_id, &uc_max, &uc_eff, &ret);
+
+	return (unsigned long)uc_eff.value;
+}
+
 /*****************************************************************************/
 /*                       New Code Section                                    */
 /*****************************************************************************/
@@ -445,7 +465,7 @@ static inline bool get_prefer_idle(struct task_struct *p)
 
 	if (vendor_sched_reduce_prefer_idle && !vp->uclamp_fork_reset)
 		return (vg[vp->group].prefer_idle && p->prio <= DEFAULT_PRIO &&
-			uclamp_eff_value(p, UCLAMP_MAX) == SCHED_CAPACITY_SCALE) ||
+			uclamp_eff_value_pixel_mod(p, UCLAMP_MAX) == SCHED_CAPACITY_SCALE) ||
 			vp->prefer_idle || vbinder->prefer_idle;
 	else
 		return vg[vp->group].prefer_idle || vp->prefer_idle || vbinder->prefer_idle ||
@@ -588,7 +608,7 @@ static inline bool uclamp_can_ignore_uclamp_max(struct rq *rq,
 	 * this is always enforced.
 	 */
 	util = is_rt ? task_util(p) : task_util_est(p);
-	uclamp_max = uclamp_eff_value(p, UCLAMP_MAX);
+	uclamp_max = uclamp_eff_value_pixel_mod(p, UCLAMP_MAX);
 	if (util >= uclamp_max)
 		return false;
 

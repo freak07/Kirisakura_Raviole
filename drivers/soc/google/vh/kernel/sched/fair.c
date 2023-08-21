@@ -126,8 +126,8 @@ static inline u64 cfs_rq_last_update_time(struct cfs_rq *cfs_rq)
 static inline unsigned long uclamp_task_util(struct task_struct *p)
 {
 	return clamp(task_util_est(p),
-		     uclamp_eff_value(p, UCLAMP_MIN),
-		     uclamp_eff_value(p, UCLAMP_MAX));
+		     uclamp_eff_value_pixel_mod(p, UCLAMP_MIN),
+		     uclamp_eff_value_pixel_mod(p, UCLAMP_MAX));
 }
 #else
 static inline unsigned long uclamp_task_util(struct task_struct *p)
@@ -881,8 +881,8 @@ struct vendor_util_group_property *get_vendor_util_group_property(enum utilizati
 
 static bool task_fits_capacity(struct task_struct *p, int cpu,  bool sync_boost)
 {
-	unsigned long uclamp_min = uclamp_eff_value(p, UCLAMP_MIN);
-	unsigned long uclamp_max = uclamp_eff_value(p, UCLAMP_MAX);
+	unsigned long uclamp_min = uclamp_eff_value_pixel_mod(p, UCLAMP_MIN);
+	unsigned long uclamp_max = uclamp_eff_value_pixel_mod(p, UCLAMP_MAX);
 	unsigned long task_util = task_util_est(p);
 
 	if (cpu >= MAX_CAPACITY_CPU)
@@ -1509,8 +1509,10 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 		  candidates = { CPU_BITS_NONE };
 	int i, weight, best_energy_cpu = -1, this_cpu = smp_processor_id();
 	long cur_energy, best_energy = LONG_MAX;
-	unsigned long p_util_min = uclamp_is_used() ? uclamp_eff_value(p, UCLAMP_MIN) : 0;
-	unsigned long p_util_max = uclamp_is_used() ? uclamp_eff_value(p, UCLAMP_MAX) : 1024;
+	unsigned long p_util_min = uclamp_is_used() ?
+				uclamp_eff_value_pixel_mod(p, UCLAMP_MIN) : 0;
+	unsigned long p_util_max = uclamp_is_used() ?
+				uclamp_eff_value_pixel_mod(p, UCLAMP_MAX) : 1024;
 	unsigned long spare_cap, target_max_spare_cap = 0;
 	unsigned long task_importance = ((p->prio <= DEFAULT_PRIO) ? p_util_min : 0) + p_util_max;
 	unsigned int exit_lat, pd_best_exit_lat, best_exit_lat;
@@ -2248,7 +2250,7 @@ void rvh_util_est_update_pixel_mod(void *data, struct cfs_rq *cfs_rq, struct tas
 	// However it may
 	// 1) over grow by the group limit
 	// 2) out of sync when task migrated between cgroups (cfs_rq)
-	ue.enqueued = min((unsigned long)ue.enqueued, uclamp_eff_value(p, UCLAMP_MAX));
+	ue.enqueued = min((unsigned long)ue.enqueued, uclamp_eff_value_pixel_mod(p, UCLAMP_MAX));
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
 	ue.enqueued = min_t(unsigned long, ue.enqueued,
 			cap_scale(get_group_throttle(task_group(p)), scale_cpu));
@@ -2299,7 +2301,7 @@ void rvh_util_est_update_pixel_mod(void *data, struct cfs_rq *cfs_rq, struct tas
 	ue.ewma  += last_ewma_diff;
 	ue.ewma >>= UTIL_EST_WEIGHT_SHIFT;
 #ifdef CONFIG_UCLAMP_TASK
-	ue.ewma = min((unsigned long)ue.ewma, uclamp_eff_value(p, UCLAMP_MAX));
+	ue.ewma = min((unsigned long)ue.ewma, uclamp_eff_value_pixel_mod(p, UCLAMP_MAX));
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
 	ue.ewma = min_t(unsigned long, ue.ewma,
 			cap_scale(get_group_throttle(task_group(p)), scale_cpu));
@@ -2494,8 +2496,8 @@ out:
 		trace_sched_select_task_rq_fair(p, task_util_est(p),
 						sync_wakeup, prefer_prev, sync_boost,
 						get_vendor_group(p),
-						uclamp_eff_value(p, UCLAMP_MIN),
-						uclamp_eff_value(p, UCLAMP_MAX),
+						uclamp_eff_value_pixel_mod(p, UCLAMP_MIN),
+						uclamp_eff_value_pixel_mod(p, UCLAMP_MAX),
 						prev_cpu, *target_cpu);
 }
 
@@ -2578,7 +2580,7 @@ static struct task_struct *detach_important_task(struct rq *src_rq, int dst_cpu)
 
 		if (get_uclamp_fork_reset(p, true))
 			is_ui = true;
-		else if (uclamp_eff_value(p, UCLAMP_MIN) > 0)
+		else if (uclamp_eff_value_pixel_mod(p, UCLAMP_MIN) > 0)
 			is_boost = true;
 
 		if (!is_ui && !is_boost)
