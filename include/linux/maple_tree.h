@@ -222,8 +222,8 @@ struct maple_tree {
 		spinlock_t	ma_lock;
 		lockdep_map_p	ma_external_lock;
 	};
-	void __rcu      *ma_root;
 	unsigned int	ma_flags;
+	void __rcu      *ma_root;
 };
 
 /**
