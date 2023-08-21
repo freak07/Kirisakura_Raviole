@@ -123,6 +123,7 @@ static int init_vendor_task_data(void *data)
 	struct vendor_task_struct *v_tsk;
 	struct task_struct *p, *t;
 
+	rcu_read_lock();
 	for_each_process_thread(p, t) {
 		get_task_struct(t);
 		v_tsk = get_vendor_task_struct(t);
@@ -130,6 +131,7 @@ static int init_vendor_task_data(void *data)
 		v_tsk->orig_prio = t->static_prio;
 		put_task_struct(t);
 	}
+	rcu_read_unlock();
 
 	/* our module can start handling the initialization now */
 	wait_for_init = false;
