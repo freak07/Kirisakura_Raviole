@@ -171,6 +171,9 @@ struct max77759_plat {
 	/* AICL status from hardware */
 	bool aicl_active;
 
+	/* Hold while calling start_toggle and in probe to guard NULL chip->tcpci */
+	struct mutex toggle_lock;
+
 	/* EXT_BST_EN exposed as GPIO */
 #ifdef CONFIG_GPIOLIB
 	struct gpio_chip gpio;
