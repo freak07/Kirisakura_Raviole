@@ -2529,7 +2529,8 @@ void rvh_setscheduler_pixel_mod(void *data, struct task_struct *p)
 
 static struct task_struct *detach_important_task(struct rq *src_rq, int dst_cpu)
 {
-	struct task_struct *p;
+	struct task_struct *p = NULL, *best_task = NULL, *backup = NULL,
+		*backup_ui = NULL, *backup_unfit = NULL;
 
 	lockdep_assert_held(&src_rq->lock);
 
@@ -2537,6 +2538,7 @@ static struct task_struct *detach_important_task(struct rq *src_rq, int dst_cpu)
 
 	list_for_each_entry_reverse(p, &src_rq->cfs_tasks, se.group_node) {
 		struct vendor_task_struct *vp = get_vendor_task_struct(p);
+		bool is_ui = false, is_boost = false;
 
 		if (!cpumask_test_cpu(dst_cpu, p->cpus_ptr))
 			continue;
@@ -2544,22 +2546,66 @@ static struct task_struct *detach_important_task(struct rq *src_rq, int dst_cpu)
 		if (task_running(src_rq, p))
 			continue;
 
-		/* if latency sensitive task and dst cpu fits, pull it */
-		if (vp && vp->uclamp_fork_reset &&
-		    task_fits_capacity(p, dst_cpu, false)) {
-			goto found;
+		if (!get_prefer_idle(p))
+			continue;
+
+		if (vp && vp->uclamp_fork_reset)
+			is_ui = true;
+		else if (uclamp_eff_value(p, UCLAMP_MIN) > 0)
+			is_boost = true;
+
+		if (!is_ui && !is_boost)
+			continue;
+
+		if (task_fits_capacity(p, dst_cpu, false)) {
+			if (!task_fits_capacity(p, src_rq->cpu, false)) {
+				// if task is fit for new cpu but not old cpu
+				// stop if we found an ADPF UI task
+				// use it as backup if we found a boost task
+				if (is_ui) {
+					best_task = p;
+					break;
+				}
+
+				backup = p;
+			} else {
+				if (is_ui) {
+					backup_ui = p;
+					continue;
+				}
+
+				if (!backup)
+					backup = p;
+			}
+		} else {
+			// if new idle is not capable, use it as backup but not for UI task.
+			if (!is_ui)
+				backup_unfit = p;
 		}
 	}
 
-	p = NULL;
-	goto out;
+	if (best_task)
+		p = best_task;
+	else if (backup_ui)
+		p = backup_ui;
+	else if (backup)
+		p = backup;
+	else if (backup_unfit)
+		p = backup_unfit;
+	else
+		p = NULL;
 
-found:
-	/* detach_task */
-	deactivate_task(src_rq, p, DEQUEUE_NOCLOCK);
-	set_task_cpu(p, dst_cpu);
+	if (p) {
+		/* detach_task */
+		deactivate_task(src_rq, p, DEQUEUE_NOCLOCK);
+		set_task_cpu(p, dst_cpu);
 
-out:
+		if (backup_unfit)
+			cpu_rq(dst_cpu)->misfit_task_load = p->se.avg.load_avg;
+		else
+			cpu_rq(dst_cpu)->misfit_task_load = 0;
+	}
+
 	rcu_read_unlock();
 	return p;
 }
@@ -2583,7 +2629,6 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 	if (SCHED_WARN_ON(atomic_read(&this_vrq->num_adpf_tasks)))
 		atomic_set(&this_vrq->num_adpf_tasks, 0);
 
-	this_rq->misfit_task_load = 0;
 
 	if (!vendor_sched_idle_balancer)
 		return;
