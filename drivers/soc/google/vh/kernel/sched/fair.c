@@ -2610,6 +2610,8 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 
 	this_cpu = this_rq->cpu;
 	for_each_cpu(cpu, cpu_active_mask) {
+		int cpu_importnace = READ_ONCE(cpu_rq(cpu)->uclamp[UCLAMP_MIN].value) +
+			READ_ONCE(cpu_rq(cpu)->uclamp[UCLAMP_MAX].value);
 
 		if (cpu == this_cpu)
 			continue;
@@ -2645,33 +2647,59 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 			continue;
 		}
 
+		if (cpu_is_idle(cpu)) {
+			rq_unlock_irqrestore(src_rq, &src_rf);
+			continue;
+		}
+
+		/* src_cpu is just waken up by tasks */
+		if (src_rq->curr == src_rq->idle) {
+			rq_unlock_irqrestore(src_rq, &src_rf);
+			continue;
+		}
+
+		/* we assume rt task will release cpu soon */
+		if (src_rq->curr->prio < MAX_RT_PRIO) {
+			rq_unlock_irqrestore(src_rq, &src_rf);
+			continue;
+		}
+
+		if (cpu_importnace <= DEFAULT_IMPRATANCE_THRESHOLD || !src_rq->cfs.nr_running) {
+			rq_unlock_irqrestore(src_rq, &src_rf);
+			continue;
+		}
+
 		p = detach_important_task(src_rq, this_cpu);
 
 		rq_unlock_irqrestore(src_rq, &src_rf);
 
 		if (p) {
-			*pulled_task = 1;
-			*done = 1;
 			attach_one_task(this_rq, p);
 			break;
 		}
 	}
 
-	raw_spin_lock(&this_rq->__lock);
-
-	/* If we did nothing, let GKI do the work */
-	if (!*done)
-		goto out;
+	raw_spin_lock(&this_rq->lock);
+	/*
+	 * While browsing the domains, we released the rq lock, a task could
+	 * have been enqueued in the meantime. Since we're not going idle,
+	 * pretend we pulled a task.
+	 */
+	if (this_rq->cfs.h_nr_running && !*pulled_task)
+		*pulled_task = 1;
 
 	/* Is there a task of a high priority class? */
 	if (this_rq->nr_running != this_rq->cfs.h_nr_running)
 		*pulled_task = -1;
 
-	this_rq->idle_stamp = 0;
+	if (*pulled_task)
+		this_rq->idle_stamp = 0;
 
-	/* TODO: need implement update_blocked_averages */
+	if (*pulled_task != 0) {
+		*done = 1;
+		/* TODO: need implement update_blocked_averages */
+	}
 
-out:
 	rq_repin_lock(this_rq, rf);
 
 	return;
