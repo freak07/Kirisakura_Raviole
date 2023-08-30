@@ -35,6 +35,7 @@ extern int vendor_sched_ug_bg_auto_prio;
 extern unsigned int vendor_sched_util_post_init_scale;
 extern bool vendor_sched_npi_packing;
 extern bool vendor_sched_idle_balancer;
+extern bool vendor_sched_boost_adpf_prio;
 
 static unsigned int early_boot_boost_uclamp_min = 650;
 module_param(early_boot_boost_uclamp_min, uint, 0644);
@@ -2484,6 +2485,9 @@ void rvh_set_user_nice_pixel_mod(void *data, struct task_struct *p, long *nice, 
 	struct rq_flags rf;
 	struct rq *rq;
 
+	if (!vendor_sched_boost_adpf_prio)
+		return;
+
 	rq = task_rq_lock(p, &rf);
 
 	if (p->prio < MAX_RT_PRIO) {
@@ -2510,6 +2514,9 @@ void rvh_setscheduler_pixel_mod(void *data, struct task_struct *p)
 {
 	struct vendor_task_struct *vp;
 	unsigned long flags;
+
+	if (!vendor_sched_boost_adpf_prio)
+		return;
 
 	if (p->prio < MAX_RT_PRIO)
 		return;
