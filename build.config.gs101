@@ -48,6 +48,7 @@ android/abi_gki_aarch64_db845c
 android/abi_gki_aarch64_hikey960
 android/abi_gki_aarch64_rockchip
 android/abi_gki_aarch64_rtkstb
+android/abi_gki_aarch64_telechips
 "
 TRIM_NONLISTED_KMI=${TRIM_NONLISTED_KMI:-1}
 KMI_SYMBOL_LIST_ADD_ONLY=1
