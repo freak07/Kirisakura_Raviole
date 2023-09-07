@@ -1591,14 +1591,16 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 			}
 
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
-			trace_sched_cpu_util_cfs(i, is_idle, exit_lat, cpu_importance, cpu_util(i),
-						 capacity, wake_util, group_capacity,
-						 wake_group_util, spare_cap, task_fits,
-						 group_overutilize);
+			if (trace_sched_cpu_util_cfs_enabled())
+				trace_sched_cpu_util_cfs(i, is_idle, exit_lat, cpu_importance,
+							 cpu_util(i), capacity, wake_util,
+							 group_capacity, wake_group_util, spare_cap,
+							 task_fits, group_overutilize);
 #else
-			trace_sched_cpu_util_cfs(i, is_idle, exit_lat, cpu_importance, cpu_util(i),
-						 capacity, wake_util, capacity,	wake_util,
-						 spare_cap, task_fits, false);
+			if (trace_sched_cpu_util_cfs_enabled())
+				trace_sched_cpu_util_cfs(i, is_idle, exit_lat, cpu_importance,
+							 cpu_util(i), capacity, wake_util, capacity,
+							 wake_util, spare_cap, task_fits, false);
 #endif
 
 
@@ -2490,12 +2492,13 @@ void rvh_select_task_rq_fair_pixel_mod(void *data, struct task_struct *p, int pr
 	}
 
 out:
-	trace_sched_select_task_rq_fair(p, task_util_est(p),
-					sync_wakeup, prefer_prev, sync_boost,
-					get_vendor_group(p),
-					uclamp_eff_value(p, UCLAMP_MIN),
-					uclamp_eff_value(p, UCLAMP_MAX),
-					prev_cpu, *target_cpu);
+	if (trace_sched_select_task_rq_fair_enabled())
+		trace_sched_select_task_rq_fair(p, task_util_est(p),
+						sync_wakeup, prefer_prev, sync_boost,
+						get_vendor_group(p),
+						uclamp_eff_value(p, UCLAMP_MIN),
+						uclamp_eff_value(p, UCLAMP_MAX),
+						prev_cpu, *target_cpu);
 }
 
 void rvh_set_user_nice_pixel_mod(void *data, struct task_struct *p, long *nice, bool *allowed)

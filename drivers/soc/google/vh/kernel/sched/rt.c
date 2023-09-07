@@ -224,10 +224,12 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 	rcu_read_unlock();
 
 out:
-	trace_sched_find_least_loaded_cpu(p, get_vendor_group(p), uclamp_eff_value(p, UCLAMP_MIN),
-					  uclamp_eff_value(p, UCLAMP_MAX), get_prefer_high_cap(p),
-					  prev_cpu, best_cpu, *lowest_mask->bits,
-					  *backup_mask->bits);
+	if (trace_sched_find_least_loaded_cpu_enabled())
+		trace_sched_find_least_loaded_cpu(p, get_vendor_group(p),
+						  uclamp_eff_value(p, UCLAMP_MIN),
+						  uclamp_eff_value(p, UCLAMP_MAX),
+						  get_prefer_high_cap(p), prev_cpu, best_cpu,
+						  *lowest_mask->bits,*backup_mask->bits);
 
 	return best_cpu;
 }
