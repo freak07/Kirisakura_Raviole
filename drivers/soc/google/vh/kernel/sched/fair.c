@@ -1529,7 +1529,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 	int most_spare_cap_cpu = -1, unimportant_max_spare_cap_cpu = -1, idle_max_cap_cpu = -1;
 	struct cpuidle_state *idle_state;
 	unsigned long unimportant_max_spare_cap = 0, idle_max_cap = 0;
-	bool prefer_fit = prefer_idle && get_vendor_task_struct(p)->uclamp_fork_reset;
+	bool prefer_fit = prefer_idle && get_uclamp_fork_reset(p, true);
 	const cpumask_t *preferred_idle_mask;
 
 	rd = cpu_rq(this_cpu)->rd;
@@ -2393,11 +2393,8 @@ void vh_sched_setscheduler_uclamp_pixel_mod(void *data, struct task_struct *tsk,
 static inline void uclamp_fork_pixel_mod(struct task_struct *p, struct task_struct *orig)
 {
 	enum uclamp_id clamp_id;
-	struct vendor_task_struct *v_orig;
 
-	v_orig = get_vendor_task_struct(orig);
-
-	if (likely(!v_orig->uclamp_fork_reset))
+	if (likely(!get_uclamp_fork_reset(p, false)))
 		return;
 
 	for_each_clamp_id(clamp_id) {
@@ -2519,7 +2516,7 @@ void rvh_set_user_nice_pixel_mod(void *data, struct task_struct *p, long *nice, 
 	}
 
 	vp = get_vendor_task_struct(p);
-	if (vp->uclamp_fork_reset) {
+	if (get_uclamp_fork_reset(p, false)) {
 		raw_spin_lock_irqsave(&vp->lock, flags);
 		p->normal_prio = p->static_prio = vp->orig_prio = NICE_TO_PRIO(*nice);
 		raw_spin_unlock_irqrestore(&vp->lock, flags);
@@ -2545,7 +2542,7 @@ void rvh_setscheduler_pixel_mod(void *data, struct task_struct *p)
 		return;
 
 	vp = get_vendor_task_struct(p);
-	if (vp->uclamp_fork_reset) {
+	if (get_uclamp_fork_reset(p, false)) {
 		raw_spin_lock_irqsave(&vp->lock, flags);
 		vp->orig_prio = p->static_prio;
 		raw_spin_unlock_irqrestore(&vp->lock, flags);
@@ -2567,7 +2564,6 @@ static struct task_struct *detach_important_task(struct rq *src_rq, int dst_cpu)
 	rcu_read_lock();
 
 	list_for_each_entry_reverse(p, &src_rq->cfs_tasks, se.group_node) {
-		struct vendor_task_struct *vp = get_vendor_task_struct(p);
 		bool is_ui = false, is_boost = false;
 
 		if (!cpumask_test_cpu(dst_cpu, p->cpus_ptr))
@@ -2579,7 +2575,7 @@ static struct task_struct *detach_important_task(struct rq *src_rq, int dst_cpu)
 		if (!get_prefer_idle(p))
 			continue;
 
-		if (vp && vp->uclamp_fork_reset)
+		if (get_uclamp_fork_reset(p, true))
 			is_ui = true;
 		else if (uclamp_eff_value(p, UCLAMP_MIN) > 0)
 			is_boost = true;
@@ -2780,13 +2776,12 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 	return;
 }
 
-void rvh_can_migrate_task_pixel_mod(void *data, struct task_struct *mp,
+void rvh_can_migrate_task_pixel_mod(void *data, struct task_struct *p,
 	int dst_cpu, int *can_migrate)
 {
-	struct vendor_task_struct *mvp = get_vendor_task_struct(mp);
 	struct vendor_rq_struct *vrq = get_vendor_rq_struct(cpu_rq(dst_cpu));
 
-	if (!mvp->uclamp_fork_reset || !get_prefer_idle(mp))
+	if (!get_uclamp_fork_reset(p, true) || !get_prefer_idle(p))
 		return;
 
 	lockdep_assert_held(&cpu_rq(dst_cpu)->lock);
@@ -2832,11 +2827,10 @@ void rvh_update_blocked_fair_pixel_mod(void *data, struct rq *rq)
 
 void rvh_enqueue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_struct *p, int flags)
 {
-	struct vendor_task_struct *vp = get_vendor_task_struct(p);
 	struct vendor_rq_struct *vrq = get_vendor_rq_struct(rq);
 	bool force_cpufreq_update = false;
 
-	if (vp->uclamp_fork_reset) {
+	if (get_uclamp_fork_reset(p, true)) {
 		atomic_inc(&vrq->num_adpf_tasks);
 
 		/*
@@ -2869,10 +2863,9 @@ void rvh_enqueue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_stru
 
 void rvh_dequeue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_struct *p, int flags)
 {
-	struct vendor_task_struct *vp = get_vendor_task_struct(p);
 	struct vendor_rq_struct *vrq = get_vendor_rq_struct(rq);
 
-	if (vp->uclamp_fork_reset)
+	if (get_uclamp_fork_reset(p, true))
 		atomic_dec(&vrq->num_adpf_tasks);
 
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
