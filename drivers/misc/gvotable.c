@@ -99,10 +99,12 @@ static void gvotable_lock_election(struct gvotable_election *el)
 	int ret;
 
 	ret = mutex_trylock(&el->cb_lock);
-	if (WARN(ret == 0 && el->owner == get_current(),
-		 "%s cannot call this function from the callback\n",
-		 el->has_name ? el->name : "<>"))
+	if (!ret) {
+		WARN(el->owner == get_current(),
+		     "%s cannot call this function from the callback\n",
+		     el->has_name ? el->name : "<>");
 		mutex_lock(&el->cb_lock);
+	}
 
 	el->owner = get_current();
 	gvotable_lock_result(el);
