@@ -252,7 +252,11 @@ static unsigned long dbg_snapshot_suspend(const char *log, struct device *dev,
 		(ARRAY_SIZE(dss_log->suspend) - 1);
 
 	dss_log->suspend[i].time = local_clock();
-	dss_log->suspend[i].log = log ? log : NULL;
+	if (log && dev && dev->driver && dev->driver->name && strlen(dev->driver->name)) {
+		dss_log->suspend[i].log = dev->driver->name;
+	} else {
+		dss_log->suspend[i].log = log;
+	}
 	dss_log->suspend[i].event = event;
 	dss_log->suspend[i].dev = dev ? dev_name(dev) : "";
 	dss_log->suspend[i].core = raw_smp_processor_id();
