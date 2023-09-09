@@ -744,6 +744,7 @@ void exynos5_i2c_set_timeout(void)
 {
 	WRITE_ONCE(curr_timeout, 100);
 }
+EXPORT_SYMBOL_GPL(exynos5_i2c_set_timeout);
 
 static int exynos5_i2c_xfer_msg(struct exynos5_i2c *i2c,
 				struct i2c_msg *msgs, int stop)
