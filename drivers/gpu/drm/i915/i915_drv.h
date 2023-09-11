@@ -589,7 +589,7 @@ struct i915_gem_mm {
 
 	struct notifier_block oom_notifier;
 	struct notifier_block vmap_notifier;
-	struct shrinker shrinker;
+	struct shrinker *shrinker;
 
 	/**
 	 * Workqueue to fault in userptr pages, flushed by the execbuf
