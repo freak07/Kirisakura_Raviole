@@ -225,10 +225,6 @@ static int exynos_init_freq_table(struct exynos_devfreq_data *data)
 {
 	int i, ret;
 	u32 freq, volt;
-	static bool memlat_opp_table_initialized;
-
-	if (memlat_opp_table_initialized)
-		return 0;
 
 	for (i = 0; i < data->max_state; i++) {
 		freq = data->opp_list[i].freq;
@@ -253,7 +249,6 @@ static int exynos_init_freq_table(struct exynos_devfreq_data *data)
 		return ret;
 	}
 
-	memlat_opp_table_initialized = true;
 	return 0;
 }
 
@@ -307,6 +302,7 @@ static int gs_memlat_devfreq_probe(struct platform_device *pdev)
 		devfreq_add_device(data->dev, &data->devfreq_profile,
 				   data->governor_name, data->governor_data);
 	if (IS_ERR(data->devfreq)) {
+		dev_err(data->dev, "failed devfreq device added\n");
 		ret = -EPROBE_DEFER;
 		goto err_devfreq;
 	}
