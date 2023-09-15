@@ -2069,7 +2069,8 @@ uclamp_tg_restrict_pixel_mod(struct task_struct *p, enum uclamp_id clamp_id)
 	tg_max = task_group(p)->uclamp[UCLAMP_MAX].value;
 	// Vendor group restriction
 	vnd_min = vg[vp->group].uc_req[UCLAMP_MIN].value;
-	vnd_max = vg[vp->group].uc_req[UCLAMP_MAX].value;
+	vnd_max = get_uclamp_fork_reset(p, true) ?
+		uclamp_none(UCLAMP_MAX) : vg[vp->group].uc_req[UCLAMP_MAX].value;
 	if (vg[vp->group].auto_uclamp_max) {
 		vp->auto_uclamp_max_flags |= AUTO_UCLAMP_MAX_FLAG_GROUP;
 		vnd_max = sched_auto_uclamp_max[task_cpu(p)];
