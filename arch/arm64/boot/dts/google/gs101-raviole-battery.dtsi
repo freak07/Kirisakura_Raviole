@@ -63,8 +63,8 @@
 
 				google,bhi-algo-ver = <1>;
 				google,bhi-fcn-count = <3>;
-				google,bhi-status-marginal = <80>;
-				google,bhi-status-need-rep = <70>;
+				google,bhi-status-marginal = <79>;
+				google,bhi-status-need-rep = <79>;
 				google,bhi-cycle-grace = <200>;
 
 				#thermal-sensor-cells = <0>;
