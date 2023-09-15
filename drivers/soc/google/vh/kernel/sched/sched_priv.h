@@ -448,7 +448,8 @@ static inline bool get_prefer_idle(struct task_struct *p)
 			uclamp_eff_value(p, UCLAMP_MAX) == SCHED_CAPACITY_SCALE) ||
 			vp->prefer_idle || vbinder->prefer_idle;
 	else
-		return vg[vp->group].prefer_idle || vp->prefer_idle || vbinder->prefer_idle;
+		return vg[vp->group].prefer_idle || vp->prefer_idle || vbinder->prefer_idle ||
+		       vp->uclamp_fork_reset;
 }
 
 static inline void init_vendor_task_struct(struct vendor_task_struct *v_tsk)
