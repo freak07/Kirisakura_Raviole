@@ -49,6 +49,8 @@
 	#size-cells = <1>;
 
 	aliases {
+		i2c0 = &acpm_mfd_bus0;
+		i2c1 = &acpm_mfd_bus1;
 		pinctrl0 = &pinctrl_0;
 		pinctrl1 = &pinctrl_1;
 		pinctrl2 = &pinctrl_2;

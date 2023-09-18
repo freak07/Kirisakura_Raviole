@@ -8,21 +8,16 @@
 
 / {
 	aliases {
-		hsi2c0 = &hsi2c_0;
-		hsi2c1 = &hsi2c_1;
-		hsi2c2 = &hsi2c_2;
-		hsi2c3 = &hsi2c_3;
-		hsi2c4 = &hsi2c_4;
-		hsi2c5 = &hsi2c_5;
-		hsi2c6 = &hsi2c_6;
-		hsi2c7 = &hsi2c_7;
-		hsi2c8 = &hsi2c_8;
-		hsi2c9 = &hsi2c_9;
-		hsi2c10 = &hsi2c_10;
-		hsi2c11 = &hsi2c_11;
-		hsi2c12 = &hsi2c_12;
-		hsi2c13 = &hsi2c_13;
-		hsi2c14 = &hsi2c_14;
+		/* i2c0 and i2c1 are assigned to the acpm_mfd_busses. */
+		i2c2 = &hsi2c_1;
+		i2c3 = &hsi2c_2;
+		i2c4 = &hsi2c_3;
+		i2c5 = &hsi2c_4;
+		i2c6 = &hsi2c_7;
+		i2c7 = &hsi2c_8;
+		i2c8 = &hsi2c_12;
+		i2c9 = &hsi2c_0; /* i2c9 is used for slider's WC_BUS hack */
+
 		spi0 = &spi_0;
 		spi1 = &spi_1;
 		spi2 = &spi_2;
