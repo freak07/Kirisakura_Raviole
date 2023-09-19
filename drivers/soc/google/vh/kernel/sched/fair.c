@@ -2834,14 +2834,8 @@ void rvh_enqueue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_stru
 	struct vendor_rq_struct *vrq = get_vendor_rq_struct(rq);
 	bool force_cpufreq_update = false;
 
-	if (get_uclamp_fork_reset(p, true)) {
-		atomic_inc(&vrq->num_adpf_tasks);
-
-		/*
-		 * Tell the scheduler that this tasks really wants to run next
-		 */
-		set_next_buddy(&p->se);
-	}
+	if (get_uclamp_fork_reset(p, true))
+		inc_adpf_counter(p, &vrq->num_adpf_tasks);
 
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	if (likely(sched_feat(UTIL_EST))) {
@@ -2870,7 +2864,7 @@ void rvh_dequeue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_stru
 	struct vendor_rq_struct *vrq = get_vendor_rq_struct(rq);
 
 	if (get_uclamp_fork_reset(p, true))
-		atomic_dec(&vrq->num_adpf_tasks);
+		dec_adpf_counter(p, &vrq->num_adpf_tasks);
 
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	if (likely(sched_feat(UTIL_EST))) {
