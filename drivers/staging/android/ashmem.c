@@ -526,15 +526,7 @@ ashmem_shrink_count(struct shrinker *shrink, struct shrink_control *sc)
 	return lru_count;
 }
 
-static struct shrinker ashmem_shrinker = {
-	.count_objects = ashmem_shrink_count,
-	.scan_objects = ashmem_shrink_scan,
-	/*
-	 * XXX (dchinner): I wish people would comment on why they need on
-	 * significant changes to the default value here
-	 */
-	.seeks = DEFAULT_SEEKS * 4,
-};
+struct shrinker *ashmem_shrinker;
 
 static int set_prot_mask(struct ashmem_area *asma, unsigned long prot)
 {
@@ -856,8 +848,8 @@ static long ashmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				.gfp_mask = GFP_KERNEL,
 				.nr_to_scan = LONG_MAX,
 			};
-			ret = ashmem_shrink_count(&ashmem_shrinker, &sc);
-			ashmem_shrink_scan(&ashmem_shrinker, &sc);
+			ret = ashmem_shrink_count(ashmem_shrinker, &sc);
+			ashmem_shrink_scan(ashmem_shrinker, &sc);
 		}
 		break;
 	case ASHMEM_GET_FILE_ID:
@@ -974,11 +966,17 @@ static int __init ashmem_init(void)
 		goto out_free2;
 	}
 
-	ret = register_shrinker(&ashmem_shrinker);
-	if (ret) {
+	ashmem_shrinker = shrinker_alloc(0, "ashmem-shrinker");
+	if (!ashmem_shrinker) {
 		pr_err("failed to register shrinker!\n");
 		goto out_demisc;
 	}
+	
+	ashmem_shrinker->count_objects = ashmem_shrink_count;
+	ashmem_shrinker->scan_objects = ashmem_shrink_scan;
+	ashmem_shrinker->seeks = DEFAULT_SEEKS * 4;
+
+	shrinker_register(ashmem_shrinker);
 
 	pr_info("initialized\n");
 
