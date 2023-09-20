@@ -346,12 +346,12 @@ void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 	/* when entring L1.2, ERIO CLK gating */
 	val = readl(exynos_pcie->phy_pcs_base + 0x008);
 	val &= ~((1 << 4) | (1 << 5));
-	val |= ((1 << 4) | (1 << 5));
+	val |= (1 << 4);
 	writel(val, phy_pcs_base_regs + 0x008);
 	if (num_lanes == 2) {
 		val = readl(exynos_pcie->phy_pcs_base + 0x808);
 		val &= ~((1 << 4) | (1 << 5));
-		val |= ((1 << 4) | (1 << 5));
+		val |= (1 << 4);
 		writel(val, phy_pcs_base_regs + 0x808);
 	}
 
