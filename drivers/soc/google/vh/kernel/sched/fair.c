@@ -91,7 +91,7 @@ static void attach_task(struct rq *rq, struct task_struct *p)
  * attach_one_task() -- attaches the task returned from detach_one_task() to
  * its new rq.
  */
-static void __maybe_unused attach_one_task(struct rq *rq, struct task_struct *p)
+static void attach_one_task(struct rq *rq, struct task_struct *p)
 {
 	struct rq_flags rf;
 
@@ -2674,6 +2674,15 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 	if (!cpu_active(this_cpu))
 		return;
 
+	/*
+	 * This is OK, because current is on_cpu, which avoids it being picked
+	 * for load-balance and preemption/IRQs are still disabled avoiding
+	 * further scheduler activity on it and we're being very careful to
+	 * re-start the picking loop.
+	 */
+	rq_unpin_lock(this_rq, rf);
+	raw_spin_rq_unlock(this_rq);
+
 	this_cpu = this_rq->cpu;
 	for_each_cpu(cpu, cpu_active_mask) {
 
@@ -2718,26 +2727,30 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 		if (p) {
 			*pulled_task = 1;
 			*done = 1;
-			update_rq_clock(this_rq);
-			attach_task(this_rq, p);
+			attach_one_task(this_rq, p);
 			local_irq_restore(src_rf.flags);
-			goto done;
+			break;
 		}
 
 		local_irq_restore(src_rf.flags);
 	}
 
-	return;
+	raw_spin_rq_lock(this_rq);
 
-done:
+	/* If we did nothing, let GKI do the work */
+	if (!*done)
+		goto out;
+
 	/* Is there a task of a high priority class? */
 	if (this_rq->nr_running != this_rq->cfs.h_nr_running)
 		*pulled_task = -1;
 
 	this_rq->idle_stamp = 0;
 
-	/* TODO: need implement update_blocked_averages which also requires
-	 * releasing the this_rq lock */
+	/* TODO: need implement update_blocked_averages */
+
+out:
+	rq_repin_lock(this_rq, rf);
 
 	return;
 }
