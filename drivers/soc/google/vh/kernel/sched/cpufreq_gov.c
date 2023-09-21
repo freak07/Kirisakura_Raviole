@@ -970,8 +970,6 @@ void pmu_poll_disable(void)
 		pmu_poll_cancelling = true;
 		spin_unlock(&pmu_poll_enable_lock);
 		kthread_cancel_work_sync(&pmu_work);
-		spin_lock(&pmu_poll_enable_lock);
-		pmu_poll_cancelling = false;
 
 		while (cpu < CPU_NUM) {
 			policy = cpufreq_cpu_get(cpu);
@@ -988,6 +986,9 @@ void pmu_poll_disable(void)
 			cpu = cpumask_last(policy->related_cpus) + 1;
 			cpufreq_cpu_put(policy);
 		}
+
+		spin_lock(&pmu_poll_enable_lock);
+		pmu_poll_cancelling = false;
 	}
 
 	spin_unlock(&pmu_poll_enable_lock);
@@ -1032,18 +1033,23 @@ static void pmu_limit_work(struct kthread_work *work)
 		raw_spin_unlock_irqrestore(&sg_policy->update_lock, flags);
 
 		for_each_cpu(ccpu, policy->cpus) {
+			if (!cpu_online(ccpu)) {
+				pr_info_ratelimited("cpu %d is offline, pmu read fail\n", ccpu);
+				goto update_next_max_freq;
+			}
+
 			ret = get_ev_data(ccpu, INST_EV, CYC_EV,
 					  STALL_EV, L3D_CACHE_REFILL_EV, &inst, &cyc,
 					  &stall, &cachemiss);
 
 			if (ret) {
 				sg_policy->tunables->pmu_limit_enable = false;
-				pr_err("ev_data read fail\n");
+				pr_err_ratelimited("pmu ev_data read fail\n");
 				goto update_next_max_freq;
 			}
 
 			if (inst == 0 || cyc == 0) {
-				pr_err("error in pmu read for cpu %d\n", ccpu);
+				pr_err_ratelimited("pmu read fail for cpu %d\n", ccpu);
 				goto update_next_max_freq;
 			}
 
