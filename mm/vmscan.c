@@ -4556,7 +4556,7 @@ static bool sort_page(struct lruvec *lruvec, struct page *page, struct scan_cont
 	}
 
 	/* ineligible */
-	if (zone > sc->reclaim_idx) {
+	if (zone > sc->reclaim_idx || skip_cma(page, sc)) {
 		gen = page_inc_gen(lruvec, page, false);
 		list_move_tail(&page->lru, &lrugen->lists[gen][type][zone]);
 		return true;
@@ -5853,14 +5853,13 @@ static inline bool should_continue_reclaim(struct pglist_data *pgdat,
 		if (!managed_zone(zone))
 			continue;
 
-		switch (compaction_suitable(zone, sc->order, 0, sc->reclaim_idx)) {
-		case COMPACT_SUCCESS:
-		case COMPACT_CONTINUE:
+		/* Allocation can already succeed, nothing to do */
+		if (zone_watermark_ok(zone, sc->order, min_wmark_pages(zone),
+				      sc->reclaim_idx, 0))
 			return false;
-		default:
-			/* check next zone */
-			;
-		}
+
+		if (compaction_suitable(zone, sc->order, sc->reclaim_idx))
+			return false;
 	}
 
 	/*
@@ -6051,14 +6050,14 @@ again:
 static inline bool compaction_ready(struct zone *zone, struct scan_control *sc)
 {
 	unsigned long watermark;
-	enum compact_result suitable;
 
-	suitable = compaction_suitable(zone, sc->order, 0, sc->reclaim_idx);
-	if (suitable == COMPACT_SUCCESS)
-		/* Allocation should succeed already. Don't reclaim. */
+	/* Allocation can already succeed, nothing to do */
+	if (zone_watermark_ok(zone, sc->order, min_wmark_pages(zone),
+			      sc->reclaim_idx, 0))
 		return true;
-	if (suitable == COMPACT_SKIPPED)
-		/* Compaction cannot yet proceed. Do reclaim. */
+
+	/* Compaction cannot yet proceed. Do reclaim. */
+	if (!compaction_suitable(zone, sc->order, sc->reclaim_idx))
 		return false;
 
 	/*

@@ -356,6 +356,8 @@ struct trace_array {
 	struct list_head	events;
 	struct trace_event_file *trace_marker_file;
 	cpumask_var_t		tracing_cpumask; /* only trace on set CPUs */
+	/* one per_cpu trace_pipe can be opened by only one user */
+	cpumask_var_t		pipe_cpumask;
 	int			ref;
 	int			trace_ref;
 #ifdef CONFIG_FUNCTION_TRACER
@@ -757,6 +759,8 @@ struct trace_entry *trace_find_next_entry(struct trace_iterator *iter,
 
 void trace_buffer_unlock_commit_nostack(struct trace_buffer *buffer,
 					struct ring_buffer_event *event);
+
+const char *trace_event_format(struct trace_iterator *iter, const char *fmt);
 
 int trace_empty(struct trace_iterator *iter);
 
