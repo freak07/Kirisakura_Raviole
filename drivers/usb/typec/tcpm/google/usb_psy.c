@@ -46,13 +46,14 @@
 #define ERR_RETRY_COUNT    3
 
 /*
- * Fall back to DCP when neither SDP_*_CONN_UA nor SDP_*_CONFIG_UA is signalled.
- * SDP_ENUMERATION_TIMEOUT_FIRST_CONNECT_MS is for first SDP connect after boot.
- * This is done to accommodate enumeration delay during boot.
- * SDP_ENUMERATION_TIMEOUT_MS otherwise.
+ * Fall back to DCP when neither SDP_*_CONN_UA nor SDP_*_CONFIG_UA is signalled
+ * for a certain timeout value.
+ * SDP_ENUMERATION_TIMEOUT_FIRST_CONNECT_MS timeout is used for first SDP connect after boot
+ * (till update_sdp_enum_timeout sysfs attribute is not written to).
+ * SDP_ENUMERATION_TIMEOUT_MS is used otherwise.
  */
-#define SDP_ENUMERATION_TIMEOUT_MS     5000
-#define SDP_ENUMERATION_TIMEOUT_FIRST_CONNECT_MS 60000
+#define SDP_ENUMERATION_TIMEOUT_MS			5000
+#define SDP_ENUMERATION_TIMEOUT_FIRST_CONNECT_MS	600000
 
 /* Signal wakeup event to allow userspace to process the update */
 #define DCP_UPDATE_MS			10000
@@ -127,8 +128,11 @@ struct usb_psy_data {
 	struct alarm sdp_timeout_alarm;
 	/* Bottom half for sdp alarm */
 	struct kthread_work sdp_timeout_work;
-	/* first SDP timeout after boot */
-	bool first_sdp_timeout;
+	/*
+	 * Use SDP_ENUMERATION_TIMEOUT_MS as SDP enumeration timeout value when
+	 * update_sdp_enum_timeout is true, else use SDP_ENUMERATION_TIMEOUT_FIRST_CONNECT_MS.
+	 */
+	bool update_sdp_enum_timeout;
 };
 
 void init_vote(struct usb_vote *vote, const char *reason,
@@ -465,19 +469,22 @@ static int usb_psy_data_set_prop(struct power_supply *psy,
 	return 0;
 }
 
-void usb_psy_start_sdp_timeout(void *usb_psy)
+void usb_psy_start_sdp_timeout(void *usb)
 {
-	struct usb_psy_data *usb = usb_psy;
+	struct usb_psy_data *usb_psy = usb;
 
-	if (!usb)
+	if (!usb_psy)
 		return;
 
-	if (usb->usb_type == POWER_SUPPLY_USB_TYPE_SDP) {
-		alarm_start_relative(&usb->sdp_timeout_alarm,
-				     ms_to_ktime(usb->first_sdp_timeout ?
-				     SDP_ENUMERATION_TIMEOUT_FIRST_CONNECT_MS :
-				     SDP_ENUMERATION_TIMEOUT_MS));
-		usb->first_sdp_timeout = false;
+	if (usb_psy->usb_type == POWER_SUPPLY_USB_TYPE_SDP) {
+		logbuffer_logk(usb_psy->log, LOGLEVEL_INFO, "Starting alarm with expiry %lu\n",
+			       usb_psy->update_sdp_enum_timeout ?
+					SDP_ENUMERATION_TIMEOUT_MS :
+					SDP_ENUMERATION_TIMEOUT_FIRST_CONNECT_MS);
+		alarm_start_relative(&usb_psy->sdp_timeout_alarm,
+				     ms_to_ktime(usb_psy->update_sdp_enum_timeout ?
+					SDP_ENUMERATION_TIMEOUT_MS :
+					SDP_ENUMERATION_TIMEOUT_FIRST_CONNECT_MS));
 	}
 }
 EXPORT_SYMBOL_GPL(usb_psy_start_sdp_timeout);
@@ -733,6 +740,53 @@ static void sdp_icl_work_item(struct kthread_work *work)
 	set_sdp_current_limit(usb, usb->sdp_input_current_limit);
 }
 
+static ssize_t update_sdp_enum_timeout_show(struct device *dev, struct device_attribute *attr,
+					    char *buf )
+{
+	struct max77759_plat *plat;
+	struct usb_psy_data *usb;
+
+	plat = i2c_get_clientdata(to_i2c_client(dev));
+	if (!plat)
+		return -EAGAIN;
+
+	usb = plat->usb_psy_data;
+	if (!usb)
+		return -EAGAIN;
+	return sysfs_emit(buf, "%u\n", usb->update_sdp_enum_timeout);
+}
+
+static ssize_t update_sdp_enum_timeout_store(struct device *dev, struct device_attribute *attr,
+				     const char *buf, size_t count)
+{
+	struct max77759_plat *plat;
+	struct usb_psy_data *usb;
+
+	plat = i2c_get_clientdata(to_i2c_client(dev));
+	if (!plat)
+		return -EAGAIN;
+
+	usb = plat->usb_psy_data;
+	if (!usb)
+		return -EAGAIN;
+
+	if (usb->update_sdp_enum_timeout)
+		goto done;
+
+	usb->update_sdp_enum_timeout = true;
+
+	/* Cancel previous alarm if set and re-program with new value. */
+	if (alarm_try_to_cancel(&usb->sdp_timeout_alarm) <= 0)
+		goto done;
+
+	logbuffer_logk(usb->log, LOGLEVEL_INFO, "Cancelled alarm\n");
+
+	usb_psy_start_sdp_timeout(usb);
+done:
+	return count;
+}
+static DEVICE_ATTR_RW(update_sdp_enum_timeout);
+
 static void sdp_timeout_work_item(struct kthread_work *work)
 {
 	struct usb_psy_data *usb = container_of(work, struct usb_psy_data, sdp_timeout_work);
@@ -764,6 +818,7 @@ void *usb_psy_setup(struct i2c_client *client, struct logbuffer *log,
 	struct device *dev = &client->dev;
 	struct device_node *dn;
 	void *ret;
+	int retval;
 
 	if (!ops)
 		return ERR_PTR(-EINVAL);
@@ -783,7 +838,7 @@ void *usb_psy_setup(struct i2c_client *client, struct logbuffer *log,
 	usb->psy_ops = ops;
 	usb->chip = chip;
 	usb->non_compliant_bc12_callback = callback;
-	usb->first_sdp_timeout = true;
+	usb->update_sdp_enum_timeout = false;
 
 	usb->usb_type_wq = kthread_create_worker(0, "wq-tcpm-usb-psy-usb-type");
 	if (IS_ERR_OR_NULL(usb->usb_type_wq)) {
@@ -901,6 +956,13 @@ void *usb_psy_setup(struct i2c_client *client, struct logbuffer *log,
 	/* vote default value after icl_work is initialized */
 	gvotable_use_default(usb->dead_battery_el, true);
 
+	retval = device_create_file(dev, &dev_attr_update_sdp_enum_timeout);
+	if (retval < 0) {
+		dev_err(dev, "usb_psy: Unable to create device attr ret:%d", retval);
+		ret = NULL;
+		goto unreg_dead_battery_el;
+	}
+
 	return usb;
 
 unreg_dead_battery_el:
@@ -929,6 +991,8 @@ void usb_psy_teardown(void *usb_data)
 {
 	struct usb_psy_data *usb = (struct usb_psy_data *)usb_data;
 
+	if (usb->tcpc_client)
+		device_remove_file(&usb->tcpc_client->dev, &dev_attr_update_sdp_enum_timeout);
 	kthread_destroy_worker(usb->wq);
 	gvotable_destroy_election(usb->dead_battery_el);
 	gvotable_destroy_election(usb->usb_icl_proto_el);

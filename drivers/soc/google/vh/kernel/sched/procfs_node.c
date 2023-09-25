@@ -1296,16 +1296,10 @@ static int update_uclamp_fork_reset(const char *buf, bool val)
 	if (task_on_rq_queued(p)) {
 		vrq = get_vendor_rq_struct(rq);
 
-		if (!vp->uclamp_fork_reset && val) {
-			atomic_inc(&vrq->num_adpf_tasks);
-
-			/*
-			 * Tell the scheduler that this tasks really wants to run next
-			 */
-			set_next_buddy(&p->se);
-		} else if (vp->uclamp_fork_reset && !val) {
-			atomic_dec(&vrq->num_adpf_tasks);
-		}
+		if (!vp->uclamp_fork_reset && val)
+			inc_adpf_counter(p, &vrq->num_adpf_tasks);
+		else if (vp->uclamp_fork_reset && !val)
+			dec_adpf_counter(p, &vrq->num_adpf_tasks);
 	}
 
 	if (vp->uclamp_fork_reset != val) {
@@ -1449,8 +1443,8 @@ static int dump_task_show(struct seq_file *m, void *v)
 			grp_name = GRP_NAME[group];
 		uclamp_min = t->uclamp_req[UCLAMP_MIN].value;
 		uclamp_max = t->uclamp_req[UCLAMP_MAX].value;
-		uclamp_eff_min = uclamp_eff_value(t, UCLAMP_MIN);
-		uclamp_eff_max = uclamp_eff_value(t, UCLAMP_MAX);
+		uclamp_eff_min = uclamp_eff_value_pixel_mod(t, UCLAMP_MIN);
+		uclamp_eff_max = uclamp_eff_value_pixel_mod(t, UCLAMP_MAX);
 		pid = t->pid;
 		uclamp_fork_reset = vp->uclamp_fork_reset;
 		prefer_idle = vp->prefer_idle;

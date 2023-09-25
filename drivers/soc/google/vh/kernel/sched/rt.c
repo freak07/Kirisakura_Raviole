@@ -61,8 +61,8 @@ static inline bool should_honor_rt_sync(struct rq *rq, struct task_struct *p,
 static inline void rt_task_fits_capacity(struct task_struct *p, int cpu,
 					 bool *fits, bool *fits_original)
 {
-	unsigned long uclamp_min = uclamp_eff_value(p, UCLAMP_MIN);
-	unsigned long uclamp_max = uclamp_eff_value(p, UCLAMP_MAX);
+	unsigned long uclamp_min = uclamp_eff_value_pixel_mod(p, UCLAMP_MIN);
+	unsigned long uclamp_max = uclamp_eff_value_pixel_mod(p, UCLAMP_MAX);
 	unsigned long util = task_util(p);
 
 	if (get_prefer_high_cap(p) && cpu < MID_CAPACITY_CPU) {
@@ -226,10 +226,10 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 out:
 	if (trace_sched_find_least_loaded_cpu_enabled())
 		trace_sched_find_least_loaded_cpu(p, get_vendor_group(p),
-						  uclamp_eff_value(p, UCLAMP_MIN),
-						  uclamp_eff_value(p, UCLAMP_MAX),
+						  uclamp_eff_value_pixel_mod(p, UCLAMP_MIN),
+						  uclamp_eff_value_pixel_mod(p, UCLAMP_MAX),
 						  get_prefer_high_cap(p), prev_cpu, best_cpu,
-						  *lowest_mask->bits,*backup_mask->bits);
+						  *lowest_mask->bits,  *backup_mask->bits);
 
 	return best_cpu;
 }

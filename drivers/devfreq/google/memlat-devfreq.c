@@ -27,6 +27,7 @@ static struct device  *memlat_dev_array[CONFIG_VH_SCHED_CPU_NR];
 static struct exynos_pm_qos_request *memlat_cpu_qos_array[CONFIG_VH_SCHED_CPU_NR];
 static int memlat_cpuidle_state_aware[CONFIG_VH_SCHED_CPU_NR];
 static spinlock_t memlat_cpu_lock;
+static bool arm_mon_probe_done;
 
 struct device **get_memlat_dev_array(void)
 {
@@ -252,11 +253,20 @@ static int exynos_init_freq_table(struct exynos_devfreq_data *data)
 	return 0;
 }
 
+void set_arm_mon_probe_done(bool probe_done)
+{
+	arm_mon_probe_done = probe_done;
+}
+EXPORT_SYMBOL_GPL(set_arm_mon_probe_done);
+
 static int gs_memlat_devfreq_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct exynos_devfreq_data *data;
 	struct dev_pm_opp;
+
+	if (!arm_mon_probe_done)
+		return -EPROBE_DEFER;
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (!data) {
@@ -303,7 +313,7 @@ static int gs_memlat_devfreq_probe(struct platform_device *pdev)
 				   data->governor_name, data->governor_data);
 	if (IS_ERR(data->devfreq)) {
 		dev_err(data->dev, "failed devfreq device added\n");
-		ret = -EPROBE_DEFER;
+		ret = -EINVAL;
 		goto err_devfreq;
 	}
 

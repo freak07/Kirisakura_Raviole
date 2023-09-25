@@ -67,6 +67,10 @@
 				#cooling-cells = <2>;
 				google,dc-irdrop;
 				google,fv-dc-ratio = <35>;
+
+				google,bhi-status-marginal = <79>;
+				google,bhi-status-need-rep = <79>;
+				google,bhi-cycle-grace = <200>;
 			};
 
 			google_bms {
