@@ -1263,7 +1263,6 @@ static int update_prefer_idle(const char *buf, bool val)
 
 static int update_uclamp_fork_reset(const char *buf, bool val)
 {
-	struct vendor_rq_struct *vrq;
 	struct vendor_task_struct *vp;
 	struct task_struct *p;
 	struct rq_flags rf;
@@ -1294,12 +1293,10 @@ static int update_uclamp_fork_reset(const char *buf, bool val)
 	rq = task_rq_lock(p, &rf);
 
 	if (task_on_rq_queued(p)) {
-		vrq = get_vendor_rq_struct(rq);
-
 		if (!vp->uclamp_fork_reset && val)
-			inc_adpf_counter(p, &vrq->num_adpf_tasks);
+			inc_adpf_counter(p, rq);
 		else if (vp->uclamp_fork_reset && !val)
-			dec_adpf_counter(p, &vrq->num_adpf_tasks);
+			dec_adpf_counter(p, rq);
 	}
 
 	if (vp->uclamp_fork_reset != val) {

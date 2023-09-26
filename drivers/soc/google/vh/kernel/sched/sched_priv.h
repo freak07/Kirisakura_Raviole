@@ -745,22 +745,30 @@ static inline bool apply_uclamp_filters(struct rq *rq, struct task_struct *p)
 	return force_cpufreq_update;
 }
 
-static inline void inc_adpf_counter(struct task_struct *p, atomic_t *num_adpf_tasks)
+static inline void inc_adpf_counter(struct task_struct *p, struct rq *rq)
 {
+	struct vendor_rq_struct *vrq;
+
 	if (rt_task(p))
 		return;
 
-	atomic_inc(num_adpf_tasks);
+	vrq = get_vendor_rq_struct(rq);
+
+	atomic_inc(&vrq->num_adpf_tasks);
 	/*
 	 * Tell the scheduler that this tasks really wants to run next
 	 */
 	set_next_buddy(&p->se);
 }
 
-static inline void dec_adpf_counter(struct task_struct *p, atomic_t *num_adpf_tasks)
+static inline void dec_adpf_counter(struct task_struct *p, struct rq *rq)
 {
+	struct vendor_rq_struct *vrq = get_vendor_rq_struct(rq);
+
 	if (rt_task(p))
 		return;
 
-	atomic_dec(num_adpf_tasks);
+	vrq = get_vendor_rq_struct(rq);
+
+	atomic_dec(&vrq->num_adpf_tasks);
 }
