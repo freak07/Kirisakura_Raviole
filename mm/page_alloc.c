@@ -3284,19 +3284,20 @@ static struct list_head *get_populated_pcp_list(struct zone *zone,
  */
 int decay_pcp_high(struct zone *zone, struct per_cpu_pages *pcp)
 {
-	int high_min, to_drain, batch;
+	int high_min, decrease, to_drain, batch;
 	int todo = 0;
 
 	high_min = READ_ONCE(pcp->high_min);
 	batch = READ_ONCE(pcp->batch);
 	/*
-	 * Decrease pcp->high periodically to try to free possible
-	 * idle PCP pages.  And, avoid to free too many pages to
-	 * control latency.
+	 * Decrease pcp->high periodically to free idle PCP pages counted
+	 * via pcp->count_min.  And, avoid to free too many pages to
+	 * control latency.  This caps pcp->high decrement too.
 	 */
 	if (pcp->high > high_min) {
+		decrease = min(pcp->count_min, pcp->high / 5);
 		pcp->high = max3(pcp->count - (batch << PCP_BATCH_SCALE_MAX),
-				 pcp->high * 4 / 5, high_min);
+				 pcp->high - decrease, high_min);
 		if (pcp->high > high_min)
 			todo++;
 	}
@@ -3308,6 +3309,8 @@ int decay_pcp_high(struct zone *zone, struct per_cpu_pages *pcp)
 		spin_unlock(&pcp->lock);
 		todo++;
 	}
+
+	pcp->count_min = pcp->count;
 
 	return todo;
 }
@@ -4020,6 +4023,8 @@ struct page *__rmqueue_pcplist(struct zone *zone, unsigned int order,
 		page = list_first_entry(list, struct page, pcp_list);
 		list_del(&page->pcp_list);
 		pcp->count -= 1 << order;
+		if (pcp->count < pcp->count_min)
+			pcp->count_min = pcp->count;
 	} while (check_new_pcp(page, order));
 
 	return page;
