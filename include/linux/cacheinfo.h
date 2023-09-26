@@ -74,6 +74,7 @@ struct cacheinfo {
 
 struct cpu_cacheinfo {
 	struct cacheinfo *info_list;
+	unsigned int size_data;
 	unsigned int num_levels;
 	unsigned int num_leaves;
 	bool cpu_map_populated;
