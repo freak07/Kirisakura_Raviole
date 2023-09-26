@@ -563,6 +563,7 @@ enum zone_watermarks {
 /* Fields and list protected by pagesets local_lock in page_alloc.c */
 
 #define	PCPF_PREV_FREE_HIGH_ORDER	0x01
+#define	PCPF_FREE_HIGH_BATCH		0x02
 
 struct per_cpu_pages {
 	spinlock_t lock;	/* Protects lists field */
