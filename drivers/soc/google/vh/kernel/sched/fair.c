@@ -2725,7 +2725,7 @@ void rvh_can_migrate_task_pixel_mod(void *data, struct task_struct *mp,
 	if (!mvp->uclamp_fork_reset || !get_prefer_idle(mp))
 		return;
 
-	lockdep_assert_held(&cpu_rq(dst_cpu)->lock);
+	lockdep_assert_rq_held(cpu_rq(dst_cpu));
 
 	if (atomic_read(&vrq->num_adpf_tasks))
 		*can_migrate = 0;
