@@ -170,6 +170,9 @@ DECLARE_STATIC_KEY_FALSE(uclamp_max_filter_enable);
 
 DECLARE_STATIC_KEY_FALSE(tapered_dvfs_headroom_enable);
 
+#define SCHED_PIXEL_BLOCK_UPDATES		BIT(8)
+#define SCHED_PIXEL_RESUME_UPDATES		BIT(9)
+
 /*****************************************************************************/
 /*                       Upstream Code Section                               */
 /*****************************************************************************/
