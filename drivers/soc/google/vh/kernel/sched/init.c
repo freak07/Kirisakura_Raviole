@@ -86,6 +86,8 @@ extern void rvh_remove_entity_load_avg_pixel_mod(void *data, struct cfs_rq *cfs_
 						 struct sched_entity *se);
 extern void rvh_update_blocked_fair_pixel_mod(void *data, struct rq *rq);
 #endif
+void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_flags *rf,
+		int *pulled_task, int *done);
 extern void rvh_set_user_nice_pixel_mod(void *data, struct task_struct *p, long *nice,
 					bool *allowed);
 extern void rvh_setscheduler_pixel_mod(void *data, struct task_struct *p);
@@ -255,6 +257,11 @@ static int vh_sched_init(void)
 	if (ret)
 		return ret;
 
+
+	ret = register_trace_android_rvh_sched_newidle_balance(
+		sched_newidle_balance_pixel_mod, NULL);
+	if (ret)
+		return ret;
 
 	ret = register_trace_android_rvh_select_task_rq_fair(rvh_select_task_rq_fair_pixel_mod,
 							     NULL);
