@@ -1587,14 +1587,12 @@ static enum pcpu_chunk_type pcpu_memcg_pre_alloc_hook(size_t size, gfp_t gfp,
 	if (!memcg_kmem_online() || !(gfp & __GFP_ACCOUNT))
 		return PCPU_CHUNK_ROOT;
 
-	objcg = get_obj_cgroup_from_current();
+	objcg = current_obj_cgroup();
 	if (!objcg)
 		return PCPU_CHUNK_ROOT;
 
-	if (obj_cgroup_charge(objcg, gfp, size * num_possible_cpus())) {
-		obj_cgroup_put(objcg);
+	if (obj_cgroup_charge(objcg, gfp, size * num_possible_cpus()))
 		return PCPU_FAIL_ALLOC;
-	}
 
 	*objcgp = objcg;
 	return PCPU_CHUNK_MEMCG;
@@ -1608,6 +1606,7 @@ static void pcpu_memcg_post_alloc_hook(struct obj_cgroup *objcg,
 		return;
 
 	if (chunk) {
+		obj_cgroup_get(objcg);
 		chunk->obj_cgroups[off >> PCPU_MIN_ALLOC_SHIFT] = objcg;
 
 		rcu_read_lock();
@@ -1616,7 +1615,6 @@ static void pcpu_memcg_post_alloc_hook(struct obj_cgroup *objcg,
 		rcu_read_unlock();
 	} else {
 		obj_cgroup_uncharge(objcg, size * num_possible_cpus());
-		obj_cgroup_put(objcg);
 	}
 }
 
