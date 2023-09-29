@@ -370,6 +370,17 @@ static __always_inline bool memcg_stat_item_in_bytes(int idx)
 	return vmstat_item_in_bytes(idx);
 }
 
+static inline bool current_objcg_needs_update(struct obj_cgroup *objcg)
+{
+	return (struct obj_cgroup *)((unsigned long)objcg & 0x1);
+}
+
+static inline struct obj_cgroup *
+current_objcg_without_update_flag(struct obj_cgroup *objcg)
+{
+	return (struct obj_cgroup *)((unsigned long)objcg & ~0x1);
+}
+
 static inline bool mem_cgroup_is_root(struct mem_cgroup *memcg)
 {
 	return (memcg == root_mem_cgroup);
