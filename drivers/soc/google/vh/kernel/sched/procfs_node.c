@@ -1293,13 +1293,17 @@ static int update_uclamp_fork_reset(const char *buf, bool val)
 	rq = task_rq_lock(p, &rf);
 
 	if (task_on_rq_queued(p)) {
-		if (!vp->uclamp_fork_reset && val)
+		if (!get_uclamp_fork_reset(p, true) && val)
 			inc_adpf_counter(p, rq);
-		else if (vp->uclamp_fork_reset && !val)
+		else if (get_uclamp_fork_reset(p, false) && !val)
 			dec_adpf_counter(p, rq);
 	}
 
 	if (vp->uclamp_fork_reset != val) {
+		/* force reset uclamp_fork_reset inheritance */
+		if (val)
+			vp->binder_task.uclamp_fork_reset = false;
+
 		vp->uclamp_fork_reset = val;
 
 		if (vendor_sched_boost_adpf_prio)
