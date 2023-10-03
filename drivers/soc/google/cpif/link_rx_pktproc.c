@@ -1137,9 +1137,6 @@ static int pktproc_perftest_thread(void *arg)
 	bool session_queue = false;
 	int i, pkts;
 
-	if (perf->session > PKTPROC_MAX_QUEUE)
-		perf->session = PKTPROC_MAX_QUEUE;
-
 	if (ppa->use_exclusive_irq && (perf->session > 1) && (perf->session <= ppa->num_queue))
 		session_queue = true;
 
@@ -1184,6 +1181,7 @@ static ssize_t perftest_store(struct device *dev,
 	struct link_device *ld = get_current_link(mc->iod);
 	struct mem_link_device *mld = to_mem_link_device(ld);
 	struct pktproc_adaptor *ppa = &mld->pktproc;
+	struct pktproc_perftest new_perf;
 	struct pktproc_perftest *perf = &ppa->perftest;
 
 	static struct task_struct *worker_task;
@@ -1197,26 +1195,42 @@ static ssize_t perftest_store(struct device *dev,
 		perf->ipi_cpu[3] = 4;
 	}
 
+	memcpy((void *)&new_perf, (void *)perf, sizeof(struct pktproc_perftest));
+
 	switch (perf->mode) {
 	case PERFTEST_MODE_CLAT:
-		ret = sscanf(buf, "%d %d %hu %d %d %hx:%hx:%hx:%hx:%hx:%hx:%hx:%hx %d %d %d %d",
-			     &perf->mode, &perf->session, &perf->ch, &perf->cpu, &perf->udelay,
-			     &perf->clat_ipv6[0], &perf->clat_ipv6[1], &perf->clat_ipv6[2],
-			     &perf->clat_ipv6[3], &perf->clat_ipv6[4], &perf->clat_ipv6[5],
-			     &perf->clat_ipv6[6], &perf->clat_ipv6[7],
-			     &perf->ipi_cpu[0], &perf->ipi_cpu[1], &perf->ipi_cpu[2],
-			     &perf->ipi_cpu[3]);
+		ret = sscanf(buf,
+			     "%u %hu %hu %hu %hu %hx:%hx:%hx:%hx:%hx:%hx:%hx:%hx %hu %hu %hu %hu",
+			     &new_perf.mode, &new_perf.session, &new_perf.ch,
+			     &new_perf.cpu, &new_perf.udelay,
+			     &new_perf.clat_ipv6[0], &new_perf.clat_ipv6[1], &new_perf.clat_ipv6[2],
+			     &new_perf.clat_ipv6[3], &new_perf.clat_ipv6[4], &new_perf.clat_ipv6[5],
+			     &new_perf.clat_ipv6[6], &new_perf.clat_ipv6[7],
+			     &new_perf.ipi_cpu[0], &new_perf.ipi_cpu[1], &new_perf.ipi_cpu[2],
+			     &new_perf.ipi_cpu[3]);
 		break;
 	default:
-		ret = sscanf(buf, "%d %d %hu %d %d %d %d %d %d",
-			     &perf->mode, &perf->session, &perf->ch, &perf->cpu, &perf->udelay,
-			     &perf->ipi_cpu[0], &perf->ipi_cpu[1], &perf->ipi_cpu[2],
-			     &perf->ipi_cpu[3]);
+		ret = sscanf(buf, "%u %hu %hu %hu %hu %hu %hu %hu %hu",
+			     &new_perf.mode, &new_perf.session, &new_perf.ch,
+			     &new_perf.cpu, &new_perf.udelay,
+			     &new_perf.ipi_cpu[0], &new_perf.ipi_cpu[1], &new_perf.ipi_cpu[2],
+			     &new_perf.ipi_cpu[3]);
 		break;
 	}
 
 	if (ret < 1)
 		return -EINVAL;
+
+	if (new_perf.mode >= PERFTEST_MODE_MAX)
+		new_perf.mode = PERFTEST_MODE_STOP;
+
+	if (new_perf.session > PKTPROC_MAX_QUEUE)
+		new_perf.session = PKTPROC_MAX_QUEUE;
+
+	if (new_perf.ch > SIPC5_CH_ID_MAX)
+		new_perf.ch = SIPC5_CH_ID_MAX;
+
+	memcpy((void *)perf, (void *)&new_perf, sizeof(struct pktproc_perftest));
 
 	switch (perf->mode) {
 	case PERFTEST_MODE_STOP:
