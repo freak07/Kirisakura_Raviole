@@ -1531,7 +1531,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 	int most_spare_cap_cpu = -1, unimportant_max_spare_cap_cpu = -1, idle_max_cap_cpu = -1;
 	struct cpuidle_state *idle_state;
 	unsigned long unimportant_max_spare_cap = 0, idle_max_cap = 0;
-	bool prefer_fit = prefer_idle && get_uclamp_fork_reset(p, true);
+	bool prefer_fit = get_uclamp_fork_reset(p, true);
 	const cpumask_t *preferred_idle_mask;
 
 	rd = cpu_rq(this_cpu)->rd;
@@ -2785,7 +2785,7 @@ void rvh_can_migrate_task_pixel_mod(void *data, struct task_struct *p,
 {
 	struct vendor_rq_struct *vrq = get_vendor_rq_struct(cpu_rq(dst_cpu));
 
-	if (!get_uclamp_fork_reset(p, true) || !get_prefer_idle(p))
+	if (!get_prefer_idle(p))
 		return;
 
 	lockdep_assert_held(&cpu_rq(dst_cpu)->lock);
