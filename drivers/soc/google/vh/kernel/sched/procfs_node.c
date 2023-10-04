@@ -1350,7 +1350,7 @@ static int update_vendor_group_attribute(const char *buf, enum vendor_group_attr
 		vp = get_vendor_task_struct(p);
 		raw_spin_lock_irqsave(&vp->lock, flags);
 		old = vp->group;
-		if (old == new) {
+		if (old == new || p->flags & PF_EXITING) {
 			raw_spin_unlock_irqrestore(&vp->lock, flags);
 			break;
 		}
@@ -1375,7 +1375,7 @@ static int update_vendor_group_attribute(const char *buf, enum vendor_group_attr
 			vp = get_vendor_task_struct(t);
 			raw_spin_lock_irqsave(&vp->lock, flags);
 			old = vp->group;
-			if (old == new) {
+			if (old == new || t->flags & PF_EXITING) {
 				raw_spin_unlock_irqrestore(&vp->lock, flags);
 				put_task_struct(t);
 				continue;
