@@ -1177,7 +1177,6 @@
   _raw_read_unlock
   _raw_write_lock
   _raw_write_unlock
-  register_shrinker
   register_vmap_purge_notifier
   regulator_get
   regulator_put
@@ -1196,7 +1195,6 @@
   sync_file_create
   sync_file_get_fence
   unmap_mapping_range
-  unregister_shrinker
   unregister_vmap_purge_notifier
   vmf_insert_mixed
   vm_get_page_prot

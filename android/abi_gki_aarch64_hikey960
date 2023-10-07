@@ -796,7 +796,6 @@
   rb_next
   rb_prev
   rb_replace_node
-  register_shrinker
   regulator_get_optional
   regulator_put
   __release_region
@@ -819,7 +818,6 @@
   thermal_zone_get_zone_by_name
   _totalram_pages
   unmap_mapping_range
-  unregister_shrinker
   up
   vmalloc_user
   vmf_insert_pfn

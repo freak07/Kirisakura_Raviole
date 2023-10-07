@@ -512,7 +512,6 @@
   register_pm_notifier
   register_reboot_notifier
   register_restart_handler
-  register_shrinker
   register_syscore_ops
   regmap_read
   regmap_update_bits_base
@@ -680,7 +679,6 @@
   __unregister_chrdev
   unregister_chrdev_region
   unregister_pm_notifier
-  unregister_shrinker
   up
   up_read
   up_write
