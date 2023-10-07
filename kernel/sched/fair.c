@@ -840,6 +840,13 @@ static struct sched_entity *pick_eevdf(struct cfs_rq *cfs_rq)
 	if (curr && (!curr->on_rq || !entity_eligible(cfs_rq, curr)))
 		curr = NULL;
 
+	/*
+	 * Once selected, run a task until it either becomes non-eligible or
+	 * until it gets a new slice. See the HACK in set_next_entity().
+	 */
+	if (sched_feat(RUN_TO_PARITY) && curr && curr->vlag == curr->deadline)
+		return curr;
+
 	while (node) {
 		struct sched_entity *se = __node_2_se(node);
 
@@ -4665,7 +4672,7 @@ static inline void update_misfit_status(struct task_struct *p, struct rq *rq) {}
 #endif /* CONFIG_SMP */
 
 static void
-place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
+place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 {
 	u64 vslice = calc_delta_fair(se->slice, se);
 	u64 vruntime = avg_vruntime(cfs_rq);
@@ -4733,7 +4740,7 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 	 * on average, halfway through their slice, as such start tasks
 	 * off with half a slice to ease into the competition.
 	 */
-	if (sched_feat(PLACE_DEADLINE_INITIAL) && initial)
+	if (sched_feat(PLACE_DEADLINE_INITIAL) && (flags & ENQUEUE_INITIAL))
 		vslice /= 2;
 
 	/*
@@ -4776,7 +4783,7 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 	 * update_curr().
 	 */
 	if (curr)
-		place_entity(cfs_rq, se, 0);
+		place_entity(cfs_rq, se, flags);
 
 	update_curr(cfs_rq);
 
@@ -4802,7 +4809,7 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 	 * we can place the entity.
 	 */
 	if (!curr)
-		place_entity(cfs_rq, se, 0);
+		place_entity(cfs_rq, se, flags);
 
 	account_entity_enqueue(cfs_rq, se);
 
@@ -4905,6 +4912,11 @@ void set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 		update_stats_wait_end(cfs_rq, se);
 		__dequeue_entity(cfs_rq, se);
 		update_load_avg(cfs_rq, se, UPDATE_TG);
+		/*
+		 * HACK, stash a copy of deadline at the point of pick in vlag,
+		 * which isn't used until dequeue.
+		 */
+		se->vlag = se->deadline;
 	}
 
 	update_stats_curr_start(cfs_rq, se);
@@ -6967,9 +6979,6 @@ cpu_util(int cpu, struct task_struct *p, int dst_cpu, int boost)
 
 		util_est = READ_ONCE(cfs_rq->avg.util_est.enqueued);
 
-		if (boost)
-			util_est = max(util_est, runnable);
-
 		/*
 		 * During wake-up @p isn't enqueued yet and doesn't contribute
 		 * to any cpu_rq(cpu)->cfs.avg.util_est.enqueued.
@@ -7524,6 +7533,9 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_
 
 	cfs_rq = cfs_rq_of(se);
 	update_curr(cfs_rq);
+
+	trace_android_rvh_check_preempt_wakeup(rq, p, &preempt, &nopreempt,
+			wake_flags, se, pse, next_buddy_marked);
 
 	/*
 	 * XXX pick_eevdf(cfs_rq) != se ?
@@ -11635,7 +11647,7 @@ static void task_fork_fair(struct task_struct *p)
 	curr = cfs_rq->curr;
 	if (curr)
 		update_curr(cfs_rq);
-	place_entity(cfs_rq, se, 1);
+	place_entity(cfs_rq, se, ENQUEUE_INITIAL);
 	rq_unlock(rq, &rf);
 }
 

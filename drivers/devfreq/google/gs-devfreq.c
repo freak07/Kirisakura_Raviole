@@ -793,6 +793,7 @@ static ssize_t store_debug_scaling_devfreq_min(struct device *dev,
 	return count;
 }
 
+void exynos5_i2c_set_timeout(void);
 static ssize_t cancel_boot_freq_store(struct device *dev,
 					       struct device_attribute *attr,
 					       const char *buf, size_t count)
@@ -811,9 +812,8 @@ static ssize_t cancel_boot_freq_store(struct device *dev,
 	}
 
 	if (cancel_flag) {
-		exynos_pm_qos_update_request_timeout(&data->boot_pm_qos,
-						     data->boot_freq,
-						     0);
+		exynos_pm_qos_update_request(&data->boot_pm_qos, data->default_qos);
+		exynos5_i2c_set_timeout();
 	}
 	return count;
 }
@@ -885,8 +885,10 @@ static ssize_t time_in_state_show(struct device *dev,
 
 	mutex_lock(&data->lock);
 	err = exynos_devfreq_update_status(data);
-	if (err)
+	if (err) {
+		mutex_unlock(&data->lock);
 		return 0;
+	}
 
 	for (i = 0; i < max_state; i++) {
 		len += sprintf(buf + len, "%8lu",
@@ -2413,9 +2415,7 @@ static int exynos_devfreq_probe(struct platform_device *pdev)
 
 	if (!data->pm_domain) {
 		/* set booting frequency during booting time */
-		exynos_pm_qos_update_request_timeout(&data->boot_pm_qos,
-						     data->boot_freq,
-						     data->boot_qos_timeout * USEC_PER_SEC);
+		exynos_pm_qos_update_request(&data->boot_pm_qos, data->boot_freq);
 	} else {
 		pm_runtime_enable(&pdev->dev);
 		pm_runtime_get_sync(&pdev->dev);

@@ -373,7 +373,7 @@ static struct page *ext4_read_merkle_tree_page(struct inode *inode,
 
 	page = find_get_page_flags(inode->i_mapping, index, FGP_ACCESSED);
 	if (!page || !PageUptodate(page)) {
-		DEFINE_READAHEAD(ractl, NULL, inode->i_mapping, index);
+		DEFINE_READAHEAD(ractl, NULL, NULL, inode->i_mapping, index);
 
 		if (page)
 			put_page(page);

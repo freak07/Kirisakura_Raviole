@@ -42,6 +42,12 @@ extern void rvh_util_est_update_pixel_mod(void *data, struct cfs_rq *cfs_rq, str
 extern void rvh_cpu_cgroup_online_pixel_mod(void *data, struct cgroup_subsys_state *css);
 #endif
 extern void rvh_post_init_entity_util_avg_pixel_mod(void *data, struct sched_entity *se);
+extern void rvh_check_preempt_wakeup_pixel_mod(void *data, struct rq *rq, struct task_struct *p,
+			bool *preempt, bool *nopreempt, int wake_flags, struct sched_entity *se,
+			struct sched_entity *pse, int next_buddy_marked);
+extern void vh_sched_uclamp_validate_pixel_mod(void *data, struct task_struct *tsk,
+					       const struct sched_attr *attr,
+					       int *ret, bool *done);
 extern void vh_sched_setscheduler_uclamp_pixel_mod(void *data, struct task_struct *tsk,
 						   int clamp_id, unsigned int value);
 extern void init_uclamp_stats(void);
@@ -50,7 +56,6 @@ extern void vh_dup_task_struct_pixel_mod(void *data, struct task_struct *tsk,
 extern void rvh_select_task_rq_fair_pixel_mod(void *data, struct task_struct *p, int prev_cpu,
 					      int sd_flag, int wake_flags, int *target_cpu);
 extern void init_vendor_group_data(void);
-extern void init_vendor_rt_rq(void);
 extern void rvh_update_rt_rq_load_avg_pixel_mod(void *data, u64 now, struct rq *rq,
 						struct task_struct *p, int running);
 extern void rvh_set_task_cpu_pixel_mod(void *data, struct task_struct *p, unsigned int new_cpu);
@@ -75,6 +80,8 @@ extern void vh_sched_setaffinity_mod(void *data, struct task_struct *task,
 extern void vh_try_to_freeze_todo_logging_pixel_mod(void *data, bool *logging_on);
 extern void rvh_cpumask_any_and_distribute(void *data, struct task_struct *p,
 	const struct cpumask *cpu_valid_mask, const struct cpumask *new_mask, int *dest_cpu);
+extern void rvh_can_migrate_task_pixel_mod(void *data, struct task_struct *p, int dst_cpu,
+						int *can_migrate);
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 extern void rvh_attach_entity_load_avg_pixel_mod(void *data, struct cfs_rq *cfs_rq,
 						 struct sched_entity *se);
@@ -86,21 +93,37 @@ extern void rvh_remove_entity_load_avg_pixel_mod(void *data, struct cfs_rq *cfs_
 						 struct sched_entity *se);
 extern void rvh_update_blocked_fair_pixel_mod(void *data, struct rq *rq);
 #endif
+void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_flags *rf,
+		int *pulled_task, int *done);
 extern void rvh_set_user_nice_pixel_mod(void *data, struct task_struct *p, long *nice,
 					bool *allowed);
 extern void rvh_setscheduler_pixel_mod(void *data, struct task_struct *p);
-extern void rvh_prepare_prio_fork_pixel_mod(void *data, struct task_struct *p);
 
 extern struct cpufreq_governor sched_pixel_gov;
 
 extern int pmu_poll_init(void);
 
 extern bool wait_for_init;
+
+void init_vendor_rt_rq(void)
+{
+	int i;
+	struct vendor_rq_struct *vrq;
+
+	for (i = 0; i < CPU_NUM; i++) {
+		vrq = get_vendor_rq_struct(cpu_rq(i));
+		raw_spin_lock_init(&vrq->lock);
+		vrq->util_removed = 0;
+		atomic_set(&vrq->num_adpf_tasks, 0);
+	}
+}
+
 static int init_vendor_task_data(void *data)
 {
 	struct vendor_task_struct *v_tsk;
 	struct task_struct *p, *t;
 
+	rcu_read_lock();
 	for_each_process_thread(p, t) {
 		get_task_struct(t);
 		v_tsk = get_vendor_task_struct(t);
@@ -108,6 +131,7 @@ static int init_vendor_task_data(void *data)
 		v_tsk->orig_prio = t->static_prio;
 		put_task_struct(t);
 	}
+	rcu_read_unlock();
 
 	/* our module can start handling the initialization now */
 	wait_for_init = false;
@@ -159,7 +183,7 @@ static int vh_sched_init(void)
 	 *
 	 * stop_machine provides atomic way to guarantee this without races.
 	 */
-	ret = stop_machine(init_vendor_task_data, NULL, cpumask_of(smp_processor_id()));
+	ret = stop_machine(init_vendor_task_data, NULL, cpumask_of(raw_smp_processor_id()));
 	if (ret)
 		return ret;
 
@@ -168,6 +192,10 @@ static int vh_sched_init(void)
 		return ret;
 
 	ret = register_trace_android_rvh_dequeue_task(rvh_dequeue_task_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_can_migrate_task(rvh_can_migrate_task_pixel_mod, NULL);
 	if (ret)
 		return ret;
 
@@ -255,6 +283,15 @@ static int vh_sched_init(void)
 	if (ret)
 		return ret;
 
+	ret = register_trace_android_rvh_check_preempt_wakeup(
+		rvh_check_preempt_wakeup_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_rvh_sched_newidle_balance(
+		sched_newidle_balance_pixel_mod, NULL);
+	if (ret)
+		return ret;
 
 	ret = register_trace_android_rvh_select_task_rq_fair(rvh_select_task_rq_fair_pixel_mod,
 							     NULL);
@@ -266,6 +303,11 @@ static int vh_sched_init(void)
 	if (ret)
 		return ret;
 #endif
+
+	ret = register_trace_android_vh_uclamp_validate(
+		vh_sched_uclamp_validate_pixel_mod, NULL);
+	if (ret)
+		return ret;
 
 	ret = register_trace_android_vh_setscheduler_uclamp(
 		vh_sched_setscheduler_uclamp_pixel_mod, NULL);
@@ -314,10 +356,6 @@ static int vh_sched_init(void)
 		return ret;
 
 	ret = register_trace_android_rvh_setscheduler(rvh_setscheduler_pixel_mod, NULL);
-	if (ret)
-		return ret;
-
-	ret = register_trace_android_rvh_prepare_prio_fork(rvh_prepare_prio_fork_pixel_mod, NULL);
 	if (ret)
 		return ret;
 

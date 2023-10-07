@@ -21,6 +21,7 @@
 #include <linux/vmstat.h>
 #include <linux/writeback.h>
 #include <linux/page-flags.h>
+#include <linux/shrinker.h>
 
 struct mem_cgroup;
 struct obj_cgroup;
@@ -105,15 +106,6 @@ struct mem_cgroup_reclaim_iter {
 	unsigned int generation;
 };
 
-/*
- * Bitmap of shrinker::id corresponding to memcg-aware shrinkers,
- * which have elements charged to this memcg.
- */
-struct memcg_shrinker_map {
-	struct rcu_head rcu;
-	unsigned long map[];
-};
-
 struct lruvec_stats_percpu {
 	/* Local (CPU and cgroup) state */
 	long state[NR_VM_NODE_STAT_ITEMS];
@@ -143,7 +135,7 @@ struct mem_cgroup_per_node {
 
 	struct mem_cgroup_reclaim_iter	iter;
 
-	struct memcg_shrinker_map __rcu	*shrinker_map;
+	struct shrinker_info __rcu	*shrinker_info;
 
 	struct rb_node		tree_node;	/* RB tree node */
 	unsigned long		usage_in_excess;/* Set to the value by which */
@@ -629,6 +621,15 @@ static inline unsigned short mem_cgroup_id(struct mem_cgroup *memcg)
 	return memcg->id.id;
 }
 struct mem_cgroup *mem_cgroup_from_id(unsigned short id);
+
+#ifdef CONFIG_SHRINKER_DEBUG
+static inline unsigned long mem_cgroup_ino(struct mem_cgroup *memcg)
+{
+	return memcg ? cgroup_ino(memcg->css.cgroup) : 0;
+}
+
+struct mem_cgroup *mem_cgroup_get_from_ino(unsigned long ino);
+#endif
 
 static inline struct mem_cgroup *mem_cgroup_from_seq(struct seq_file *m)
 {
@@ -1180,6 +1181,18 @@ static inline struct mem_cgroup *mem_cgroup_from_id(unsigned short id)
 	return NULL;
 }
 
+#ifdef CONFIG_SHRINKER_DEBUG
+static inline unsigned long mem_cgroup_ino(struct mem_cgroup *memcg)
+{
+	return 0;
+}
+
+static inline struct mem_cgroup *mem_cgroup_get_from_ino(unsigned long ino)
+{
+	return NULL;
+}
+#endif
+
 static inline struct mem_cgroup *mem_cgroup_from_seq(struct seq_file *m)
 {
 	return NULL;
@@ -1645,10 +1658,10 @@ static inline bool mem_cgroup_under_socket_pressure(struct mem_cgroup *memcg)
 	return false;
 }
 
-extern int memcg_expand_shrinker_maps(int new_id);
-
-extern void memcg_set_shrinker_bit(struct mem_cgroup *memcg,
-				   int nid, int shrinker_id);
+int alloc_shrinker_info(struct mem_cgroup *memcg);
+void free_shrinker_info(struct mem_cgroup *memcg);
+void set_shrinker_bit(struct mem_cgroup *memcg, int nid, int shrinker_id);
+void reparent_shrinker_deferred(struct mem_cgroup *memcg);
 #else
 #define mem_cgroup_sockets_enabled 0
 static inline void mem_cgroup_sk_alloc(struct sock *sk) { };
@@ -1658,8 +1671,8 @@ static inline bool mem_cgroup_under_socket_pressure(struct mem_cgroup *memcg)
 	return false;
 }
 
-static inline void memcg_set_shrinker_bit(struct mem_cgroup *memcg,
-					  int nid, int shrinker_id)
+static inline void set_shrinker_bit(struct mem_cgroup *memcg,
+				    int nid, int shrinker_id)
 {
 }
 #endif
@@ -1676,7 +1689,7 @@ struct obj_cgroup *get_obj_cgroup_from_current(void);
 int obj_cgroup_charge(struct obj_cgroup *objcg, gfp_t gfp, size_t size);
 void obj_cgroup_uncharge(struct obj_cgroup *objcg, size_t size);
 
-extern struct static_key_false memcg_kmem_enabled_key;
+extern struct static_key_false memcg_kmem_online_key;
 
 extern int memcg_nr_cache_ids;
 void memcg_get_cache_ids(void);
@@ -1690,29 +1703,29 @@ void memcg_put_cache_ids(void);
 #define for_each_memcg_cache_index(_idx)	\
 	for ((_idx) = 0; (_idx) < memcg_nr_cache_ids; (_idx)++)
 
-static inline bool memcg_kmem_enabled(void)
+static inline bool memcg_kmem_online(void)
 {
-	return static_branch_likely(&memcg_kmem_enabled_key);
+	return static_branch_likely(&memcg_kmem_online_key);
 }
 
 static inline int memcg_kmem_charge_page(struct page *page, gfp_t gfp,
 					 int order)
 {
-	if (memcg_kmem_enabled())
+	if (memcg_kmem_online())
 		return __memcg_kmem_charge_page(page, gfp, order);
 	return 0;
 }
 
 static inline void memcg_kmem_uncharge_page(struct page *page, int order)
 {
-	if (memcg_kmem_enabled())
+	if (memcg_kmem_online())
 		__memcg_kmem_uncharge_page(page, order);
 }
 
 static inline int memcg_kmem_charge(struct mem_cgroup *memcg, gfp_t gfp,
 				    unsigned int nr_pages)
 {
-	if (memcg_kmem_enabled())
+	if (memcg_kmem_online())
 		return __memcg_kmem_charge(memcg, gfp, nr_pages);
 	return 0;
 }
@@ -1720,7 +1733,7 @@ static inline int memcg_kmem_charge(struct mem_cgroup *memcg, gfp_t gfp,
 static inline void memcg_kmem_uncharge(struct mem_cgroup *memcg,
 				       unsigned int nr_pages)
 {
-	if (memcg_kmem_enabled())
+	if (memcg_kmem_online())
 		__memcg_kmem_uncharge(memcg, nr_pages);
 }
 
@@ -1761,7 +1774,7 @@ static inline void __memcg_kmem_uncharge_page(struct page *page, int order)
 #define for_each_memcg_cache_index(_idx)	\
 	for (; NULL; )
 
-static inline bool memcg_kmem_enabled(void)
+static inline bool memcg_kmem_online(void)
 {
 	return false;
 }

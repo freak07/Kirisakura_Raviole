@@ -227,9 +227,8 @@ DECLARE_RESTRICTED_HOOK(android_rvh_pick_next_entity,
 DECLARE_RESTRICTED_HOOK(android_rvh_check_preempt_wakeup,
 	TP_PROTO(struct rq *rq, struct task_struct *p, bool *preempt, bool *nopreempt,
 			int wake_flags, struct sched_entity *se, struct sched_entity *pse,
-			int next_buddy_marked, unsigned int granularity),
-	TP_ARGS(rq, p, preempt, nopreempt, wake_flags, se, pse, next_buddy_marked,
-			granularity), 1);
+			int next_buddy_marked),
+	TP_ARGS(rq, p, preempt, nopreempt, wake_flags, se, pse, next_buddy_marked), 1);
 
 DECLARE_HOOK(android_vh_do_wake_up_sync,
 	TP_PROTO(struct wait_queue_head *wq_head, int *done),

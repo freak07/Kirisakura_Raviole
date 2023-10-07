@@ -339,7 +339,7 @@ static ssize_t erofs_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 		if (err < 0)
 			return err;
 	}
-	return generic_file_buffered_read(iocb, to, 0);
+	return filemap_read(iocb, to, 0);
 }
 
 /* for uncompressed (aligned) files and raw access for other files */

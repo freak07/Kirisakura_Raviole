@@ -251,24 +251,167 @@ static int is_stack(struct vm_area_struct *vma)
 		vma->vm_end >= vma->vm_mm->start_stack;
 }
 
-static void show_vma_header_prefix(struct seq_file *m,
-				   unsigned long start, unsigned long end,
-				   vm_flags_t flags, unsigned long long pgoff,
-				   dev_t dev, unsigned long ino)
+#define print_vma_hex10(out, val, clz_fn) \
+({									\
+	const typeof(val) __val = val;					\
+	char *const __out = out;					\
+	size_t __len;							\
+									\
+	if (__val) {							\
+		__len = (sizeof(__val) * 8 - clz_fn(__val) + 3) / 4;	\
+		switch (__len) {					\
+		case 10:						\
+			__out[9] = hex_asc[(__val >>  0) & 0xf];	\
+			__out[8] = hex_asc[(__val >>  4) & 0xf];	\
+			__out[7] = hex_asc[(__val >>  8) & 0xf];	\
+			__out[6] = hex_asc[(__val >> 12) & 0xf];	\
+			__out[5] = hex_asc[(__val >> 16) & 0xf];	\
+			__out[4] = hex_asc[(__val >> 20) & 0xf];	\
+			__out[3] = hex_asc[(__val >> 24) & 0xf];	\
+			__out[2] = hex_asc[(__val >> 28) & 0xf];	\
+			__out[1] = hex_asc[(__val >> 32) & 0xf];	\
+			__out[0] = hex_asc[(__val >> 36) & 0xf];	\
+			break;						\
+		case 9:							\
+			__out[8] = hex_asc[(__val >>  0) & 0xf];	\
+			__out[7] = hex_asc[(__val >>  4) & 0xf];	\
+			__out[6] = hex_asc[(__val >>  8) & 0xf];	\
+			__out[5] = hex_asc[(__val >> 12) & 0xf];	\
+			__out[4] = hex_asc[(__val >> 16) & 0xf];	\
+			__out[3] = hex_asc[(__val >> 20) & 0xf];	\
+			__out[2] = hex_asc[(__val >> 24) & 0xf];	\
+			__out[1] = hex_asc[(__val >> 28) & 0xf];	\
+			__out[0] = hex_asc[(__val >> 32) & 0xf];	\
+			break;						\
+		default:						\
+			__out[7] = hex_asc[(__val >>  0) & 0xf];	\
+			__out[6] = hex_asc[(__val >>  4) & 0xf];	\
+			__out[5] = hex_asc[(__val >>  8) & 0xf];	\
+			__out[4] = hex_asc[(__val >> 12) & 0xf];	\
+			__out[3] = hex_asc[(__val >> 16) & 0xf];	\
+			__out[2] = hex_asc[(__val >> 20) & 0xf];	\
+			__out[1] = hex_asc[(__val >> 24) & 0xf];	\
+			__out[0] = hex_asc[(__val >> 28) & 0xf];	\
+			__len = 8;					\
+			break;						\
+		}							\
+	} else {							\
+		*(u64 *)__out = U64_C(0x3030303030303030);		\
+		__len = 8;						\
+	}								\
+									\
+	__len;								\
+})
+
+#define print_vma_hex5(out, val, clz_fn) \
+({									\
+	const typeof(val) __val = val;					\
+	char *const __out = out;					\
+	size_t __len;							\
+									\
+	if (__val) {							\
+		__len = (sizeof(__val) * 8 - clz_fn(__val) + 3) / 4;	\
+		switch (__len) {					\
+		case 5:							\
+			__out[4] = hex_asc[(__val >>  0) & 0xf];	\
+			__out[3] = hex_asc[(__val >>  4) & 0xf];	\
+			__out[2] = hex_asc[(__val >>  8) & 0xf];	\
+			__out[1] = hex_asc[(__val >> 12) & 0xf];	\
+			__out[0] = hex_asc[(__val >> 16) & 0xf];	\
+			break;						\
+		case 4:							\
+			__out[3] = hex_asc[(__val >>  0) & 0xf];	\
+			__out[2] = hex_asc[(__val >>  4) & 0xf];	\
+			__out[1] = hex_asc[(__val >>  8) & 0xf];	\
+			__out[0] = hex_asc[(__val >> 12) & 0xf];	\
+			break;						\
+		case 3:							\
+			__out[2] = hex_asc[(__val >>  0) & 0xf];	\
+			__out[1] = hex_asc[(__val >>  4) & 0xf];	\
+			__out[0] = hex_asc[(__val >>  8) & 0xf];	\
+			break;						\
+		default:						\
+			__out[1] = hex_asc[(__val >>  0) & 0xf];	\
+			__out[0] = hex_asc[(__val >>  4) & 0xf];	\
+			__len = 2;					\
+			break;						\
+		}							\
+	} else {							\
+		*(u16 *)__out = U16_C(0x3030);				\
+		__len = 2;						\
+	}								\
+									\
+	__len;								\
+})
+
+#define print_vma_hex3(out, val, clz_fn) \
+({									\
+	const typeof(val) __val = val;					\
+	char *const __out = out;					\
+	size_t __len;							\
+									\
+	if (__val & 0xf00) {						\
+		__out[2] = hex_asc[(__val >> 0) & 0xf];			\
+		__out[1] = hex_asc[(__val >> 4) & 0xf];			\
+		__out[0] = hex_asc[(__val >> 8) & 0xf];			\
+		__len = 3;						\
+	} else {							\
+		__out[1] = hex_asc[(__val >> 0) & 0xf];			\
+		__out[0] = hex_asc[(__val >> 4) & 0xf];			\
+		__len = 2;						\
+	}								\
+									\
+	__len;								\
+})
+
+static int show_vma_header_prefix(struct seq_file *m, unsigned long start,
+				  unsigned long end, vm_flags_t flags,
+				  unsigned long long pgoff, dev_t dev,
+				  unsigned long ino)
 {
-	seq_setwidth(m, 25 + sizeof(void *) * 6 - 1);
-	seq_put_hex_ll(m, NULL, start, 8);
-	seq_put_hex_ll(m, "-", end, 8);
-	seq_putc(m, ' ');
-	seq_putc(m, flags & VM_READ ? 'r' : '-');
-	seq_putc(m, flags & VM_WRITE ? 'w' : '-');
-	seq_putc(m, flags & VM_EXEC ? 'x' : '-');
-	seq_putc(m, flags & VM_MAYSHARE ? 's' : 'p');
-	seq_put_hex_ll(m, " ", pgoff, 8);
-	seq_put_hex_ll(m, " ", MAJOR(dev), 2);
-	seq_put_hex_ll(m, ":", MINOR(dev), 2);
-	seq_put_decimal_ull(m, " ", ino);
-	seq_putc(m, ' ');
+	size_t len;
+	char *out;
+
+	/* Set the overflow status to get more memory if there's no space */
+	if (seq_get_buf(m, &out) < 69) {
+		seq_commit(m, -1);
+		return -ENOMEM;
+	}
+
+	/* Supports printing up to 40 bits per virtual address */
+	BUILD_BUG_ON(CONFIG_ARM64_VA_BITS > 40);
+
+	len = print_vma_hex10(out, start, __builtin_clzl);
+
+	out[len++] = '-';
+
+	len += print_vma_hex10(out + len, end, __builtin_clzl);
+
+	out[len++] = ' ';
+	out[len++] = "-r"[!!(flags & VM_READ)];
+	out[len++] = "-w"[!!(flags & VM_WRITE)];
+	out[len++] = "-x"[!!(flags & VM_EXEC)];
+	out[len++] = "ps"[!!(flags & VM_MAYSHARE)];
+	out[len++] = ' ';
+
+	len += print_vma_hex10(out + len, pgoff, __builtin_clzll);
+
+	out[len++] = ' ';
+
+	len += print_vma_hex3(out + len, MAJOR(dev), __builtin_clz);
+
+	out[len++] = ':';
+
+	len += print_vma_hex5(out + len, MINOR(dev), __builtin_clz);
+
+	out[len++] = ' ';
+
+	len += num_to_str(&out[len], 20, ino, 0);
+
+	out[len++] = ' ';
+
+	m->count += len;
+	return 0;
 }
 
 static void
@@ -292,16 +435,41 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 
 	start = vma->vm_start;
 	end = vma->vm_end;
-	show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino);
+	if (show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino))
+		return;
 
 	/*
 	 * Print the dentry name for named mappings, and a
 	 * special [heap] marker for the heap:
 	 */
 	if (file) {
-		seq_pad(m, ' ');
-		seq_file_path(m, file, "\n");
-		goto done;
+		char *buf;
+		size_t size = seq_get_buf(m, &buf);
+
+		/*
+		 * This won't escape newline characters from the path. If a
+		 * program uses newlines in its paths then it can kick rocks.
+		 */
+		if (size > 1) {
+			char *p;
+
+			p = d_path(&file->f_path, buf, size);
+			if (!IS_ERR(p)) {
+				size_t len;
+
+				/* Minus one to exclude the NUL character */
+				len = size - (p - buf) - 1;
+				if (likely(p > buf))
+					memmove(buf, p, len);
+				buf[len] = '\n';
+				seq_commit(m, len + 1);
+				return;
+			}
+		}
+
+		/* Set the overflow status to get more memory */
+		seq_commit(m, -1);
+		return;
 	}
 
 	if (vma->vm_ops && vma->vm_ops->name) {
@@ -315,33 +483,33 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 		struct anon_vma_name *anon_name;
 
 		if (!mm) {
-			name = "[vdso]";
-			goto done;
+			seq_write(m, "[vdso]\n", 7);
+			return;
 		}
 
 		if (vma->vm_start <= mm->brk &&
 		    vma->vm_end >= mm->start_brk) {
-			name = "[heap]";
-			goto done;
+			seq_write(m, "[heap]\n", 7);
+			return;
 		}
 
 		if (is_stack(vma)) {
-			name = "[stack]";
-			goto done;
+			seq_write(m, "[stack]\n", 8);
+			return;
 		}
 
 		anon_name = anon_vma_name(vma);
 		if (anon_name) {
-			seq_pad(m, ' ');
-			seq_printf(m, "[anon:%s]", anon_name->name);
+			seq_write(m, "[anon:", 6);
+			seq_puts(m, anon_name->name);
+			seq_write(m, "]\n", 2);
+			return;
 		}
 	}
 
 done:
-	if (name) {
-		seq_pad(m, ' ');
+	if (name)
 		seq_puts(m, name);
-	}
 	seq_putc(m, '\n');
 }
 
@@ -411,7 +579,6 @@ struct mem_size_stats {
 	u64 pss_shmem;
 	u64 pss_locked;
 	u64 swap_pss;
-	bool check_shmem_swap;
 };
 
 static void smaps_page_accumulate(struct mem_size_stats *mss,
@@ -500,15 +667,27 @@ static int smaps_pte_hole(unsigned long addr, unsigned long end,
 			  __always_unused int depth, struct mm_walk *walk)
 {
 	struct mem_size_stats *mss = walk->private;
+	struct vm_area_struct *vma = walk->vma;
 
-	mss->swap += shmem_partial_swap_usage(
-			walk->vma->vm_file->f_mapping, addr, end);
+	mss->swap += shmem_partial_swap_usage(walk->vma->vm_file->f_mapping,
+					      linear_page_index(vma, addr),
+					      linear_page_index(vma, end));
 
 	return 0;
 }
 #else
 #define smaps_pte_hole		NULL
 #endif /* CONFIG_SHMEM */
+
+static void smaps_pte_hole_lookup(unsigned long addr, struct mm_walk *walk)
+{
+#ifdef CONFIG_SHMEM
+	if (walk->ops->pte_hole) {
+		/* depth is not used */
+		smaps_pte_hole(addr, addr + PAGE_SIZE, 0, walk);
+	}
+#endif
+}
 
 static void smaps_pte_entry(pte_t *pte, unsigned long addr,
 		struct mm_walk *walk)
@@ -544,12 +723,8 @@ static void smaps_pte_entry(pte_t *pte, unsigned long addr,
 			page = migration_entry_to_page(swpent);
 		} else if (is_device_private_entry(swpent))
 			page = device_private_entry_to_page(swpent);
-	} else if (unlikely(IS_ENABLED(CONFIG_SHMEM) && mss->check_shmem_swap
-							&& pte_none(*pte))) {
-		page = xa_load(&vma->vm_file->f_mapping->i_pages,
-						linear_page_index(vma, addr));
-		if (xa_is_value(page))
-			mss->swap += PAGE_SIZE;
+	} else {
+		smaps_pte_hole_lookup(addr, walk);
 		return;
 	}
 
@@ -744,12 +919,14 @@ static int smaps_hugetlb_range(pte_t *pte, unsigned long hmask,
 static const struct mm_walk_ops smaps_walk_ops = {
 	.pmd_entry		= smaps_pte_range,
 	.hugetlb_entry		= smaps_hugetlb_range,
+	.walk_lock		= PGWALK_RDLOCK,
 };
 
 static const struct mm_walk_ops smaps_shmem_walk_ops = {
 	.pmd_entry		= smaps_pte_range,
 	.hugetlb_entry		= smaps_hugetlb_range,
 	.pte_hole		= smaps_pte_hole,
+	.walk_lock		= PGWALK_RDLOCK,
 };
 
 /*
@@ -768,8 +945,6 @@ static void smap_gather_stats(struct vm_area_struct *vma,
 		return;
 
 #ifdef CONFIG_SHMEM
-	/* In case of smaps_rollup, reset the value from previous vma */
-	mss->check_shmem_swap = false;
 	if (vma->vm_file && shmem_mapping(vma->vm_file->f_mapping)) {
 		/*
 		 * For shared or readonly shmem mappings we know that all
@@ -787,7 +962,6 @@ static void smap_gather_stats(struct vm_area_struct *vma,
 					!(vma->vm_flags & VM_WRITE))) {
 			mss->swap += shmem_swapped;
 		} else {
-			mss->check_shmem_swap = true;
 			ops = &smaps_shmem_walk_ops;
 		}
 	}
@@ -1235,6 +1409,7 @@ static int clear_refs_test_walk(unsigned long start, unsigned long end,
 static const struct mm_walk_ops clear_refs_walk_ops = {
 	.pmd_entry		= clear_refs_pte_range,
 	.test_walk		= clear_refs_test_walk,
+	.walk_lock		= PGWALK_WRLOCK,
 };
 
 static ssize_t clear_refs_write(struct file *file, const char __user *buf,
@@ -1585,6 +1760,7 @@ static const struct mm_walk_ops pagemap_ops = {
 	.pmd_entry	= pagemap_pmd_range,
 	.pte_hole	= pagemap_pte_hole,
 	.hugetlb_entry	= pagemap_hugetlb_range,
+	.walk_lock	= PGWALK_RDLOCK,
 };
 
 /*
@@ -1892,6 +2068,7 @@ static int gather_hugetlb_stats(pte_t *pte, unsigned long hmask,
 static const struct mm_walk_ops show_numa_ops = {
 	.hugetlb_entry = gather_hugetlb_stats,
 	.pmd_entry = gather_pte_stats,
+	.walk_lock = PGWALK_RDLOCK,
 };
 
 /*

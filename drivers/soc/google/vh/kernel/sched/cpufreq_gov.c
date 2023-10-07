@@ -829,10 +829,14 @@ sugov_update_shared(struct update_util_data *hook, u64 time, unsigned int flags)
 {
 	struct sugov_cpu *sg_cpu = container_of(hook, struct sugov_cpu, update_util);
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
-	unsigned long util = sugov_get_util(sg_cpu);
 	unsigned int next_f;
+	unsigned long util;
 
 	raw_spin_lock(&sg_policy->update_lock);
+
+	sg_policy->limits_changed |= flags & SCHED_PIXEL_FORCE_UPDATE;
+
+	util = sugov_get_util(sg_cpu);
 
 #if IS_ENABLED(CONFIG_UCLAMP_STATS)
 	update_uclamp_stats(sg_cpu->cpu, time);

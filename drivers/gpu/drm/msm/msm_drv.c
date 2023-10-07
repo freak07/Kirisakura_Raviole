@@ -456,7 +456,9 @@ static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 
 	dma_set_max_seg_size(dev, UINT_MAX);
 
-	msm_gem_shrinker_init(ddev);
+	ret = msm_gem_shrinker_init(ddev);
+	if (ret)
+		goto err_msm_uninit;
 
 	switch (get_mdp_ver(pdev)) {
 	case KMS_MDP4:

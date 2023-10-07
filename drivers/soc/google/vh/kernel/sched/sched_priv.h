@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include "../../include/sched.h"
+#include <asm/atomic.h>
 
 #define MIN_CAPACITY_CPU    CONFIG_VH_MIN_CAPACITY_CPU
 #define MID_CAPACITY_CPU    CONFIG_VH_MID_CAPACITY_CPU
@@ -15,12 +16,23 @@
 #define THREAD_PRIORITY_TOP_APP_BOOST 110
 #define THREAD_PRIORITY_BACKGROUND    130
 #define THREAD_PRIORITY_LOWEST        139
+#define LIST_QUEUED         0xa5a55a5a
+#define LIST_NOT_QUEUED     0x5a5aa5a5
 
 /*
  * For cpu running normal tasks, its uclamp.min will be 0 and uclamp.max will be 1024,
  * and the sum will be 1024. We use this as index that cpu is not running important tasks.
  */
 #define DEFAULT_IMPRATANCE_THRESHOLD	1024
+
+/*
+ * Sets uclamp_max to the task based on the most efficient point of the CPU the
+ * task is currently running on.
+ */
+#define AUTO_UCLAMP_MAX_MAGIC		-2
+
+#define AUTO_UCLAMP_MAX_FLAG_TASK	BIT(0)
+#define AUTO_UCLAMP_MAX_FLAG_GROUP	BIT(1)
 
 #define UCLAMP_BUCKET_DELTA DIV_ROUND_CLOSEST(SCHED_CAPACITY_SCALE, UCLAMP_BUCKETS)
 
@@ -36,6 +48,7 @@
 
 extern unsigned int sched_capacity_margin[CPU_NUM];
 extern unsigned int sched_dvfs_headroom[CPU_NUM];
+extern unsigned int sched_auto_uclamp_max[CPU_NUM];
 
 #define cpu_overutilized(cap, max, cpu)	\
 		((cap) * sched_capacity_margin[cpu] > (max) << SCHED_CAPACITY_SHIFT)
@@ -77,6 +90,7 @@ struct vendor_group_property {
 	bool prefer_idle;
 	bool prefer_high_cap;
 	bool task_spreading;
+	bool auto_uclamp_max;
 #if !IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	unsigned int group_throttle;
 #endif
@@ -169,6 +183,8 @@ DECLARE_STATIC_KEY_FALSE(uclamp_max_filter_enable);
 
 DECLARE_STATIC_KEY_FALSE(tapered_dvfs_headroom_enable);
 
+#define SCHED_PIXEL_FORCE_UPDATE		BIT(8)
+
 /*****************************************************************************/
 /*                       Upstream Code Section                               */
 /*****************************************************************************/
@@ -178,6 +194,8 @@ DECLARE_STATIC_KEY_FALSE(tapered_dvfs_headroom_enable);
  * to make proper adjustment in vendor hook.
  */
 extern struct uclamp_se uclamp_default[UCLAMP_CNT];
+
+void set_next_buddy(struct sched_entity *se);
 
 static inline unsigned long task_util(struct task_struct *p)
 {
@@ -201,6 +219,14 @@ static inline unsigned int uclamp_none(enum uclamp_id clamp_id)
 	if (clamp_id == UCLAMP_MIN)
 		return 0;
 	return SCHED_CAPACITY_SCALE;
+}
+
+static inline void uclamp_se_set(struct uclamp_se *uc_se,
+				 unsigned int value, bool user_defined)
+{
+	uc_se->value = value;
+	uc_se->bucket_id = get_bucket_id(value);
+	uc_se->user_defined = user_defined;
 }
 
 extern inline void uclamp_rq_inc_id(struct rq *rq, struct task_struct *p,
@@ -378,6 +404,7 @@ static inline struct vendor_task_group_struct *get_vendor_task_group_struct(stru
 struct vendor_rq_struct {
 	raw_spinlock_t lock;
 	unsigned long util_removed;
+	atomic_t num_adpf_tasks;
 };
 
 ANDROID_VENDOR_CHECK_SIZE_ALIGN(u64 android_vendor_data1[96], struct vendor_rq_struct t);
@@ -416,9 +443,10 @@ static inline void init_vendor_task_struct(struct vendor_task_struct *v_tsk)
 	v_tsk->group = VG_SYSTEM;
 	v_tsk->direct_reclaim_ts = 0;
 	INIT_LIST_HEAD(&v_tsk->node);
-	v_tsk->queued_to_list = false;
+	v_tsk->queued_to_list = LIST_NOT_QUEUED;
 	v_tsk->uclamp_fork_reset = false;
 	v_tsk->prefer_idle = false;
+	v_tsk->auto_uclamp_max_flags = 0;
 	v_tsk->uclamp_filter.uclamp_min_ignored = 0;
 	v_tsk->uclamp_filter.uclamp_max_ignored = 0;
 	v_tsk->binder_task.uclamp[UCLAMP_MIN] = uclamp_none(UCLAMP_MIN);
@@ -621,4 +649,43 @@ static inline bool uclamp_is_ignore_uclamp_max(struct task_struct *p)
 {
 	struct vendor_task_struct *vp = get_vendor_task_struct(p);
 	return vp->uclamp_filter.uclamp_max_ignored;
+}
+
+static inline bool apply_uclamp_filters(struct rq *rq, struct task_struct *p)
+{
+	bool auto_uclamp_max = get_vendor_task_struct(p)->auto_uclamp_max_flags;
+	bool filtered = false;
+
+	if (auto_uclamp_max) {
+		filtered = true;
+		/* GKI has incremented it already, undo that */
+		uclamp_rq_dec_id(rq, p, UCLAMP_MAX);
+		/* update uclamp_max if set to auto */
+		uclamp_se_set(&p->uclamp_req[UCLAMP_MAX],
+			      sched_auto_uclamp_max[task_cpu(p)], true);
+	}
+
+	if (uclamp_can_ignore_uclamp_max(rq, p)) {
+		filtered = true;
+		uclamp_set_ignore_uclamp_max(p);
+		if (!auto_uclamp_max) {
+			/* GKI has incremented it already, undo that */
+			uclamp_rq_dec_id(rq, p, UCLAMP_MAX);
+		}
+	} else if (auto_uclamp_max) {
+		/*
+		 * re-apply uclamp_max applying the potentially new
+		 * auto value
+		 */
+		uclamp_rq_inc_id(rq, p, UCLAMP_MAX);
+	}
+
+	if (uclamp_can_ignore_uclamp_min(rq, p)) {
+		filtered = true;
+		uclamp_set_ignore_uclamp_min(p);
+		/* GKI has incremented it already, undo that */
+		uclamp_rq_dec_id(rq, p, UCLAMP_MIN);
+	}
+
+	return filtered;
 }
