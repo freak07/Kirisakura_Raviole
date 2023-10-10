@@ -1022,8 +1022,19 @@ static __always_inline struct mem_cgroup *get_active_memcg(void)
  */
 static __always_inline struct mem_cgroup *get_mem_cgroup_from_current(void)
 {
-	if (memcg_kmem_bypass())
-		return NULL;
+
+	struct mem_cgroup *memcg;
+	if (in_task()) {
+		memcg = current->active_memcg;
+
+		/* Memcg to charge can't be determined. */
+		if (likely(!memcg) && (!current->mm || (current->flags & PF_KTHREAD)))
+			return NULL;
+	} else {
+		memcg = this_cpu_read(int_active_memcg);
+		if (likely(!memcg))
+			return NULL;
+	}
 
 	if (unlikely(active_memcg()))
 		return get_active_memcg();
@@ -3128,10 +3139,11 @@ void __memcg_kmem_uncharge(struct mem_cgroup *memcg, unsigned int nr_pages)
  */
 int __memcg_kmem_charge_page(struct page *page, gfp_t gfp, int order)
 {
-	struct mem_cgroup *memcg;
+	struct mem_cgroup *memcg = NULL;
+	struct obj_cgroup *objcg;
 	int ret = 0;
 
-	memcg = current_obj_cgroup();
+	objcg = current_obj_cgroup();
 	if (memcg && !mem_cgroup_is_root(memcg)) {
 		ret = __memcg_kmem_charge(memcg, gfp, 1 << order);
 		if (!ret) {
