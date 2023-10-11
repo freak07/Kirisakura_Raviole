@@ -379,6 +379,42 @@ void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 	 */
 	dev_dbg(exynos_pcie->pci->dev, "AFC cal mode set to restart\n");
 	writel(0x4, phy_base_regs + 0xBF4);
+
+	/* Debug settings. Enabling internal dump function */
+	exynos_udbg_write(exynos_pcie, 0x2, 0xC100);	/* time_out_value    default: 30cycles */
+	exynos_udbg_write(exynos_pcie, 0x1, 0xC01C);	/* start AND/OR      default : AND(1) */
+	exynos_udbg_write(exynos_pcie, 0x1, 0xC044);	/* end AND/OR        default : AND(1) */
+	exynos_udbg_write(exynos_pcie, 0x57fbfbfb, 0xC00C);	/* start trigger sig sel */
+	exynos_udbg_write(exynos_pcie, 0xfbfbfbfb, 0xC008);
+	exynos_udbg_write(exynos_pcie, 0xfbfbfbfb, 0xC004);
+	exynos_udbg_write(exynos_pcie, 0xfbfbfbfb, 0xC000);
+	exynos_udbg_write(exynos_pcie, 0xffff, 0xC020);
+	exynos_udbg_write(exynos_pcie, 0xebd7af5, 0xC018);
+	exynos_udbg_write(exynos_pcie, 0xebd7af5, 0xC014);
+	exynos_udbg_write(exynos_pcie, 0xebd7af5, 0xC010);
+	exynos_udbg_write(exynos_pcie, 0xfff, 0xC024);
+	exynos_udbg_write(exynos_pcie, 0xfbfbfbfb, 0xC034);
+	exynos_udbg_write(exynos_pcie, 0xfbfbfbfb, 0xC030);
+	exynos_udbg_write(exynos_pcie, 0xfbfbfbfb, 0xC02C);
+	exynos_udbg_write(exynos_pcie, 0xfbfbfbfb, 0xC028);
+	exynos_udbg_write(exynos_pcie, 0xffff, 0xC048);
+	exynos_udbg_write(exynos_pcie, 0xebd7af5, 0xC040);
+	exynos_udbg_write(exynos_pcie, 0xebd7af5, 0xC03C);
+	exynos_udbg_write(exynos_pcie, 0xebd7af5, 0xC038);
+	exynos_udbg_write(exynos_pcie, 0xfff, 0xC04C);
+
+	/* trace signal selection */
+	exynos_udbg_write(exynos_pcie, 0x32594CB, 0xC618);
+	exynos_udbg_write(exynos_pcie, 0x1B4DC6F, 0xC614);
+	exynos_udbg_write(exynos_pcie, 0x5c2c03, 0xC610);
+	exynos_udbg_write(exynos_pcie, 0x8a450, 0xC60C);
+	exynos_udbg_write(exynos_pcie, 0x145fafd, 0xC608);
+
+	/* dump_enable[0] ;dump_mode[5:4] START_TO_FULL(0x01) START_TO_END(0x11) */
+	exynos_udbg_write(exynos_pcie, 0x11, 0xC604);
+
+	/* interrupt_enable */
+	exynos_udbg_write(exynos_pcie, 0x1, 0xC108);
 }
 EXPORT_SYMBOL_GPL(exynos_pcie_rc_pcie_phy_config);
 
