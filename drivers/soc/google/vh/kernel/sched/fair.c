@@ -1518,7 +1518,8 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool s
 	unsigned int exit_lat, pd_best_exit_lat, best_exit_lat;
 	bool is_idle, task_fits, util_fits;
 	bool idle_target_found = false, importance_target_found = false;
-	bool prefer_idle = get_prefer_idle(p), prefer_high_cap = get_prefer_high_cap(p);
+	bool prefer_idle = get_prefer_idle(p);
+	bool prefer_high_cap = get_prefer_high_cap(p) || sync_boost;
 	unsigned long capacity, wake_util, cpu_importance, pd_least_cpu_importantce;
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
 	bool group_overutilize;
