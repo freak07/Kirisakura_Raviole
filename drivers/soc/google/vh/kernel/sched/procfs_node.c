@@ -954,7 +954,7 @@ static int update_sched_capacity_margin(const char *buf, int count)
 		if (kstrtouint(tok, 0, &val))
 			goto fail;
 
-		if (val > DEF_UTIL_THRESHOLD || val < SCHED_CAPACITY_SCALE)
+		if (val < SCHED_CAPACITY_SCALE)
 			goto fail;
 
 		tmp[index] = val;
