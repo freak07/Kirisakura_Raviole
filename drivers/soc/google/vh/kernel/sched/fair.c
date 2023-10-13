@@ -2192,6 +2192,14 @@ void rvh_check_preempt_wakeup_pixel_mod(void *data, struct rq *rq, struct task_s
 	if (entity_is_task(pse) || entity_is_task(se))
 		return;
 
+	/*
+	 * Let ADPF task preempt non-ADPF task.
+	 */
+	if(!get_uclamp_fork_reset(task_of(se), true) && get_uclamp_fork_reset(task_of(pse), true)) {
+		*preempt = true;
+		return;
+	}
+
 	ideal_runtime = sched_slice(cfs_rq_of(se), se);
 	delta_exec = se->sum_exec_runtime - se->prev_sum_exec_runtime;
 	/*
