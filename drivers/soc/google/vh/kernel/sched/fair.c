@@ -2196,6 +2196,9 @@ void rvh_check_preempt_wakeup_pixel_mod(void *data, struct rq *rq, struct task_s
 	 * Let ADPF task preempt non-ADPF task.
 	 */
 	if(!get_uclamp_fork_reset(task_of(se), true) && get_uclamp_fork_reset(task_of(pse), true)) {
+		if (!next_buddy_marked)
+			set_next_buddy(pse);
+
 		*preempt = true;
 		return;
 	}
