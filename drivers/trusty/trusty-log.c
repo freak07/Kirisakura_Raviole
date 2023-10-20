@@ -133,6 +133,15 @@ module_param_named(log_ratelimit_burst, trusty_log_rate_limit.burst, int, 0644);
 module_param_named(log_ratelimit_interval, trusty_log_rate_limit.interval, int,
 		   0644);
 
+/*
+ * The kernel panic notifier will unconditionaly dump the trusty logs when
+ * called, if this is set.  Otherwise the kernel panic notifier will only dump
+ * Trusty logs if Trusty has itself panicked.
+ */
+static bool trusty_log_force_on_panic = false;
+
+module_param_named(log_force_on_panic, trusty_log_force_on_panic, bool, 0644);
+
 /**
  * struct trusty_log_sfile - trusty log misc device state
  *
@@ -565,9 +574,14 @@ static int trusty_log_panic_notify(struct notifier_block *nb,
 	 * though this is racy.
 	 */
 	s = container_of(nb, struct trusty_log_state, panic_notifier);
-	dev_info(s->dev, "panic notifier - trusty version %s",
-		 trusty_version_str_get(s->trusty_dev));
-	trusty_dump_logs(s);
+
+	if (trusty_log_force_on_panic ||
+				trusty_get_panic_status(s->trusty_dev)) {
+		dev_info(s->dev, "panic notifier - trusty version %s",
+						trusty_version_str_get(s->trusty_dev));
+		trusty_dump_logs(s);
+	}
+
 	return NOTIFY_OK;
 }
 
