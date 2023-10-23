@@ -127,6 +127,20 @@ void logbuffer_log(struct logbuffer *instance, const char *fmt, ...)
 }
 EXPORT_SYMBOL_GPL(logbuffer_log);
 
+static unsigned int logbuffer_indexed_vlog(struct logbuffer *instance, int loglevel,
+					   const char *fmt, va_list args)
+{
+	char log[LOG_BUFFER_ENTRY_SIZE];
+	unsigned int index;
+
+	index = atomic_inc_return(&log_index);
+
+	scnprintf(log, LOG_BUFFER_ENTRY_SIZE, "[%5u] %s", index, fmt);
+	logbuffer_vlog(instance, log, args);
+
+	return index;
+}
+
 void logbuffer_logk(struct logbuffer *instance, int loglevel, const char *fmt, ...)
 {
 	char log[LOG_BUFFER_ENTRY_SIZE];
@@ -136,16 +150,42 @@ void logbuffer_logk(struct logbuffer *instance, int loglevel, const char *fmt, .
 	if (!fmt || !instance)
 		return;
 
-	index = atomic_inc_return(&log_index);
-
 	va_start(args, fmt);
-	scnprintf(log, LOG_BUFFER_ENTRY_SIZE, "[%5u] %s", index, fmt);
-	logbuffer_vlog(instance, log, args);
-	scnprintf(log, LOG_BUFFER_ENTRY_SIZE, "%s: [%5u] %s\n", instance->name, index, fmt);
-	vprintk_emit(0, loglevel, NULL, log, args);
+	index = logbuffer_indexed_vlog(instance, loglevel, fmt, args);
+	if (IS_ENABLED(CONFIG_PRINTK)) {
+		scnprintf(log, LOG_BUFFER_ENTRY_SIZE, "%s: [%5u] %s\n", instance->name, index, fmt);
+		vprintk_emit(0, loglevel, NULL, log, args);
+	}
 	va_end(args);
 }
 EXPORT_SYMBOL_GPL(logbuffer_logk);
+
+int dev_logbuffer_logk(struct device *dev, struct logbuffer *instance, int loglevel,
+		       const char *fmt, ...)
+{
+	char log[LOG_BUFFER_ENTRY_SIZE];
+	unsigned int index;
+	va_list args;
+	int ret = 0;
+
+	if (!dev || !instance)
+		return -ENODEV;
+
+	if (!fmt)
+		return 0;
+
+	va_start(args, fmt);
+	index = logbuffer_indexed_vlog(instance, loglevel, fmt, args);
+	if (IS_ENABLED(CONFIG_PRINTK)) {
+		scnprintf(log, LOG_BUFFER_ENTRY_SIZE, "%s %s: [%5u] %s\n", dev_driver_string(dev),
+			  dev_name(dev), index, fmt);
+		ret = dev_vprintk_emit(loglevel, dev, log, args);
+	}
+	va_end(args);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(dev_logbuffer_logk);
 
 static int logbuffer_seq_show(struct seq_file *s, void *v)
 {
