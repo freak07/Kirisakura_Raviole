@@ -653,10 +653,16 @@ static void dbg_snapshot_print_freqinfo(void)
 #define arch_irq_stat() 0
 #endif
 
+#define IRQ_THRESHOLD 50
+
 static void dbg_snapshot_print_irq(void)
 {
 	int i, cpu;
 	u64 sum = 0;
+	struct timespec64 tp;
+	unsigned long long irq_filter = 0;
+	ktime_get_boottime_ts64(&tp);
+	irq_filter = tp.tv_sec * IRQ_THRESHOLD;
 
 	for_each_possible_cpu(cpu)
 		sum += kstat_cpu_irqs_sum(cpu);
@@ -683,7 +689,7 @@ static void dbg_snapshot_print_irq(void)
 		for_each_possible_cpu(cpu)
 			irq_stat += *per_cpu_ptr(desc->kstat_irqs, cpu);
 
-		if (!irq_stat)
+		if (!irq_stat || irq_stat < irq_filter)
 			continue;
 
 		if (desc->action && desc->action->name)
