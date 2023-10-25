@@ -1483,6 +1483,9 @@ static int sysmmu_parse_dt(struct device *sysmmu, struct sysmmu_drvdata *data)
 	data->async_fault_mode = of_property_read_bool(sysmmu->of_node,
 						       "sysmmu,async-fault");
 
+	if (of_property_read_u32(sysmmu->of_node, "panic-action", &data->panic_action))
+		data->panic_action = GO_PANIC_ID;
+
 	ret = sysmmu_parse_tlb_property(sysmmu, data);
 	if (ret)
 		dev_err(sysmmu, "Failed to parse TLB property\n");
