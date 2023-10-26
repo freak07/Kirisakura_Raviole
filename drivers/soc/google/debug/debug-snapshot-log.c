@@ -26,18 +26,18 @@
 struct dbg_snapshot_log_item dss_log_items[] = {
 	[DSS_LOG_TASK_ID]	= {DSS_LOG_TASK,	{0, 0, 0, false}, },
 	[DSS_LOG_WORK_ID]	= {DSS_LOG_WORK,	{0, 0, 0, false}, },
-	[DSS_LOG_CPUIDLE_ID]	= {DSS_LOG_CPUIDLE,	{0, 0, 0, false}, },
-	[DSS_LOG_SUSPEND_ID]	= {DSS_LOG_SUSPEND,	{0, 0, 0, false}, },
+	[DSS_LOG_CPUIDLE_ID]	= {DSS_LOG_CPUIDLE,	{0, 0, 0, true}, },
+	[DSS_LOG_SUSPEND_ID]	= {DSS_LOG_SUSPEND,	{0, 0, 0, true}, },
 	[DSS_LOG_IRQ_ID]	= {DSS_LOG_IRQ,		{0, 0, 0, false}, },
 	[DSS_LOG_HRTIMER_ID]	= {DSS_LOG_HRTIMER,	{0, 0, 0, false}, },
-	[DSS_LOG_CLK_ID]	= {DSS_LOG_CLK,		{0, 0, 0, false}, },
-	[DSS_LOG_PMU_ID]	= {DSS_LOG_PMU,		{0, 0, 0, false}, },
-	[DSS_LOG_FREQ_ID]	= {DSS_LOG_FREQ,	{0, 0, 0, false}, },
-	[DSS_LOG_DM_ID]		= {DSS_LOG_DM,		{0, 0, 0, false}, },
-	[DSS_LOG_REGULATOR_ID]	= {DSS_LOG_REGULATOR,	{0, 0, 0, false}, },
-	[DSS_LOG_THERMAL_ID]	= {DSS_LOG_THERMAL,	{0, 0, 0, false}, },
-	[DSS_LOG_ACPM_ID]	= {DSS_LOG_ACPM,	{0, 0, 0, false}, },
-	[DSS_LOG_PRINTK_ID]	= {DSS_LOG_PRINTK,	{0, 0, 0, false}, },
+	[DSS_LOG_CLK_ID]	= {DSS_LOG_CLK,		{0, 0, 0, true}, },
+	[DSS_LOG_PMU_ID]	= {DSS_LOG_PMU,		{0, 0, 0, true}, },
+	[DSS_LOG_FREQ_ID]	= {DSS_LOG_FREQ,	{0, 0, 0, true}, },
+	[DSS_LOG_DM_ID]		= {DSS_LOG_DM,		{0, 0, 0, true}, },
+	[DSS_LOG_REGULATOR_ID]	= {DSS_LOG_REGULATOR,	{0, 0, 0, true}, },
+	[DSS_LOG_THERMAL_ID]	= {DSS_LOG_THERMAL,	{0, 0, 0, true}, },
+	[DSS_LOG_ACPM_ID]	= {DSS_LOG_ACPM,	{0, 0, 0, true}, },
+	[DSS_LOG_PRINTK_ID]	= {DSS_LOG_PRINTK,	{0, 0, 0, true}, },
 };
 
 /*  Internal interface variable */
