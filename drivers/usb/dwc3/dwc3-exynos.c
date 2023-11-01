@@ -854,6 +854,7 @@ static int dwc3_exynos_get_properties(struct dwc3_exynos *exynos)
 
 /* -------------------------------------------------------------------------- */
 
+/* Current data role is updated after the data role change has been completed */
 static ssize_t
 dwc3_exynos_otg_state_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -1027,6 +1028,33 @@ static ssize_t dwc3_exynos_gadget_state_show(struct device *dev, struct device_a
 }
 static DEVICE_ATTR_RO(dwc3_exynos_gadget_state);
 
+/* New data role is updated before the data role change is executed */
+static const char * const usb_roles[] = {
+	[USB_ROLE_NONE]		= "none",
+	[USB_ROLE_HOST]		= "host",
+	[USB_ROLE_DEVICE]	= "device",
+};
+
+static const char *usb_role_string(enum usb_role role)
+{
+	if (role < 0 || role >= ARRAY_SIZE(usb_roles))
+		return "unknown";
+
+	return usb_roles[role];
+}
+
+static ssize_t
+new_data_role_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct dwc3_exynos	*exynos = dev_get_drvdata(dev);
+	struct dwc3_otg		*dotg = exynos->dotg;
+
+	return sysfs_emit(buf, "%s", usb_role_string(dotg->desired_role));
+}
+
+static DEVICE_ATTR_RO(new_data_role);
+
 static struct attribute *dwc3_exynos_otg_attrs[] = {
 	&dev_attr_dwc3_exynos_otg_id.attr,
 	&dev_attr_dwc3_exynos_otg_b_sess.attr,
@@ -1035,6 +1063,7 @@ static struct attribute *dwc3_exynos_otg_attrs[] = {
 	&dev_attr_usb_data_enabled.attr,
 	&dev_attr_force_speed.attr,
 	&dev_attr_dwc3_exynos_gadget_state.attr,
+	&dev_attr_new_data_role.attr,
 	NULL
 };
 ATTRIBUTE_GROUPS(dwc3_exynos_otg);
