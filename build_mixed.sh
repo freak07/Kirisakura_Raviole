@@ -88,6 +88,11 @@ function build_gki {
     SKIP_CP_KERNEL_HDR=1 \
     build/build.sh KCFLAGS=-Werror "$@"
   exit_if_error $? "Failed to compile GKI kernel"
+
+  # The GKI build creates a boot image per compression algorithm, e.g. lz4, gz,
+  # uncompressed. So we need to pick which one to use.
+  mv -f ${DIST_DIR}/boot-lz4.img ${DIST_DIR}/boot.img
+  rm -f ${DIST_DIR}/boot-*.img
 }
 
 function build_device_kernel {
