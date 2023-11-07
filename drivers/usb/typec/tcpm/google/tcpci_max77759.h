@@ -235,11 +235,11 @@ void register_data_active_callback(void (*callback)(void *data_active_payload,
 				   void *data);
 void register_orientation_callback(void (*callback)(void *orientation_payload), void *data);
 
-/* AICL_OK is tracked with COMPLIANCE_WARNING_OTHER */
 #define COMPLIANCE_WARNING_OTHER 0
 #define COMPLIANCE_WARNING_DEBUG_ACCESSORY 1
 #define COMPLIANCE_WARNING_BC12 2
 #define COMPLIANCE_WARNING_MISSING_RP 3
+#define COMPLIANCE_WARNING_INPUT_POWER_LIMITED 4
 
 struct max77759_compliance_warnings {
 	struct max77759_plat *chip;
@@ -247,6 +247,7 @@ struct max77759_compliance_warnings {
 	bool debug_accessory;
 	bool bc12;
 	bool missing_rp;
+	bool input_power_limited;
 };
 
 ssize_t compliance_warnings_to_buffer(struct max77759_compliance_warnings *compliance_warnings,
