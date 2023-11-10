@@ -1311,22 +1311,20 @@ static int dwc3_exynos_runtime_suspend(struct device *dev)
 	if (!exynos)
 		return 0;
 
-	dwc = exynos->dwc;
-	spin_lock_irqsave(&dwc->lock, flags);
-	if (pm_runtime_suspended(dev)) {
-		spin_unlock_irqrestore(&dwc->lock, flags);
+	if (pm_runtime_suspended(dev))
 		return 0;
-	}
 
 	dwc3_exynos_clk_disable_unprepare(exynos);
 
 	/* inform what USB state is idle to IDLE_IP */
 	exynos_update_ip_idle_status(exynos->idle_ip_index, 1);
 
-	/* After disconnecting calble, it will ignore core operations like
+	dwc = exynos->dwc;
+	spin_lock_irqsave(&dwc->lock, flags);
+	/* After disconnecting cable, it will ignore core operations like
 	 * dwc3_suspend/resume in core.c
 	 */
-	exynos->dwc->current_dr_role = DWC3_EXYNOS_IGNORE_CORE_OPS;
+	dwc->current_dr_role = DWC3_EXYNOS_IGNORE_CORE_OPS;
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	return 0;
