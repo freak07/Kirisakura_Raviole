@@ -142,8 +142,8 @@
 		cp-aperture-end-offset = <0x7FFFFF>;
 		clock-divider = <1>;
 
-		channel-max-pending-msgs = <32>;
-		block-channel-threshold = <29>;
+		channel-max-pending-msgs = <128>;
+		block-channel-threshold = <64>;
 
 		notify-on-state-transition = "true";
 		hotword-supported = "true";

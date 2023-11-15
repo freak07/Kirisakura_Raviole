@@ -82,8 +82,8 @@
 		cp-aperture-end-offset = <0x5FFFFF>;
 		clock-divider = <6>;
 
-		channel-max-pending-msgs = <32>;
-		block-channel-threshold = <29>;
+		channel-max-pending-msgs = <128>;
+		block-channel-threshold = <64>;
 	};
 
 	aoc_gpiochip: aoc_gpiochip {
