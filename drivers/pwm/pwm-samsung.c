@@ -615,13 +615,52 @@ static int pwm_samsung_capture(struct pwm_chip *chip, struct pwm_device *pwm,
 	return 0;
 }
 
+static int pwm_samsung_apply(struct pwm_chip *chip, struct pwm_device *pwm,
+			     const struct pwm_state *state)
+{
+	int err, enabled = pwm->state.enabled;
+
+	if (state->polarity != pwm->state.polarity) {
+		if (enabled) {
+			pwm_samsung_disable(chip, pwm);
+			enabled = false;
+		}
+
+		err = pwm_samsung_set_polarity(chip, pwm, state->polarity);
+		if (err)
+			return err;
+	}
+
+	if (!state->enabled) {
+		if (enabled)
+			pwm_samsung_disable(chip, pwm);
+
+		return 0;
+	}
+
+	/*
+	 * We currently avoid using 64bit arithmetic by using the
+	 * fact that anything faster than 1Hz is easily representable
+	 * by 32bits.
+	 */
+	if (state->period > NSEC_PER_SEC)
+		return -ERANGE;
+
+	err = pwm_samsung_config(chip, pwm, state->duty_cycle, state->period);
+	if (err)
+		return err;
+
+	if (!pwm->state.enabled)
+		err = pwm_samsung_enable(chip, pwm);
+
+	return err;
+}
+
+
 static const struct pwm_ops pwm_samsung_ops = {
 	.request	= pwm_samsung_request,
 	.free		= pwm_samsung_free,
-	.enable		= pwm_samsung_enable,
-	.disable	= pwm_samsung_disable,
-	.config		= pwm_samsung_config,
-	.set_polarity	= pwm_samsung_set_polarity,
+	.apply		= pwm_samsung_apply,
 	.capture	= pwm_samsung_capture,
 	.owner		= THIS_MODULE,
 };
