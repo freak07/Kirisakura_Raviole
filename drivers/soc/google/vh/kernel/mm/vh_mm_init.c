@@ -104,6 +104,11 @@ static int vh_mm_init(void)
 		return ret;
 	ret = register_trace_android_vh_reclaim_pages_plug(
 			vh_reclaim_pages_plug, NULL);
+	if (ret)
+		return ret;
+
+	ret = register_trace_android_vh_ptep_clear_flush_young(
+			vh_ptep_clear_flush_young, NULL);
 
 	return ret;
 }
