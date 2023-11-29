@@ -75,7 +75,13 @@ struct fuse_dentry {
 		u64 time;
 		struct rcu_head rcu;
 	};
+
+#ifdef CONFIG_FUSE_BPF
 	struct path backing_path;
+
+	/* bpf program *only* set for negative dentries */
+	struct bpf_prog *bpf;
+#endif
 };
 
 static inline struct fuse_dentry *get_fuse_dentry(const struct dentry *entry)
@@ -633,6 +639,9 @@ struct fuse_conn {
 
 	/** Maxmum number of pages that can be used in a single request */
 	unsigned int max_pages;
+
+	/** Constrain ->max_pages to this value during feature negotiation */
+	unsigned int max_pages_limit;
 
 	/** Input queue */
 	struct fuse_iqueue iq;
@@ -1578,6 +1587,8 @@ int fuse_file_write_iter_backing(struct fuse_bpf_args *fa,
 		struct kiocb *iocb, struct iov_iter *from);
 void *fuse_file_write_iter_finalize(struct fuse_bpf_args *fa,
 		struct kiocb *iocb, struct iov_iter *from);
+
+long fuse_backing_ioctl(struct file *file, unsigned int command, unsigned long arg, int flags);
 
 int fuse_file_flock_backing(struct file *file, int cmd, struct file_lock *fl);
 ssize_t fuse_backing_mmap(struct file *file, struct vm_area_struct *vma);

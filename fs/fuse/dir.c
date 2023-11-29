@@ -183,7 +183,7 @@ static bool backing_data_changed(struct fuse_inode *fi, struct dentry *entry,
 	int err;
 	bool ret = true;
 
-	if (!entry) {
+	if (!entry || !fi->backing_inode) {
 		ret = false;
 		goto put_backing_file;
 	}
@@ -249,7 +249,7 @@ static int fuse_dentry_revalidate(struct dentry *entry, unsigned int flags)
 	}
 #endif
 	if (time_before64(fuse_dentry_time(entry), get_jiffies_64()) ||
-		 (flags & (LOOKUP_EXCL | LOOKUP_REVAL))) {
+		 (flags & (LOOKUP_EXCL | LOOKUP_REVAL | LOOKUP_RENAME_TARGET))) {
 		struct fuse_entry_out outarg;
 		struct fuse_entry_bpf bpf_arg;
 		FUSE_ARGS(args);
@@ -311,7 +311,7 @@ static int fuse_dentry_revalidate(struct dentry *entry, unsigned int flags)
 			spin_unlock(&fi->lock);
 		}
 		kfree(forget);
-		if (ret == -ENOMEM)
+		if (ret == -ENOMEM || ret == -EINTR)
 			goto out;
 		if (ret || fuse_invalid_attr(&outarg.attr) ||
 		    fuse_stale_inode(inode, outarg.generation, &outarg.attr))
@@ -354,8 +354,13 @@ static void fuse_dentry_release(struct dentry *dentry)
 {
 	struct fuse_dentry *fd = dentry->d_fsdata;
 
+#ifdef CONFIG_FUSE_BPF
 	if (fd && fd->backing_path.dentry)
 		path_put(&fd->backing_path);
+
+	if (fd && fd->bpf)
+		bpf_prog_put(fd->bpf);
+#endif
 
 	kfree_rcu(fd, rcu);
 }
@@ -562,7 +567,6 @@ int fuse_lookup_name(struct super_block *sb, u64 nodeid, const struct qstr *name
 	if (name->len > FUSE_NAME_MAX)
 		goto out;
 
-
 	forget = fuse_alloc_forget();
 	err = -ENOMEM;
 	if (!forget)
@@ -581,32 +585,34 @@ int fuse_lookup_name(struct super_block *sb, u64 nodeid, const struct qstr *name
 
 		err = -ENOENT;
 		if (!entry)
-			goto out_queue_forget;
+			goto out_put_forget;
 
 		err = -EINVAL;
 		backing_file = bpf_arg.backing_file;
 		if (!backing_file)
-			goto out_queue_forget;
+			goto out_put_forget;
 
 		if (IS_ERR(backing_file)) {
 			err = PTR_ERR(backing_file);
-			goto out_queue_forget;
+			goto out_put_forget;
 		}
 
 		backing_inode = backing_file->f_inode;
 		*inode = fuse_iget_backing(sb, outarg->nodeid, backing_inode);
 		if (!*inode)
-			goto out;
+			goto out_put_forget;
 
 		err = fuse_handle_backing(&bpf_arg,
 				&get_fuse_inode(*inode)->backing_inode,
 				&get_fuse_dentry(entry)->backing_path);
-		if (err)
-			goto out;
-
-		err = fuse_handle_bpf_prog(&bpf_arg, NULL, &get_fuse_inode(*inode)->bpf);
-		if (err)
-			goto out;
+		if (!err)
+			err = fuse_handle_bpf_prog(&bpf_arg, NULL,
+					   &get_fuse_inode(*inode)->bpf);
+		if (err) {
+			iput(*inode);
+			*inode = NULL;
+			goto out_put_forget;
+		}
 	} else
 #endif
 	{
@@ -626,9 +632,6 @@ int fuse_lookup_name(struct super_block *sb, u64 nodeid, const struct qstr *name
 	}
 
 	err = -ENOMEM;
-#ifdef CONFIG_FUSE_BPF
-out_queue_forget:
-#endif
 	if (!*inode && outarg->nodeid) {
 		fuse_queue_forget(fm->fc, forget, outarg->nodeid, 1);
 		goto out;
@@ -724,6 +727,7 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
 	struct fuse_entry_out outentry;
 	struct fuse_inode *fi;
 	struct fuse_file *ff;
+	bool trunc = flags & O_TRUNC;
 
 	/* Userspace expects S_IFREG in create mode */
 	BUG_ON((mode & S_IFMT) != S_IFREG);
@@ -806,6 +810,10 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
 	} else {
 		file->private_data = ff;
 		fuse_finish_open(inode, file);
+		if (fm->fc->atomic_o_trunc && trunc)
+			truncate_pagecache(inode, 0);
+		else if (!(ff->open_flags & FOPEN_KEEP_CACHE))
+			invalidate_inode_pages2(inode->i_mapping);
 	}
 	return err;
 
