@@ -1880,9 +1880,10 @@ static int max77759_start_toggling(struct tcpci *tcpci,
 		reg |= (TCPC_ROLE_CTRL_CC_RP << TCPC_ROLE_CTRL_CC1_SHIFT) |
 			(TCPC_ROLE_CTRL_CC_RP << TCPC_ROLE_CTRL_CC2_SHIFT);
 
-	mutex_lock(&chip->toggle_lock);
+	/* Wait for tcpci_register_port to finish. */
+	while (READ_ONCE(chip->tcpci) == NULL)
+		cpu_relax();
 	max77759_init_regs(chip->tcpci->regmap, chip->log);
-	mutex_unlock(&chip->toggle_lock);
 
 	chip->role_ctrl_cache = reg;
 	mutex_lock(&chip->rc_lock);
@@ -2785,7 +2786,6 @@ static int max77759_probe(struct i2c_client *client,
 	mutex_init(&chip->data_path_lock);
 	mutex_init(&chip->rc_lock);
 	mutex_init(&chip->irq_status_lock);
-	mutex_init(&chip->toggle_lock);
 	spin_lock_init(&g_caps_lock);
 	chip->first_toggle = true;
 	chip->first_rp_missing_timeout = true;
@@ -2971,9 +2971,7 @@ static int max77759_probe(struct i2c_client *client,
 	}
 	gvotable_set_vote2str(chip->aicl_active_el, gvotable_v2s_int);
 
-	mutex_lock(&chip->toggle_lock);
 	chip->tcpci = tcpci_register_port(chip->dev, &chip->data);
-	mutex_unlock(&chip->toggle_lock);
 	if (IS_ERR_OR_NULL(chip->tcpci)) {
 		dev_err(&client->dev, "TCPCI port registration failed");
 		ret = PTR_ERR(chip->tcpci);
