@@ -30,7 +30,7 @@ fi
 if [ -n "${USING_PREBUILTS}" ]; then
 BUILD_VENDOR_BOOT_IMG=1
 else
-BUILD_BOOT_IMG=1
+BUILD_VENDOR_BOOT_IMG=1
 fi
 
 ABI_DEFINITION=android/abi_gki_aarch64_generic.xml

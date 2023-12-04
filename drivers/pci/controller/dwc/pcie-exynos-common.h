@@ -240,6 +240,7 @@ struct exynos_pcie {
 	struct s2mpu_info	*s2mpu;
 	struct pci_dev		*ep_pci_dev;
 	void __iomem		*elbi_base;
+	void __iomem		*udbg_base;
 	void __iomem		*phy_base;
 	void __iomem		*sysreg_base;
 	void __iomem		*rc_dbi_base;
@@ -372,11 +373,13 @@ static inline void exynos_##base##_write(struct exynos_pcie *pcie, type value, t
 }
 
 PCIE_EXYNOS_OP_READ(elbi, u32);
+PCIE_EXYNOS_OP_READ(udbg, u32);
 PCIE_EXYNOS_OP_READ(phy, u32);
 PCIE_EXYNOS_OP_READ(phy_pcs, u32);
 PCIE_EXYNOS_OP_READ(sysreg, u32);
 PCIE_EXYNOS_OP_READ(ia, u32);
 PCIE_EXYNOS_OP_WRITE(elbi, u32);
+PCIE_EXYNOS_OP_WRITE(udbg, u32);
 PCIE_EXYNOS_OP_WRITE(phy, u32);
 PCIE_EXYNOS_OP_WRITE(phy_pcs, u32);
 PCIE_EXYNOS_OP_WRITE(sysreg, u32);

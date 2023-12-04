@@ -321,6 +321,30 @@ static int ufs_pixel_fips_send_utrd(struct ufs_hba *hba,
 	return 0;
 }
 
+static int ufs_pixel_fips_check_response(struct utp_upiu_rsp *resp, u8 ocs)
+{
+	u8 status = be32_to_cpu(resp->header.dword_1);
+	u8 response = be32_to_cpu(resp->header.dword_1) >> 8;
+	if (ocs || status || response) {
+		uint8_t response_code = resp->sr.sense_data[0] & 0x7F;
+		if (response_code == 0x70) {
+			uint8_t key = resp->sr.sense_data[2] & 0xF;
+			uint8_t asc = resp->sr.sense_data[12];
+			uint8_t ascq = resp->sr.sense_data[13];
+			if (!ocs && status == 2 && response == 1 && key == 6 && asc == 0x29)
+				pr_info("UA Reported\n");
+			else
+				pr_warn("I/O Result: OCS=%x status=%X key=%X asc=%X ascq=%X\n",
+					ocs, status, key, asc, ascq);
+		} else {
+			pr_warn("I/O Result: OCS=%x status=%X\n", ocs, status);
+		}
+		return -EIO;
+	}
+
+	return 0;
+}
+
 int ufs_pixel_fips_send_request(struct ufs_hba *hba, struct scsi_cdb *cdb,
 				struct fips_buffer_info *bi, u32 buffer_len,
 				u32 lu, u32 mki, const u8 *iv)
@@ -329,6 +353,7 @@ int ufs_pixel_fips_send_request(struct ufs_hba *hba, struct scsi_cdb *cdb,
 	struct utp_upiu_rsp *resp_upiu =
 		(struct utp_upiu_rsp *)bi->ucd_addr->response_upiu;
 	u8 task_tag = 0x7;
+	u8 ocs;
 	u32 data_direction;
 	u32 flags;
 	u32 crypto;
@@ -372,19 +397,12 @@ int ufs_pixel_fips_send_request(struct ufs_hba *hba, struct scsi_cdb *cdb,
 
 	/* Send */
 	ret = ufs_pixel_fips_send_utrd(hba, &utrd, task_tag);
-	if (!ret) {
-		u8 ocs = le32_to_cpu(utrd.header.dword_2) & 0xFF;
-		u8 upiu_status = be32_to_cpu(resp_upiu->header.dword_1) & 0xFF;
-		u8 upiu_response =
-			(be32_to_cpu(resp_upiu->header.dword_1) >> 8) & 0xFF;
-		if (ocs || upiu_status || upiu_response) {
-			pr_err("Request failed OCS=%02X status=%02X resp=%02X\n",
-			       ocs, upiu_status, upiu_response);
-			ret = -EIO;
-		}
-	}
+	if (ret)
+		return ret;
 
-	return ret;
+	ocs = le32_to_cpu(utrd.header.dword_2) & 0xFF;
+
+	return ufs_pixel_fips_check_response(resp_upiu, ocs);
 }
 
 static int ufs_pixel_fips_request_sense(struct ufs_hba *hba,

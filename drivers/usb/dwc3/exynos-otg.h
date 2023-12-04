@@ -16,7 +16,7 @@
 #include <soc/google/exynos_pm_qos.h>
 #include <linux/power_supply.h>
 #include "dwc3-exynos.h"
-
+#include <linux/kernfs.h>
 
 struct dwc3_ext_otg_ops {
 	int	(*setup)(struct device *dev, struct otg_fsm *fsm);
@@ -50,6 +50,10 @@ struct dwc3_otg {
 
 	unsigned		ready:1;
 	int			otg_connection;
+
+	/* New data role that is updated before the data role change is executed */
+	enum usb_role           desired_role;
+	struct kernfs_node      *desired_role_kn;
 
 	struct regulator	*vbus_reg;
 
