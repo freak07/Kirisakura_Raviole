@@ -116,6 +116,7 @@ kernel_build(
         "exynos-pcie-iommu.ko",
         "exynos-pd-dbg.ko",
         "exynos-pd_el3.ko",
+        "exynos-pd_hsi0.ko",
         "exynos-pd.ko",
         "exynos-pm.ko",
         "exynos_pm_qos.ko",
