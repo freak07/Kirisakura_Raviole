@@ -50,6 +50,7 @@ exynos-pcie-iommu.ko
 exynos-pd-dbg.ko
 exynos-pd.ko
 exynos-pd_el3.ko
+exynos-pd_hsi0.ko
 exynos-pm.ko
 exynos-pmu-if.ko
 exynos-reboot.ko
