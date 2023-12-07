@@ -1096,63 +1096,6 @@ fail:
 	return -EINVAL;
 }
 
-static int update_sched_auto_uclamp_max(const char *buf, int count)
-{
-	char *tok, *str1, *str2;
-	unsigned int val, tmp[CPU_NUM];
-	int index = 0;
-
-	str1 = kstrndup(buf, count, GFP_KERNEL);
-	str2 = str1;
-
-	if (!str2)
-		return -ENOMEM;
-
-	while (1) {
-		tok = strsep(&str2, " ");
-
-		if (tok == NULL)
-			break;
-
-		if (kstrtouint(tok, 0, &val))
-			goto fail;
-
-		if (val > SCHED_CAPACITY_SCALE)
-			goto fail;
-
-		tmp[index] = val;
-		index++;
-
-		if (index == CPU_NUM)
-			break;
-	}
-
-	if (index == 1) {
-		for (index = 0; index < CPU_NUM; index++) {
-			sched_auto_uclamp_max[index] = tmp[0];
-		}
-	} else if (index == CLUSTER_NUM) {
-		for (index = MIN_CAPACITY_CPU; index < MID_CAPACITY_CPU; index++)
-			sched_auto_uclamp_max[index] = tmp[0];
-
-		for (index = MID_CAPACITY_CPU; index < MAX_CAPACITY_CPU; index++)
-			sched_auto_uclamp_max[index] = tmp[1];
-
-		for (index = MAX_CAPACITY_CPU; index < CPU_NUM; index++)
-			sched_auto_uclamp_max[index] = tmp[2];
-	} else if (index == CPU_NUM) {
-		memcpy(sched_auto_uclamp_max, tmp, sizeof(sched_auto_uclamp_max));
-	} else {
-		goto fail;
-	}
-
-	kfree(str1);
-	return count;
-fail:
-	kfree(str1);
-	return -EINVAL;
-}
-
 static inline struct task_struct *get_next_task(int group, struct list_head *head)
 {
 	unsigned long flags;
