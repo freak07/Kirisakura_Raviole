@@ -2514,22 +2514,16 @@ out:
 						prev_cpu, *target_cpu);
 }
 
-void rvh_set_user_nice_pixel_mod(void *data, struct task_struct *p, long *nice, bool *allowed)
+void rvh_set_user_nice_locked_pixel_mod(void *data, struct task_struct *p, long *nice)
 {
 	struct vendor_task_struct *vp;
 	unsigned long flags;
-	struct rq_flags rf;
-	struct rq *rq;
 
 	if (!vendor_sched_boost_adpf_prio)
 		return;
 
-	rq = task_rq_lock(p, &rf);
-
-	if (p->prio < MAX_RT_PRIO) {
-		task_rq_unlock(rq, p, &rf);
+	if (p->prio < MAX_RT_PRIO)
 		return;
-	}
 
 	vp = get_vendor_task_struct(p);
 	if (get_uclamp_fork_reset(p, false)) {
@@ -2542,8 +2536,6 @@ void rvh_set_user_nice_pixel_mod(void *data, struct task_struct *p, long *nice, 
 			prio_changed(p, vp->orig_prio, p->prio);
 		}
 	}
-
-	task_rq_unlock(rq, p, &rf);
 }
 
 void rvh_setscheduler_pixel_mod(void *data, struct task_struct *p)
