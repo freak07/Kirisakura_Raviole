@@ -4,6 +4,8 @@ blocklist bcmdhd4389
 blocklist drv2624
 blocklist ftm5
 blocklist cs40l26_i2c
+blocklist mali_kutf
+blocklist mali_kutf_clk_rate_trace_test_portal
 blocklist pktgen
 blocklist nvt_touch
 blocklist sec_touch

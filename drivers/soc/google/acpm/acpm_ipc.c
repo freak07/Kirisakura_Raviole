@@ -592,18 +592,32 @@ EXPORT_SYMBOL_GPL(acpm_ipc_send_data_sync);
 
 extern int nr_irqs;
 
+static void acpm_alloc_irq_info(bool usage)
+{
+	kfree(irq_info);
+	if (usage)
+		irq_info = kcalloc(nr_irqs, sizeof(struct cpu_irq_info), GFP_KERNEL);
+	else
+		irq_info = NULL;
+}
+
 static void cpu_irq_info_dump(u32 retry)
 {
 	int i, cpu;
 	u64 sum = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&acpm_debug->lock, flags);
+
+	if (retry == 1)
+		acpm_alloc_irq_info(true);
+	else if (retry == 5)
+		pr_info("<Dump delta of irq counts>\n");
 
 	for_each_possible_cpu(cpu)
 		sum += kstat_cpu_irqs_sum(cpu);
 
 	sum += arch_irq_stat();
-
-	if (retry == 5)
-		pr_info("<Dump delta of irq counts>\n");
 
 	for_each_irq_nr(i) {
 		struct irq_data *data;
@@ -630,12 +644,12 @@ static void cpu_irq_info_dump(u32 retry)
 		else
 			name = "???";
 
-		if (retry == 1) {
+		if (irq_info && retry == 1) {
 			irq_info[i].irq_num = i;
 			irq_info[i].hwirq_num = desc->irq_data.hwirq;
 			irq_info[i].irq_stat = irq_stat;
 			irq_info[i].name = name;
-		} else if (retry == 5) {
+		} else if (irq_info && retry == 5) {
 			delta = irq_stat - irq_info[i].irq_stat;
 			if (delta > 0) {
 				pr_info("irq-%-4d(hwirq-%-3d) delta of irqs: %8u %s\n",
@@ -643,6 +657,7 @@ static void cpu_irq_info_dump(u32 retry)
 			}
 		}
 	}
+	spin_unlock_irqrestore(&acpm_debug->lock, flags);
 }
 
 static void acpm_ktop_release(void)
@@ -847,6 +862,9 @@ retry:
 			dbg_snapshot_do_dpm_policy(acpm_ipc->panic_action, "acpm_ipc timeout");
 		}
 		acpm_ktop_release();
+		spin_lock_irqsave(&acpm_debug->lock, flags);
+		acpm_alloc_irq_info(false);
+		spin_unlock_irqrestore(&acpm_debug->lock, flags);
 	}
 
 	return 0;
@@ -1130,8 +1148,6 @@ int acpm_ipc_probe(struct platform_device *pdev)
 	}
 
 	ret = plugins_init(node);
-
-	irq_info = kcalloc(nr_irqs, sizeof(struct cpu_irq_info), GFP_KERNEL);
 
 	dev_info(&pdev->dev, "acpm_ipc probe done.\n");
 	return ret;

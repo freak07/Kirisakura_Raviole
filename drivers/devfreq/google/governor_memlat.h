@@ -144,6 +144,7 @@ int exynos_devfreq_get_boundary(unsigned int devfreq_type,
 struct device **get_memlat_dev_array(void);
 struct exynos_pm_qos_request **get_memlat_cpu_qos_array(void);
 int *get_memlat_cpuidle_state_aware(void);
+void set_arm_mon_probe_done(bool);
 #else
 static inline int register_memlat(struct device *dev,
 				  struct memlat_hwmon *hw)
@@ -175,6 +176,10 @@ static struct exynos_pm_qos_request **get_memlat_cpu_qos_array(void)
 static int *get_memlat_cpuidle_state_aware(void)
 {
 	return NULL;
+}
+static void set_arm_mon_probe_done(bool)
+{
+	return;
 }
 #endif
 

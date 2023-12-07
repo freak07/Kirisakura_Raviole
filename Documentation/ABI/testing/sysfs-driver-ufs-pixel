@@ -1,3 +1,8 @@
+What:		/sys/devices/platform/<....>ufs/pixel/enable_pixel_ufs_logging
+Date:		Aug, 2023
+Contact:	"Randall Huang" <huangrandall@google.com>
+Description:
+		Enable/Disable UFS command logging.
 
 What:		/sys/devices/platform/<....>ufs/power_stats
 Date:		April, 2022

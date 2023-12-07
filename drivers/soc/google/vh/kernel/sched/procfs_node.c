@@ -5,6 +5,7 @@
  *
  * Copyright 2020 Google LLC
  */
+#include <linux/cpuidle.h>
 #include <linux/lockdep.h>
 #include <linux/kobject.h>
 #include <linux/sched.h>
@@ -979,6 +980,122 @@ fail:
 	return -EINVAL;
 }
 
+static int update_teo_util_threshold(const char *buf, int count)
+{
+	char *tok, *str1, *str2;
+	unsigned int val, tmp[CPU_NUM];
+	int index = 0;
+
+	str1 = kstrndup(buf, count, GFP_KERNEL);
+	str2 = str1;
+
+	if (!str2)
+		return -ENOMEM;
+
+	while (1) {
+		tok = strsep(&str2, " ");
+
+		if (tok == NULL)
+			break;
+
+		if (kstrtouint(tok, 0, &val))
+			goto fail;
+
+		if (val > SCHED_CAPACITY_SCALE)
+			goto fail;
+
+		tmp[index] = val;
+		index++;
+
+		if (index == CPU_NUM)
+			break;
+	}
+
+	if (index == 1) {
+		for (index = 0; index < CPU_NUM; index++) {
+			teo_cpu_set_util_threshold(index, tmp[0]);
+		}
+	} else if (index == CLUSTER_NUM) {
+		for (index = MIN_CAPACITY_CPU; index < MID_CAPACITY_CPU; index++)
+			teo_cpu_set_util_threshold(index, tmp[0]);
+
+		for (index = MID_CAPACITY_CPU; index < MAX_CAPACITY_CPU; index++)
+			teo_cpu_set_util_threshold(index, tmp[1]);
+
+		for (index = MAX_CAPACITY_CPU; index < CPU_NUM; index++)
+			teo_cpu_set_util_threshold(index, tmp[2]);
+	} else if (index == CPU_NUM) {
+		for (index = 0; index < CPU_NUM; index++) {
+			teo_cpu_set_util_threshold(index, tmp[index]);
+		}
+	} else {
+		goto fail;
+	}
+
+	kfree(str1);
+	return count;
+fail:
+	kfree(str1);
+	return -EINVAL;
+}
+
+static int update_sched_auto_uclamp_max(const char *buf, int count)
+{
+	char *tok, *str1, *str2;
+	unsigned int val, tmp[CPU_NUM];
+	int index = 0;
+
+	str1 = kstrndup(buf, count, GFP_KERNEL);
+	str2 = str1;
+
+	if (!str2)
+		return -ENOMEM;
+
+	while (1) {
+		tok = strsep(&str2, " ");
+
+		if (tok == NULL)
+			break;
+
+		if (kstrtouint(tok, 0, &val))
+			goto fail;
+
+		if (val > SCHED_CAPACITY_SCALE)
+			goto fail;
+
+		tmp[index] = val;
+		index++;
+
+		if (index == CPU_NUM)
+			break;
+	}
+
+	if (index == 1) {
+		for (index = 0; index < CPU_NUM; index++) {
+			sched_auto_uclamp_max[index] = tmp[0];
+		}
+	} else if (index == CLUSTER_NUM) {
+		for (index = MIN_CAPACITY_CPU; index < MID_CAPACITY_CPU; index++)
+			sched_auto_uclamp_max[index] = tmp[0];
+
+		for (index = MID_CAPACITY_CPU; index < MAX_CAPACITY_CPU; index++)
+			sched_auto_uclamp_max[index] = tmp[1];
+
+		for (index = MAX_CAPACITY_CPU; index < CPU_NUM; index++)
+			sched_auto_uclamp_max[index] = tmp[2];
+	} else if (index == CPU_NUM) {
+		memcpy(sched_auto_uclamp_max, tmp, sizeof(sched_auto_uclamp_max));
+	} else {
+		goto fail;
+	}
+
+	kfree(str1);
+	return count;
+fail:
+	kfree(str1);
+	return -EINVAL;
+}
+
 static int update_sched_auto_uclamp_max(const char *buf, int count)
 {
 	char *tok, *str1, *str2;
@@ -1170,14 +1287,14 @@ static int update_uclamp_fork_reset(const char *buf, bool val)
 		vrq = get_vendor_rq_struct(rq);
 
 		if (!vp->uclamp_fork_reset && val) {
-			atomic_inc(&vrq->num_adpf_tasks);
+			inc_adpf_counter(p, &vrq->num_adpf_tasks);
 
 			/*
 			 * Tell the scheduler that this tasks really wants to run next
 			 */
 			set_next_buddy(&p->se);
 		} else if (vp->uclamp_fork_reset && !val) {
-			atomic_dec(&vrq->num_adpf_tasks);
+			dec_adpf_counter(p, &vrq->num_adpf_tasks);
 		}
 	}
 
@@ -1322,8 +1439,8 @@ static int dump_task_show(struct seq_file *m, void *v)
 			grp_name = GRP_NAME[group];
 		uclamp_min = t->uclamp_req[UCLAMP_MIN].value;
 		uclamp_max = t->uclamp_req[UCLAMP_MAX].value;
-		uclamp_eff_min = uclamp_eff_value(t, UCLAMP_MIN);
-		uclamp_eff_max = uclamp_eff_value(t, UCLAMP_MAX);
+		uclamp_eff_min = uclamp_eff_value_pixel_mod(t, UCLAMP_MIN);
+		uclamp_eff_max = uclamp_eff_value_pixel_mod(t, UCLAMP_MAX);
 		pid = t->pid;
 		uclamp_fork_reset = vp->uclamp_fork_reset;
 		prefer_idle = vp->prefer_idle;
@@ -1434,6 +1551,36 @@ static ssize_t dvfs_headroom_store(struct file *filp,
 	return update_sched_dvfs_headroom(buf, count);
 }
 PROC_OPS_RW(dvfs_headroom);
+
+static int teo_util_threshold_show(struct seq_file *m, void *v)
+{
+	int i;
+
+	for (i = 0; i < CPU_NUM; i++) {
+		seq_printf(m, "%u ", teo_cpu_get_util_threshold(i));
+	}
+
+	seq_printf(m, "\n");
+
+	return 0;
+}
+static ssize_t teo_util_threshold_store(struct file *filp,
+					const char __user *ubuf,
+					size_t count, loff_t *pos)
+{
+	char buf[MAX_PROC_SIZE];
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, ubuf, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+
+	return update_teo_util_threshold(buf, count);
+}
+PROC_OPS_RW(teo_util_threshold);
 
 static int tapered_dvfs_headroom_enable_show(struct seq_file *m, void *v)
 {
@@ -2564,6 +2711,8 @@ static struct pentry entries[] = {
 	// dvfs headroom
 	PROC_ENTRY(dvfs_headroom),
 	PROC_ENTRY(tapered_dvfs_headroom_enable),
+	// teo
+	PROC_ENTRY(teo_util_threshold),
 };
 
 

@@ -300,7 +300,8 @@ if [ -z "${GKI_KERNEL_REMOTE}" ];then
   GKI_KERNEL_REMOTE="aosp"
 fi
 if [ -z "${GKI_KERNEL_BRANCH}" ];then
-  GKI_KERNEL_BRANCH="android13-5.10"
+  GKI_KERNEL_SHA=`repo info aosp | grep "Manifest revision" | sed 's/Manifest revision: //g'`
+  GKI_KERNEL_BRANCH=`repo forall aosp -c git branch -r --list 'aosp/android13-5.10*' --contains ${GKI_KERNEL_SHA} | grep "  aosp/" | sed 's/  aosp\///g'`
 fi
 if [ -z "${BUILD_SCRIPT}" ];then
   BUILD_SCRIPT="./build_slider.sh"

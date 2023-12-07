@@ -759,6 +759,7 @@ static int memlat_mon_probe(struct platform_device *pdev)
 	struct memlat_hwmon *hw;
 	unsigned int event_id, num_cpus, cpu;
 	struct cpu_data *cpu_data;
+	static int arm_mon_probe_count;
 
 	if (!memlat_wq)
 		memlat_wq = alloc_workqueue("memlat_wq",
@@ -847,10 +848,13 @@ static int memlat_mon_probe(struct platform_device *pdev)
 
 	ret = register_memlat(dev, hw);
 
+	arm_mon_probe_count++;
 	if (!ret)
 		cpu_grp->num_inited_mons++;
 
 unlock_out:
+	if (arm_mon_probe_count == CONFIG_VH_SCHED_CPU_NR)
+		set_arm_mon_probe_done(true);
 	mutex_unlock(&cpu_grp->mons_lock);
 	return ret;
 }

@@ -6505,7 +6505,6 @@ This capability indicates that the KVM virtual PTP service is
 supported in the host. A VMM can check whether the service is
 available to the guest on migration.
 
-
 9. Known KVM API problems
 =========================
 

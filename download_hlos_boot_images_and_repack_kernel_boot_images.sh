@@ -2,9 +2,10 @@
 CUR_DIR=$(pwd)
 HLOS_BUILD_ID=$1
 HLOS_BASE_TARGET=$2
-KERNEL_BUILD_ID=$3
-KERNEL_BASE_TARGET=$4
-DEST_DIR=$5
+HLOS_BUILD_VARIANT=$3
+KERNEL_BUILD_ID=$4
+KERNEL_BASE_TARGET=$5
+DEST_DIR=$6
 DOWNLOAD_FROM_KERNEL=${DEST_DIR}/DOWNLOAD_FROM_KERNEL
 OUTPUT_UNPACK=${DOWNLOAD_FROM_KERNEL}/output
 OUTPUT_DIST=${DEST_DIR}/out/mixed/dist
@@ -14,23 +15,23 @@ FETCH_ARTIFACT_CMD="/google/data/ro/projects/android/fetch_artifact"
 #-----------------------------------------------------------------------
 # Usage 1 : download/repack boot images from ab/hlos and ab/kernel
 #
-# ./download_hlos_boot_images_and_repack_kernel_boot_images.sh <HLOS_BUILD_ID> <HLOS_BASE_TARGET> <KERNEL_BUILD_ID> <KERNEL_BASE_TARGET> <DEST_DIR>
-# e.g. ./download_hlos_boot_images_and_repack_kernel_boot_images.sh 8033893 raven 8032883 slider_gki out_slider_gki
+# ./download_hlos_boot_images_and_repack_kernel_boot_images.sh <HLOS_BUILD_ID> <HLOS_BASE_TARGET> <HLOS_BUILD_VARIANT> <KERNEL_BUILD_ID> <KERNEL_BASE_TARGET> <DEST_DIR>
+# e.g. ./download_hlos_boot_images_and_repack_kernel_boot_images.sh 8033893 raven userdebug 8032883 slider_gki out_slider_gki
 #
 #
 # Usage 2 : download/repack boot images from ab/hlos and local/kernel
 #
-# ./download_hlos_boot_images_and_repack_kernel_boot_images.sh <HLOS_BUILD_ID> <HLOS_BASE_TARGET> <KERNEL_DIST_DIR> <KERNEL_BASE_TARGET> <DEST_DIR>
-# ./download_hlos_boot_images_and_repack_kernel_boot_images.sh 8033893 raven out/mixed/dist slider_gki out_slider_gki
+# ./download_hlos_boot_images_and_repack_kernel_boot_images.sh <HLOS_BUILD_ID> <HLOS_BASE_TARGET> <HLOS_BUILD_VARIANT> <KERNEL_DIST_DIR> <KERNEL_BASE_TARGET> <DEST_DIR>
+# ./download_hlos_boot_images_and_repack_kernel_boot_images.sh 8033893 raven userdebug out/mixed/dist slider_gki out_slider_gki
 
 #-----------------------------------------------------------------------
 echo
-echo "Downloading HLOS bootimages from ${HLOS_BUILD_ID} ${HLOS_BASE_TARGET}-userdebug into "$DEST_DIR"/DUMP_FROM_DEVICE/ ..."
+echo "Downloading HLOS bootimages from ${HLOS_BUILD_ID} ${HLOS_BASE_TARGET}-${HLOS_BUILD_VARIANT} into "$DEST_DIR"/DUMP_FROM_DEVICE/ ..."
 mkdir -p ${DEST_DIR}/DUMP_FROM_DEVICE
 cd ${DEST_DIR}/DUMP_FROM_DEVICE
 ${FETCH_ARTIFACT_CMD} \
 --bid ${HLOS_BUILD_ID} \
---target ${HLOS_BASE_TARGET}-userdebug \
+--target ${HLOS_BASE_TARGET}-${HLOS_BUILD_VARIANT} \
 --zip_entry boot.img \
 --zip_entry dtbo.img \
 --zip_entry vendor_boot.img \
@@ -44,7 +45,7 @@ if [ -n "${KERNEL_BUILD_ID}" ] && [ -d "${KERNEL_BUILD_ID}" ]; then
 	DOWNLOAD_FROM_KERNEL=$KERNEL_BUILD_ID
 else
 	echo "Folder ${HLOS_BUILD_ID} does not exist, download kernel boot images from ab/${HLOS_BUILD_ID}"
-	echo "Downloading KERNEL bootimages from ${KERNEL_BUILD_ID} ${KERNEL_BASE_TARGET}-userdebug into ${DOWNLOAD_FROM_KERNEL}/ ..."
+	echo "Downloading KERNEL bootimages from ${KERNEL_BUILD_ID} ${KERNEL_BASE_TARGET}-${HLOS_BUILD_VARIANT} into ${DOWNLOAD_FROM_KERNEL}/ ..."
 	mkdir -p ${DOWNLOAD_FROM_KERNEL}
 	cd ${DOWNLOAD_FROM_KERNEL}
 	${FETCH_ARTIFACT_CMD} --bid ${KERNEL_BUILD_ID} --target ${KERNEL_BASE_TARGET} 'boot.img'

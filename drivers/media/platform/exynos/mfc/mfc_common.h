@@ -253,6 +253,8 @@
 	((m == MFC_MATRIX_COEFF_BT2020) || (m == MFC_MATRIX_COEFF_BT2020_CONSTANT)) &&		\
 	((t == MFC_TRANSFER_SMPTE_170M) || (t == MFC_TRANSFER_ST2084) || (t == MFC_TRANSFER_HLG)))
 
+#define IS_NO_INFOLOG(ctx)		((ctx)->dec_priv && (ctx)->dec_priv->is_multiframe)
+
 /* Extra information for Decoder */
 #define	DEC_SET_DUAL_DPB		(1 << 0)
 #define	DEC_SET_DYNAMIC_DPB		(1 << 1)

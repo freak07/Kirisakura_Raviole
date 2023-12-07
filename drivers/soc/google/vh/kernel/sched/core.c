@@ -134,7 +134,7 @@ void rvh_enqueue_task_pixel_mod(void *data, struct rq *rq, struct task_struct *p
 	 * enqueue_task_fair() where we need cfs_rqs to be updated before we
 	 * can read sched_slice()
 	 */
-	if (uclamp_is_used() && rt_task(p))
+	if (uclamp_is_used() && rt_task(p) && p->sched_class->uclamp_enabled)
 		apply_uclamp_filters(rq, p);
 }
 
@@ -181,16 +181,38 @@ void vh_binder_set_priority_pixel_mod(void *data, struct binder_transaction *t,
 
 	/* inherit prefer_idle */
 	vbinder->prefer_idle = get_prefer_idle(current);
+
+	/*
+	 * Inherit uclamp_fork_reset form
+	 * get_vendor_binder_task_struct(current)->uclamp_fork_reset or
+	 * get_vendor_task_struct(current)->uclamp_fork_reset.
+	 *
+	 * If one of these two uclamp_fork_reset is true, binder p will have
+	 * this inheritance.
+	 *
+	 * If both of these two uclamp_fork_reset are false, binder p will not
+	 * have this inheritance.
+	 */
+	if (get_uclamp_fork_reset(current, true) != get_uclamp_fork_reset(p, true))
+		vbinder->uclamp_fork_reset = get_uclamp_fork_reset(current, true);
 }
 
 void vh_binder_restore_priority_pixel_mod(void *data, struct binder_transaction *t,
 	struct task_struct *p)
 {
 	struct vendor_binder_task_struct *vbinder = get_vendor_binder_task_struct(p);
+	struct vendor_rq_struct *vrq;
 
 	if (vbinder->active) {
+		if (task_on_rq_queued(p) && vbinder->uclamp_fork_reset){
+			vrq = get_vendor_rq_struct(task_rq(p));
+			dec_adpf_counter(p, &vrq->num_adpf_tasks);
+		}
+
 		vbinder->uclamp[UCLAMP_MIN] = uclamp_none(UCLAMP_MIN);
 		vbinder->uclamp[UCLAMP_MAX] = uclamp_none(UCLAMP_MAX);
+
+		vbinder->uclamp_fork_reset = false;
 		vbinder->prefer_idle = false;
 		vbinder->active = false;
 	}
@@ -203,11 +225,11 @@ void rvh_rtmutex_prepare_setprio_pixel_mod(void *data, struct task_struct *p,
 
 	if (pi_task) {
 		unsigned long p_util = task_util(p);
-		unsigned long p_uclamp_min = uclamp_eff_value(p, UCLAMP_MIN);
-		unsigned long p_uclamp_max = uclamp_eff_value(p, UCLAMP_MAX);
+		unsigned long p_uclamp_min = uclamp_eff_value_pixel_mod(p, UCLAMP_MIN);
+		unsigned long p_uclamp_max = uclamp_eff_value_pixel_mod(p, UCLAMP_MAX);
 		unsigned long pi_util = task_util(pi_task);
-		unsigned long pi_uclamp_min = uclamp_eff_value(pi_task, UCLAMP_MIN);
-		unsigned long pi_uclamp_max = uclamp_eff_value(pi_task, UCLAMP_MAX);
+		unsigned long pi_uclamp_min = uclamp_eff_value_pixel_mod(pi_task, UCLAMP_MIN);
+		unsigned long pi_uclamp_max = uclamp_eff_value_pixel_mod(pi_task, UCLAMP_MAX);
 
 		/*
 		 * Take task's util into consideration first to do full

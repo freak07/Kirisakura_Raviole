@@ -55,27 +55,28 @@ enum pixel_suspend_diag_item_index {
 struct pixel_suspend_diag_item {
 	const char *action;
 	uint64_t timeout;
+	bool enabled;
 };
 
 static struct pixel_suspend_diag_item pixel_suspend_diag_items[] = {
-	[PIXEL_SYNC_FILESYSTEMS_ID]	= {"sync_filesystems", 3 * NSEC_PER_SEC},
-	[PIXEL_FREEZE_PROCESSES_ID]	= {"freeze_processes", NSEC_PER_SEC},
-	[PIXEL_SUSPEND_ENTER_ID]	= {"suspend_enter", NSEC_PER_SEC},
-	[PIXEL_DPM_PREPARE_ID]		= {"dpm_prepare", NSEC_PER_SEC},
-	[PIXEL_DPM_SUSPEND_ID]		= {"dpm_suspend", NSEC_PER_SEC},
-	[PIXEL_DPM_SUSPEND_LATE_ID]	= {"dpm_suspend_late", NSEC_PER_SEC},
-	[PIXEL_DPM_SUSPEND_NOIRQ_ID]	= {"dpm_suspend_noirq", NSEC_PER_SEC},
-	[PIXEL_CPU_OFF_ID]		= {"cpu_off", NSEC_PER_SEC},
-	[PIXEL_SYSCORE_SUSPEND_ID]	= {"syscore_suspend", NSEC_PER_SEC},
-	[PIXEL_MACHINE_SUSPEND_ID]	= {"machine_suspend", NSEC_PER_SEC},
-	[PIXEL_SYSCORE_RESUME_ID]	= {"syscore_resume", NSEC_PER_SEC},
-	[PIXEL_CPU_ON_ID]		= {"cpu_on", NSEC_PER_SEC},
-	[PIXEL_DPM_RESUME_NOIRQ_ID]	= {"dpm_resume_noirq", NSEC_PER_SEC},
-	[PIXEL_DPM_RESUME_EARLY_ID]	= {"dpm_resume_early", NSEC_PER_SEC},
-	[PIXEL_DPM_RESUME_ID]		= {"dpm_resume", NSEC_PER_SEC},
-	[PIXEL_DPM_COMPLETE_ID]		= {"dpm_complete", NSEC_PER_SEC},
-	[PIXEL_RESUME_CONSOLE_ID]	= {"resume_console", NSEC_PER_SEC},
-	[PIXEL_THAW_PROCESSES_ID]	= {"thaw_processes", NSEC_PER_SEC},
+	[PIXEL_SYNC_FILESYSTEMS_ID]	= {"sync_filesystems", 3 * NSEC_PER_SEC, false},
+	[PIXEL_FREEZE_PROCESSES_ID]	= {"freeze_processes", NSEC_PER_SEC, false},
+	[PIXEL_SUSPEND_ENTER_ID]	= {"suspend_enter", NSEC_PER_SEC, false},
+	[PIXEL_DPM_PREPARE_ID]		= {"dpm_prepare", NSEC_PER_SEC, true},
+	[PIXEL_DPM_SUSPEND_ID]		= {"dpm_suspend", NSEC_PER_SEC, true},
+	[PIXEL_DPM_SUSPEND_LATE_ID]	= {"dpm_suspend_late", NSEC_PER_SEC, true},
+	[PIXEL_DPM_SUSPEND_NOIRQ_ID]	= {"dpm_suspend_noirq", NSEC_PER_SEC, true},
+	[PIXEL_CPU_OFF_ID]		= {"cpu_off", NSEC_PER_SEC, false},
+	[PIXEL_SYSCORE_SUSPEND_ID]	= {"syscore_suspend", NSEC_PER_SEC, false},
+	[PIXEL_MACHINE_SUSPEND_ID]	= {"machine_suspend", NSEC_PER_SEC, false},
+	[PIXEL_SYSCORE_RESUME_ID]	= {"syscore_resume", NSEC_PER_SEC, false},
+	[PIXEL_CPU_ON_ID]		= {"cpu_on", NSEC_PER_SEC, false},
+	[PIXEL_DPM_RESUME_NOIRQ_ID]	= {"dpm_resume_noirq", NSEC_PER_SEC, true},
+	[PIXEL_DPM_RESUME_EARLY_ID]	= {"dpm_resume_early", NSEC_PER_SEC, true},
+	[PIXEL_DPM_RESUME_ID]		= {"dpm_resume", NSEC_PER_SEC, true},
+	[PIXEL_DPM_COMPLETE_ID]		= {"dpm_complete", NSEC_PER_SEC, true},
+	[PIXEL_RESUME_CONSOLE_ID]	= {"resume_console", NSEC_PER_SEC, false},
+	[PIXEL_THAW_PROCESSES_ID]	= {"thaw_processes", NSEC_PER_SEC, false},
 };
 
 struct pixel_suspend_diag_info {
@@ -130,7 +131,7 @@ static void pixel_suspend_diag_handle_suspend_resume(struct dbg_snapshot_log *ds
 	if (delta_time < pixel_suspend_diag_items[i].timeout)
 		return;
 
-	if (strlen(pixel_suspend_diag_inst.action) == 0)
+	if (strlen(pixel_suspend_diag_inst.action) == 0 && pixel_suspend_diag_items[i].enabled)
 		goto crash;
 
 	if (strcmp(pixel_suspend_diag_inst.action, dss_log->suspend[curr_idx].log))

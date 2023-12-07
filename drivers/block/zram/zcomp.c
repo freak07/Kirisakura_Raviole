@@ -10,6 +10,7 @@
 #include <linux/highmem.h>
 #include <linux/blkdev.h>
 #include <linux/bio.h>
+#include <linux/swap.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/zram.h>
@@ -18,6 +19,8 @@
 #include "zcomp.h"
 
 #define ZCOMP_ALGO_NAME_MAX 64
+/* The 32 is align with SWAP_CLUSTER_MAX and BLK_MAX_REQUEST_COUNT */
+#define ZRAM_BLK_MAX_REQUEST_COUNT 32
 
 struct zcomp_backend {
 	const char algo_name[ZCOMP_ALGO_NAME_MAX];
@@ -48,6 +51,8 @@ int zcomp_register(const char *algo_name, const struct zcomp_operation *op)
 	struct zcomp *zcomp;
 	size_t len;
 	int ret = 0;
+
+	BUILD_BUG_ON(ZRAM_BLK_MAX_REQUEST_COUNT != SWAP_CLUSTER_MAX);
 
 	if (!algo_name || !op)
 		return -EINVAL;
@@ -268,6 +273,7 @@ static int flush_pending_io(struct zcomp *comp)
 
 	spin_lock(&comp->request_lock);
 	list_splice_init(&comp->request_list, &req_list);
+	comp->pend_request = 0;
 	spin_unlock(&comp->request_lock);
 
 	while (!list_empty(&req_list)) {
@@ -299,7 +305,19 @@ static void zram_append_request(struct zcomp *comp, struct zcomp_cookie *cookie)
 {
 	spin_lock(&comp->request_lock);
 	list_add(&cookie->list, &comp->request_list);
+	comp->pend_request++;
 	spin_unlock(&comp->request_lock);
+}
+
+static unsigned long nr_pend_request(struct zcomp *comp)
+{
+	unsigned long ret;
+
+	spin_lock(&comp->request_lock);
+	ret = comp->pend_request;
+	spin_unlock(&comp->request_lock);
+
+	return ret;
 }
 
 int zcomp_compress(struct zcomp *comp, u32 index, struct page *page,
@@ -351,7 +369,8 @@ int zcomp_compress(struct zcomp *comp, u32 index, struct page *page,
 	if (bio)
 		bio_inc_remaining(bio);
 
-	if (blk_check_plugged(zram_unplug, comp, sizeof(struct blk_plug_cb))) {
+	if (blk_check_plugged(zram_unplug, comp, sizeof(struct blk_plug_cb)) &&
+	    nr_pend_request(comp) < ZRAM_BLK_MAX_REQUEST_COUNT) {
 		zram_append_request(comp, cookie);
 	} else {
 		flush_pending_io(comp);
@@ -439,6 +458,7 @@ struct zcomp *zcomp_create(const char *algo_name, struct zram *zram)
 		init_zcomp_cookie_pool(comp);
 		INIT_LIST_HEAD(&comp->request_list);
 		spin_lock_init(&comp->request_lock);
+		comp->pend_request = 0;
 	}
 	comp->zram = zram;
 	up_read(&zcomp_rwsem);

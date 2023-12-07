@@ -48,6 +48,9 @@ extern void rvh_check_preempt_wakeup_pixel_mod(void *data, struct rq *rq, struct
 extern void vh_sched_uclamp_validate_pixel_mod(void *data, struct task_struct *tsk,
 					       const struct sched_attr *attr,
 					       int *ret, bool *done);
+extern void vh_sched_uclamp_validate_pixel_mod(void *data, struct task_struct *tsk,
+					       const struct sched_attr *attr,
+					       int *ret, bool *done);
 extern void vh_sched_setscheduler_uclamp_pixel_mod(void *data, struct task_struct *tsk,
 						   int clamp_id, unsigned int value);
 extern void init_uclamp_stats(void);
