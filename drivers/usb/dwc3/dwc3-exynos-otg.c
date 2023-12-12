@@ -585,7 +585,7 @@ static int dwc3_otg_start_gadget(struct otg_fsm *fsm, int on)
 		/* disconnect gadget */
 		usb_udc_vbus_handler(dwc->gadget, false);
 
-		if (exynos->config.is_not_vbus_pad && exynos_usbdrd_get_ldo_status() &&
+		if (exynos->config.is_not_vbus_pad && exynos_pd_hsi0_get_ldo_status() &&
 				!dotg->in_shutdown)
 			dwc3_exynos_gadget_disconnect_proc(dwc);
 
