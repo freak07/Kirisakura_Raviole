@@ -766,6 +766,12 @@
 		ranges;
 	};
 
+	sub_pd_hsi0: sub-pd-hsi0 {
+		compatible = "exynos-pd-hsi0";
+		power-domains = <&pd_hsi0>;
+		status = "okay";
+	};
+
 	exynos_dm: exynos-dm@17000000 {
 		compatible = "samsung,exynos-dvfs-manager";
 		reg = <0x0 0x17000000 0x0>;
