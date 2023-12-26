@@ -2663,8 +2663,6 @@ void exynos_pcie_rc_resumed_phydown(struct pcie_port *pp)
 	exynos_pcie_rc_enable_interrupts(pp, 0);
 	exynos_pcie_phy_isolation(exynos_pcie, PCIE_PHY_BYPASS);
 
-	exynos_pcie_rc_assert_phy_reset(pp);
-
 	if (exynos_pcie->phy_ops.phy_all_pwrdn)
 		exynos_pcie->phy_ops.phy_all_pwrdn(exynos_pcie, exynos_pcie->ch_num);
 
