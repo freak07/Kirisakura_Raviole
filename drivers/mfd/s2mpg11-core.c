@@ -307,6 +307,7 @@ static int s2mpg11_i2c_probe(struct i2c_client *i2c,
 	}
 
 	s2mpg11->dev = &i2c->dev;
+	s2mpg11->dev->init_name = "i2c-" S2MPG11_MFD_DEV_NAME;
 	i2c->addr = I2C_ADDR_TOP;
 	s2mpg11->i2c = i2c;
 	s2mpg11->irq = i2c->irq;

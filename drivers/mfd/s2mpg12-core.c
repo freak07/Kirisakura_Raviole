@@ -421,6 +421,7 @@ static int s2mpg12_i2c_probe(struct i2c_client *i2c,
 	}
 
 	s2mpg12->dev = &i2c->dev;
+	s2mpg12->dev->init_name = "i2c-" S2MPG12_MFD_DEV_NAME;
 	i2c->addr = I2C_ADDR_TOP;
 	s2mpg12->i2c = i2c;
 	s2mpg12->irq = i2c->irq;
