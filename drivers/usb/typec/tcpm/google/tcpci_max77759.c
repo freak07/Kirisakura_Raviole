@@ -2725,6 +2725,7 @@ static int max77759_probe(struct i2c_client *client,
 		return -ENOMEM;
 
 	chip->client = client;
+	chip->client->dev.init_name = "i2c-max77759tcpc";
 	chip->data.regmap = devm_regmap_init_i2c(client,
 						 &max77759_regmap_config);
 	if (IS_ERR(chip->data.regmap)) {
