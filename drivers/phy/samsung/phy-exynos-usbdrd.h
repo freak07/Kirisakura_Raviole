@@ -216,5 +216,6 @@ struct exynos_usbdrd_phy {
 };
 
 void __iomem *phy_exynos_usbdp_get_address(void);
+extern bool exynos_pd_hsi0_get_ldo_status(void);
 
 #endif	/* __PHY_EXYNOS_USBDRD_H__ */
