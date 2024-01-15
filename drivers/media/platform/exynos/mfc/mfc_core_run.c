@@ -592,8 +592,7 @@ int mfc_core_run_enc_last_frames(struct mfc_core *core, struct mfc_ctx *ctx)
 		mfc_debug(2, "no dst buffers set to zero\n");
 
 		if (mfc_core_get_enc_bframe(ctx)) {
-			mfc_ctx_info("B frame encoding should be dst buffer\n");
-			return -EINVAL;
+			mfc_ctx_info("B frame encoding doesn't have dst buffer\n");
 		}
 	}
 

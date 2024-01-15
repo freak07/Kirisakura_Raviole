@@ -104,6 +104,8 @@ extern int pmu_poll_init(void);
 
 extern bool wait_for_init;
 
+DEFINE_STATIC_KEY_FALSE(enqueue_dequeue_ready);
+
 void init_vendor_rt_rq(void)
 {
 	int i;
@@ -205,6 +207,8 @@ static int vh_sched_init(void)
 	ret = register_trace_android_rvh_dequeue_task_fair(rvh_dequeue_task_fair_pixel_mod, NULL);
 	if (ret)
 		return ret;
+
+	static_branch_enable(&enqueue_dequeue_ready);
 
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	ret = register_trace_android_rvh_attach_entity_load_avg(
@@ -361,10 +365,6 @@ static int vh_sched_init(void)
 		return ret;
 
 	ret = register_trace_android_rvh_setscheduler(rvh_setscheduler_pixel_mod, NULL);
-	if (ret)
-		return ret;
-
-	ret = acpu_init();
 	if (ret)
 		return ret;
 

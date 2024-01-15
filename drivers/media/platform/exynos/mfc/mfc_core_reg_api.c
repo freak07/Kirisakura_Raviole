@@ -473,6 +473,14 @@ int mfc_core_set_enc_stream_buffer(struct mfc_core *core, struct mfc_ctx *ctx,
 		offset = mfc_buf->vb.vb2_buf.planes[0].data_offset;
 		size = (unsigned int)vb2_plane_size(&mfc_buf->vb.vb2_buf, 0);
 		size = ALIGN(size, STREAM_BUF_ALIGN);
+	} else {
+		/*
+		 * When LAST_SEQ of B frame encoding
+		 * if there is no output buffer, set addr and size with 0xffffffff
+		 * and then FW returns COMPLETE_SEQ.
+		 */
+		addr = 0xffffffff;
+		size = 0xffffffff;
 	}
 
 	MFC_CORE_WRITEL(addr, MFC_REG_E_STREAM_BUFFER_ADDR); /* 16B align */
