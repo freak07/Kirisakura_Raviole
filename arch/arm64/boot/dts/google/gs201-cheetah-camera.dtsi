@@ -529,6 +529,7 @@
 					 0>;
 
 				i2c-lock-group-id = <3>;
+				transaction-process-limit = <20>;
 			};
 
 			/* EEPROM GARGOYLE for NAGUAL*/
