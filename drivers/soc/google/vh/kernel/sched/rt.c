@@ -17,6 +17,7 @@ extern bool task_may_not_preempt(struct task_struct *task, int cpu);
 extern int cpu_is_idle(int cpu);
 extern int sched_cpu_idle(int cpu);
 extern bool get_prefer_high_cap(struct task_struct *p);
+extern void set_prefer_high_cap(struct task_struct *p, bool val);
 
 extern ___update_load_sum(u64 now, struct sched_avg *sa,
 			  unsigned long load, unsigned long runnable, int running);
@@ -332,17 +333,21 @@ void rvh_select_task_rq_rt_pixel_mod(void *data, struct task_struct *p, int prev
 	this_cpu = smp_processor_id();
 	this_cpu_rq = cpu_rq(this_cpu);
 
-	rt_task_fits_capacity(p, this_cpu, &fits, &fits_original);
 	/*
 	 * Respect the sync flag as long as the task can run on this CPU.
 	 */
-	if (should_honor_rt_sync(this_cpu_rq, p, sync) &&
-	    cpumask_test_cpu(this_cpu, p->cpus_ptr) && fits_original &&
-	    atomic_read(&get_vendor_rq_struct(this_cpu_rq)->num_adpf_tasks) == 0) {
-		*new_cpu = this_cpu;
-		sync_wakeup = true;
-		goto out_unlock;
+	if (should_honor_rt_sync(this_cpu_rq, p, sync)) {
+		rt_task_fits_capacity(p, this_cpu, &fits, &fits_original);
+
+		if (cpumask_test_cpu(this_cpu, p->cpus_ptr) && fits_original &&
+			atomic_read(&get_vendor_rq_struct(this_cpu_rq)->num_adpf_tasks) == 0) {
+			*new_cpu = this_cpu;
+			sync_wakeup = true;
+			goto out_unlock;
+		}
 	}
+
+	set_prefer_high_cap(p, sync && this_cpu >= HIGH_CAPACITY_CPU);
 
 	target = find_lowest_rq(p, &backup_mask);
 
@@ -373,6 +378,8 @@ out_unlock:
 	rcu_read_unlock();
 out:
 	trace_sched_select_task_rq_rt(p, task_util(p), prev_cpu, target, *new_cpu, sync_wakeup);
+
+	set_prefer_high_cap(p, false);
 
 	return;
 }
