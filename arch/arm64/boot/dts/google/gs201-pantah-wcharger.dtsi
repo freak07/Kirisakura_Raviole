@@ -42,7 +42,6 @@
 
 &hsi2c_15 {
 	p9412@3c {
-		dev-name = "p9412";
 		compatible = "idt,p9412";
 		reg = <0x3c>;
 		status = "ok";
