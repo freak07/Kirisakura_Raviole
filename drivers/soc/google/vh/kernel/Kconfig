@@ -75,7 +75,7 @@ config VH_CGROUP
 config VH_I2C
 	tristate "Vendor hooks for i2c subsystems"
 	depends on VH_KERNEL
-	default m
+	default n
 
 config UCLAMP_STATS
         bool "Uclamp stats"

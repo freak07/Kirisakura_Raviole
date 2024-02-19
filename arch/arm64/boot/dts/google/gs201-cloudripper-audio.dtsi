@@ -328,7 +328,6 @@
 	cs40l26a_haptics_2: cs40l26a@42 {
 		compatible = "cirrus,cs40l26a";
 		reg = <0x42>;
-		dev-name = "cs40l26a-dual";     /* sysfs folder name */
 		input-device-name = "cs40l26_dual_input";    /* input device name */
 
 		pinctrl-names = "default";
