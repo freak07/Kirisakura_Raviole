@@ -290,6 +290,7 @@ static int s2mpg13_i2c_probe(struct i2c_client *i2c,
 	}
 
 	s2mpg13->dev = &i2c->dev;
+	s2mpg13->dev->init_name = "i2c-" S2MPG13_MFD_DEV_NAME;
 	i2c->addr = I2C_ADDR_TOP;
 	s2mpg13->i2c = i2c;
 	s2mpg13->device_type = S2MPG13X;
