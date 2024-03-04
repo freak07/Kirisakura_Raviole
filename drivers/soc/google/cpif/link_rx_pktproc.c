@@ -414,6 +414,14 @@ static int pktproc_fill_data_addr_without_bm(struct pktproc_queue *q)
 	fore = *q->fore_ptr;
 #endif
 
+	/* The fore pointer is passed by CP from shared memory. Check the
+	 * range to avoid OOB access */
+	if ((fore < 0) || (fore >= q->num_desc)) {
+		mif_err("Invalid fore_ptr (%d) passed by CP on queue(%d)!\n",
+			fore, q->q_idx);
+		return -EINVAL;
+	}
+
 	pp_debug("Q%d:%d/%d/%d\n",
 			q->q_idx, fore, *q->rear_ptr, q->done_ptr);
 
