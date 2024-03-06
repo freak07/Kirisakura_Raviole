@@ -4314,9 +4314,6 @@ static inline unsigned long uclamp_task_util(struct task_struct *p,
 					     unsigned long uclamp_min,
 					     unsigned long uclamp_max)
 {
-<<<<<<<<< Temporary merge branch 1
-	return clamp(task_util_est(p), uclamp_min, uclamp_max);
-=========
 	unsigned long min_util = uclamp_eff_value(p, UCLAMP_MIN);
 	unsigned long max_util = uclamp_eff_value(p, UCLAMP_MAX);
 	unsigned long task_util = task_util_est(p);

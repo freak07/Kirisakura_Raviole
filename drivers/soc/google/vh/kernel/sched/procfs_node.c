@@ -1274,14 +1274,14 @@ static int update_uclamp_fork_reset(const char *buf, bool val)
 	rq = task_rq_lock(p, &rf);
 
 	if (task_on_rq_queued(p)) {
-		if (!get_uclamp_fork_reset(p, true) && val)
+		if (!get_uclamp_fork_reset(p, true) && val) {
 			inc_adpf_counter(p, rq);
 
 			/*
 			 * Tell the scheduler that this tasks really wants to run next
 			 */
 			set_next_buddy(&p->se);
-		} 		else if (get_uclamp_fork_reset(p, false) && !val)
+		} 		else if (get_uclamp_fork_reset(p, false) && !val) {
 			dec_adpf_counter(p, rq);
 		}
 	}
