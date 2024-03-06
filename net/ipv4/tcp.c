@@ -2813,12 +2813,6 @@ int tcp_disconnect(struct sock *sk, int flags)
 	int old_state = sk->sk_state;
 	u32 seq;
 
-	/* Deny disconnect if other threads are blocked in sk_wait_event()
-	 * or inet_wait_for_connect().
-	 */
-	if (sk->sk_wait_pending)
-		return -EBUSY;
-
 	if (old_state != TCP_CLOSE)
 		tcp_set_state(sk, TCP_CLOSE);
 
@@ -3138,7 +3132,7 @@ int tcp_sock_set_syncnt(struct sock *sk, int val)
 		return -EINVAL;
 
 	lock_sock(sk);
-	WRITE_ONCE(inet_csk(sk)->icsk_syn_retries, val);
+	inet_csk(sk)->icsk_syn_retries = val;
 	release_sock(sk);
 	return 0;
 }
@@ -3403,7 +3397,7 @@ static int do_tcp_setsockopt(struct sock *sk, int level, int optname,
 		if (val < 1 || val > MAX_TCP_SYNCNT)
 			err = -EINVAL;
 		else
-			WRITE_ONCE(icsk->icsk_syn_retries, val);
+			icsk->icsk_syn_retries = val;
 		break;
 
 	case TCP_SAVE_SYN:
@@ -3809,8 +3803,7 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 		val = keepalive_probes(tp);
 		break;
 	case TCP_SYNCNT:
-		val = READ_ONCE(icsk->icsk_syn_retries) ? :
-			READ_ONCE(net->ipv4.sysctl_tcp_syn_retries);
+		val = icsk->icsk_syn_retries ? : net->ipv4.sysctl_tcp_syn_retries;
 		break;
 	case TCP_LINGER2:
 		val = READ_ONCE(tp->linger2);
@@ -4040,8 +4033,6 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 			return -EFAULT;
 		lock_sock(sk);
 		err = tcp_zerocopy_receive(sk, &zc);
-		err = BPF_CGROUP_RUN_PROG_GETSOCKOPT_KERN(sk, level, optname,
-							  &zc, &len, err);
 		release_sock(sk);
 		sk_defer_free_flush(sk);
 		if (len >= offsetofend(struct tcp_zerocopy_receive, err))
@@ -4076,18 +4067,6 @@ zerocopy_rcv_out:
 		return -EFAULT;
 	return 0;
 }
-
-bool tcp_bpf_bypass_getsockopt(int level, int optname)
-{
-	/* TCP do_tcp_getsockopt has optimized getsockopt implementation
-	 * to avoid extra socket lock for TCP_ZEROCOPY_RECEIVE.
-	 */
-	if (level == SOL_TCP && optname == TCP_ZEROCOPY_RECEIVE)
-		return true;
-
-	return false;
-}
-EXPORT_SYMBOL(tcp_bpf_bypass_getsockopt);
 
 int tcp_getsockopt(struct sock *sk, int level, int optname, char __user *optval,
 		   int __user *optlen)

@@ -1990,8 +1990,8 @@ static int pl330_update(struct pl330_dmac *pl330)
 				thrd->req[active].desc = NULL;
 				thrd->req_running = -1;
 
-			/* Get going again ASAP */
-			pl330_start_thread(thrd);
+				/* Get going again ASAP */
+				pl330_start_thread(thrd);
 			}
 
 			/* For now, just make a list of callbacks to be done */

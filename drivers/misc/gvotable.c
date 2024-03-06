@@ -4,8 +4,9 @@
  */
 
 #include <linux/init.h>
-#include <linux/list.h>
 #include <linux/kernel.h>
+#include <linux/list.h>
+#include <linux/lockdep_types.h>
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -87,6 +88,11 @@ struct gvotable_election {
 
 	/* some int-type votables must not have the force_int_* debugfs entry */
 	bool	disable_force_int_entry;
+
+	/* for lockdep */
+	struct lock_class_key cb_lock_key;
+	struct lock_class_key re_lock_key;
+
 };
 
 #define gvotable_lock_result(el) mutex_lock(&(el)->re_lock)
@@ -99,10 +105,12 @@ static void gvotable_lock_election(struct gvotable_election *el)
 	int ret;
 
 	ret = mutex_trylock(&el->cb_lock);
-	if (WARN(ret == 0 && el->owner == get_current(),
-		 "%s cannot call this function from the callback\n",
-		 el->has_name ? el->name : "<>"))
+	if (!ret) {
+		WARN(el->owner == get_current(),
+		     "%s cannot call this function from the callback\n",
+		     el->has_name ? el->name : "<>");
 		mutex_lock(&el->cb_lock);
+	}
 
 	el->owner = get_current();
 	gvotable_lock_result(el);
@@ -487,6 +495,13 @@ gvotable_create_election(const char *name, int vote_size,
 
 	mutex_init(&slot->el->re_lock);
 	mutex_init(&slot->el->cb_lock);
+
+	lockdep_register_key(&slot->el->re_lock_key);
+	lockdep_register_key(&slot->el->cb_lock_key);
+
+	lockdep_set_class(&slot->el->re_lock, &slot->el->re_lock_key);
+	lockdep_set_class(&slot->el->cb_lock, &slot->el->cb_lock_key);
+
 	INIT_LIST_HEAD(&slot->el->votes);
 	slot->el->callback	= callback_fn;
 	slot->el->auto_callback	= true;

@@ -182,32 +182,21 @@ void vh_binder_set_priority_pixel_mod(void *data, struct binder_transaction *t,
 	/* inherit prefer_idle */
 	vbinder->prefer_idle = get_prefer_idle(current);
 
-	/*
-	 * Inherit uclamp_fork_reset form
-	 * get_vendor_binder_task_struct(current)->uclamp_fork_reset or
-	 * get_vendor_task_struct(current)->uclamp_fork_reset.
-	 *
-	 * If one of these two uclamp_fork_reset is true, binder p will have
-	 * this inheritance.
-	 *
-	 * If both of these two uclamp_fork_reset are false, binder p will not
-	 * have this inheritance.
+	/* Inherit uclamp_fork_reset form get_vendor_binder_task_struct(current)->uclamp_fork_reset
+	 * or get_vendor_task_struct(current)->uclamp_fork_reset.
 	 */
-	if (get_uclamp_fork_reset(current, true) != get_uclamp_fork_reset(p, true))
-		vbinder->uclamp_fork_reset = get_uclamp_fork_reset(current, true);
+	if (get_uclamp_fork_reset(current, true) && !get_uclamp_fork_reset(p, true))
+		vbinder->uclamp_fork_reset = true;
 }
 
 void vh_binder_restore_priority_pixel_mod(void *data, struct binder_transaction *t,
 	struct task_struct *p)
 {
 	struct vendor_binder_task_struct *vbinder = get_vendor_binder_task_struct(p);
-	struct vendor_rq_struct *vrq;
 
 	if (vbinder->active) {
-		if (task_on_rq_queued(p) && vbinder->uclamp_fork_reset){
-			vrq = get_vendor_rq_struct(task_rq(p));
-			dec_adpf_counter(p, &vrq->num_adpf_tasks);
-		}
+		if (task_on_rq_queued(p) && vbinder->uclamp_fork_reset)
+			dec_adpf_counter(p, task_rq(p));
 
 		vbinder->uclamp[UCLAMP_MIN] = uclamp_none(UCLAMP_MIN);
 		vbinder->uclamp[UCLAMP_MAX] = uclamp_none(UCLAMP_MAX);

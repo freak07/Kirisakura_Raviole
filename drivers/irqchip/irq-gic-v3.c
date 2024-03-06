@@ -1673,14 +1673,12 @@ static const struct gic_quirk gic_quirks[] = {
 		.init	= gic_enable_quirk_msm8996,
 	},
 	{
-		.desc	= "GICv3: ASR erratum 8601001",
-		.compatible = "asr,asr8601-gic-v3",
-		.init	= gic_enable_quirk_asr8601,
-	},
-	{
 		.desc	= "GICv3: Mediatek Chromebook GICR save problem",
 		.property = "mediatek,broken-save-restore-fw",
 		.init	= gic_enable_quirk_mtk_gicr,
+		.desc	= "GICv3: ASR erratum 8601001",
+		.compatible = "asr,asr8601-gic-v3",
+		.init	= gic_enable_quirk_asr8601,
 	},
 	{
 		.desc	= "GICv3: HIP06 erratum 161010803",

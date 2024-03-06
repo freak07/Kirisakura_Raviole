@@ -19,16 +19,18 @@
 
 #include <uapi/linux/time.h>
 
-#define LOG_BUFFER_ENTRIES      1024
-#define LOG_BUFFER_ENTRY_SIZE   256
-#define ID_LENGTH		50
+#define LOGBUFFER_ENTRY_SHIFT_MAX	20
+#define LOGBUFFER_ENTRY_SHIFT_MIN	3
+#define LOGBUFFER_ENTRY_SHIFT_DEFAULT	10
+#define LOGBUFFER_ENTRY_SIZE		256
+#define LOGBUFFER_ID_LENGTH		50
 
 struct logbuffer {
-	int logbuffer_head;
-	int logbuffer_tail;
+	uint logbuffer_head;
+	uint logbuffer_tail;
 	spinlock_t logbuffer_lock;	/* protect from multiple _log() */
 	u8 *buffer;
-	char id[ID_LENGTH];
+	char id[LOGBUFFER_ID_LENGTH];
 
 	struct miscdevice misc;
 	char name[50];
@@ -39,6 +41,13 @@ struct logbuffer {
 static uint driver_suspended_count;
 /* Log index for logbuffer_logk */
 static atomic_t log_index = ATOMIC_INIT(0);
+/* Number of logbuffer entries */
+static uint buffer_entries;
+static uint buffer_entry_mask;
+static uint buffer_entry_shift = LOGBUFFER_ENTRY_SHIFT_DEFAULT;
+
+module_param_named(buffer_entry_shift, buffer_entry_shift, uint, 0400);
+MODULE_PARM_DESC(buffer_entry_shift, "number of logbuffer buffer entries as a power of 2");
 
 static void __logbuffer_log(struct logbuffer *instance,
 			    const char *tmpbuffer, bool record_utc)
@@ -52,33 +61,29 @@ static void __logbuffer_log(struct logbuffer *instance,
 
 		ktime_get_real_ts64(&ts);
 		rtc_time64_to_tm(ts.tv_sec, &tm);
-		scnprintf(instance->buffer + (instance->logbuffer_head *
-			  LOG_BUFFER_ENTRY_SIZE),
-			  LOG_BUFFER_ENTRY_SIZE,
+		scnprintf(instance->buffer + (instance->logbuffer_head * LOGBUFFER_ENTRY_SIZE),
+			  LOGBUFFER_ENTRY_SIZE,
 			  "[%5lu.%06lu] %d-%02d-%02d %02d:%02d:%02d.%09lu UTC",
 			  (unsigned long)ts_nsec, rem_nsec / 1000,
 			  tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 			  tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
 	} else {
-		scnprintf(instance->buffer + (instance->logbuffer_head *
-			  LOG_BUFFER_ENTRY_SIZE),
-			  LOG_BUFFER_ENTRY_SIZE, "[%5lu.%06lu] %s",
+		scnprintf(instance->buffer + (instance->logbuffer_head * LOGBUFFER_ENTRY_SIZE),
+			  LOGBUFFER_ENTRY_SIZE, "[%5lu.%06lu] %s",
 			  (unsigned long)ts_nsec, rem_nsec / 1000,
 			  tmpbuffer);
 	}
 
-	instance->logbuffer_head = (instance->logbuffer_head + 1)
-			% LOG_BUFFER_ENTRIES;
+	instance->logbuffer_head = (instance->logbuffer_head + 1) & buffer_entry_mask;
 	if (instance->logbuffer_head == instance->logbuffer_tail) {
-		instance->logbuffer_tail = (instance->logbuffer_tail + 1) %
-					   LOG_BUFFER_ENTRIES;
+		instance->logbuffer_tail = (instance->logbuffer_tail + 1) & buffer_entry_mask;
 	}
 }
 
 void logbuffer_vlog(struct logbuffer *instance, const char *fmt,
 		    va_list args)
 {
-	char tmpbuffer[LOG_BUFFER_ENTRY_SIZE];
+	char tmpbuffer[LOGBUFFER_ENTRY_SIZE];
 	unsigned long flags;
 
 	if (!instance)
@@ -92,15 +97,10 @@ void logbuffer_vlog(struct logbuffer *instance, const char *fmt,
 		vsnprintf(tmpbuffer, sizeof(tmpbuffer), fmt, args);
 
 	spin_lock_irqsave(&instance->logbuffer_lock, flags);
-	if (instance->logbuffer_head < 0 ||
-	    instance->logbuffer_head >= LOG_BUFFER_ENTRIES) {
-		pr_warn("Bad log buffer index %d\n", instance->logbuffer_head);
-		goto abort;
-	}
 
 	/* Print UTC at the start of the buffer */
 	if (instance->logbuffer_head == instance->logbuffer_tail ||
-	    instance->logbuffer_head == LOG_BUFFER_ENTRIES - 1) {
+	    instance->logbuffer_head == buffer_entries - 1) {
 		__logbuffer_log(instance, tmpbuffer, true);
 	/* Print UTC when logging after suspend */
 	} else if (driver_suspended_count != instance->suspend_count) {
@@ -127,37 +127,76 @@ void logbuffer_log(struct logbuffer *instance, const char *fmt, ...)
 }
 EXPORT_SYMBOL_GPL(logbuffer_log);
 
+static unsigned int logbuffer_indexed_vlog(struct logbuffer *instance, int loglevel,
+					   const char *fmt, va_list args)
+{
+	char log[LOGBUFFER_ENTRY_SIZE];
+	unsigned int index;
+
+	index = atomic_inc_return(&log_index);
+
+	scnprintf(log, LOGBUFFER_ENTRY_SIZE, "[%5u] %s", index, fmt);
+	logbuffer_vlog(instance, log, args);
+
+	return index;
+}
+
 void logbuffer_logk(struct logbuffer *instance, int loglevel, const char *fmt, ...)
 {
-	char log[LOG_BUFFER_ENTRY_SIZE];
+	char log[LOGBUFFER_ENTRY_SIZE];
 	unsigned int index;
 	va_list args;
 
 	if (!fmt || !instance)
 		return;
 
-	index = atomic_inc_return(&log_index);
-
 	va_start(args, fmt);
-	scnprintf(log, LOG_BUFFER_ENTRY_SIZE, "[%5u] %s", index, fmt);
-	logbuffer_vlog(instance, log, args);
-	scnprintf(log, LOG_BUFFER_ENTRY_SIZE, "%s: [%5u] %s\n", instance->name, index, fmt);
-	vprintk_emit(0, loglevel, NULL, log, args);
+	index = logbuffer_indexed_vlog(instance, loglevel, fmt, args);
+	if (IS_ENABLED(CONFIG_PRINTK)) {
+		scnprintf(log, LOGBUFFER_ENTRY_SIZE, "%s: [%5u] %s\n", instance->name, index, fmt);
+		vprintk_emit(0, loglevel, NULL, log, args);
+	}
 	va_end(args);
 }
 EXPORT_SYMBOL_GPL(logbuffer_logk);
 
+int dev_logbuffer_logk(struct device *dev, struct logbuffer *instance, int loglevel,
+		       const char *fmt, ...)
+{
+	char log[LOGBUFFER_ENTRY_SIZE];
+	unsigned int index;
+	va_list args;
+	int ret = 0;
+
+	if (!dev || !instance)
+		return -ENODEV;
+
+	if (!fmt)
+		return 0;
+
+	va_start(args, fmt);
+	index = logbuffer_indexed_vlog(instance, loglevel, fmt, args);
+	if (IS_ENABLED(CONFIG_PRINTK)) {
+		scnprintf(log, LOGBUFFER_ENTRY_SIZE, "%s %s: [%5u] %s\n", dev_driver_string(dev),
+			  dev_name(dev), index, fmt);
+		ret = dev_vprintk_emit(loglevel, dev, log, args);
+	}
+	va_end(args);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(dev_logbuffer_logk);
+
 static int logbuffer_seq_show(struct seq_file *s, void *v)
 {
 	struct logbuffer *instance = (struct logbuffer *)s->private;
-	int tail;
+	uint tail;
 
 	spin_lock_irq(&instance->logbuffer_lock);
 	tail = instance->logbuffer_tail;
 	while (tail != instance->logbuffer_head) {
-		seq_printf(s, "%s\n", instance->buffer +
-			   (tail * LOG_BUFFER_ENTRY_SIZE));
-		tail = (tail + 1) % LOG_BUFFER_ENTRIES;
+		seq_printf(s, "%s\n", instance->buffer + (tail * LOGBUFFER_ENTRY_SIZE));
+		tail = (tail + 1) & buffer_entry_mask;
 	}
 
 	spin_unlock_irq(&instance->logbuffer_lock);
@@ -191,7 +230,7 @@ struct logbuffer *logbuffer_register(const char *name)
 	if (!instance)
 		return ERR_PTR(-ENOMEM);
 
-	instance->buffer = vzalloc(LOG_BUFFER_ENTRIES * LOG_BUFFER_ENTRY_SIZE);
+	instance->buffer = vzalloc(buffer_entries * LOGBUFFER_ENTRY_SIZE);
 	if (!instance->buffer) {
 		instance = ERR_PTR(-ENOMEM);
 		goto free_instance;
@@ -213,7 +252,7 @@ struct logbuffer *logbuffer_register(const char *name)
 
 	spin_lock_init(&instance->logbuffer_lock);
 
-	pr_info("id:%s registered\n", name);
+	pr_info("id:%s registered, buffer entries: %u\n", name, buffer_entries);
 	return instance;
 
 free_buffer:
@@ -251,6 +290,18 @@ static struct syscore_ops logbuffer_ops = {
 static int __init logbuffer_dev_init(void)
 {
 	register_syscore_ops(&logbuffer_ops);
+
+	/* Limit the entry count of each logbuffer instance to maximum 2^20  */
+	if (buffer_entry_shift > LOGBUFFER_ENTRY_SHIFT_MAX)
+		buffer_entry_shift = LOGBUFFER_ENTRY_SHIFT_MAX;
+
+	/* Minimum logbuffer entries 2^3 */
+	if (buffer_entry_shift < LOGBUFFER_ENTRY_SHIFT_MIN)
+		buffer_entry_shift = LOGBUFFER_ENTRY_SHIFT_MIN;
+
+	buffer_entries = 1 << buffer_entry_shift;
+	buffer_entry_mask = GENMASK(buffer_entry_shift - 1, 0);
+
 	driver_suspended_count = 0;
 	return 0;
 }

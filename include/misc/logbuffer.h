@@ -14,6 +14,9 @@ void logbuffer_log(struct logbuffer *instance, const char *fmt, ...);
 void logbuffer_logk(struct logbuffer *instance, int loglevel, const char *fmt, ...);
 void logbuffer_vlog(struct logbuffer *instance, const char *fmt,
 		    va_list args);
+int dev_logbuffer_logk(struct device *dev, struct logbuffer *instance, int loglevel,
+		       const char *fmt, ...);
+
 /*
  * Registers a new log buffer entry.
  * param name: name of the file in the /d/logbuffer/ directory.

@@ -1198,13 +1198,13 @@ static int xhci_exynos_remove(struct platform_device *dev)
 	pm_runtime_get_sync(&dev->dev);
 	xhci->xhc_state |= XHCI_STATE_REMOVING;
 
+	xhci_exynos_unregister_notify();
+
 	__pm_relax(xhci_exynos->main_wakelock);
 	wakeup_source_unregister(xhci_exynos->main_wakelock);
 
 	__pm_relax(xhci_exynos->shared_wakelock);
 	wakeup_source_unregister(xhci_exynos->shared_wakelock);
-
-	xhci_exynos_unregister_notify();
 
 	if (xhci_exynos->edev)
 		extcon_unregister_notifier(xhci_exynos->edev, EXTCON_DOCK,

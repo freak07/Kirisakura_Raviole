@@ -614,6 +614,29 @@ static struct otg_fsm_ops dwc3_otg_fsm_ops = {
 
 /* -------------------------------------------------------------------------- */
 
+static void dwc3_otg_desired_role_update(struct dwc3_otg *dotg, int id, int b_sess_vld)
+{
+	enum usb_role role;
+
+	if (!id) {
+		role = USB_ROLE_HOST;
+	} else if (b_sess_vld) {
+		role = USB_ROLE_DEVICE;
+	} else {
+		role = USB_ROLE_NONE;
+	}
+
+	if (role == dotg->desired_role)
+		return;
+
+	dotg->desired_role = role;
+	if (!dotg->desired_role_kn)
+		dotg->desired_role_kn = sysfs_get_dirent(dotg->exynos->dev->kobj.sd,
+							 "new_data_role");
+	if (dotg->desired_role_kn)
+		sysfs_notify_dirent(dotg->desired_role_kn);
+}
+
 void dwc3_otg_run_sm(struct otg_fsm *fsm)
 {
 	struct dwc3_otg	*dotg = container_of(fsm, struct dwc3_otg, fsm);
@@ -624,6 +647,8 @@ void dwc3_otg_run_sm(struct otg_fsm *fsm)
 		return;
 
 	mutex_lock(&fsm->lock);
+
+	dwc3_otg_desired_role_update(dotg, fsm->id, fsm->b_sess_vld);
 
 	do {
 		state_changed = dwc3_otg_statemachine(fsm);
@@ -1187,6 +1212,7 @@ void dwc3_exynos_otg_exit(struct dwc3 *dwc, struct dwc3_exynos *exynos)
 	if (!dotg->ext_otg_ops)
 		return;
 
+	sysfs_put(dotg->desired_role_kn);
 	gvotable_destroy_election(dotg->ssphy_restart_votable);
 	unregister_pm_notifier(&dotg->pm_nb);
 

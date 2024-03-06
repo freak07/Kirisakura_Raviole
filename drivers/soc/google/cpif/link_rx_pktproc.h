@@ -262,11 +262,11 @@ enum pktproc_perftest_mode {
 struct pktproc_perftest {
 	bool test_run;
 	enum pktproc_perftest_mode mode;
-	int session;
+	u16 session;
 	u16 ch;
-	int cpu;
-	int ipi_cpu[PKTPROC_MAX_QUEUE];
-	int udelay;
+	u16 cpu;
+	u16 ipi_cpu[PKTPROC_MAX_QUEUE];
+	u16 udelay;
 	u32 seq_counter[PKTPROC_MAX_QUEUE];
 	u16 clat_ipv6[8];
 };

@@ -516,10 +516,10 @@ EXPORT_SYMBOL_GPL(put_task_stack);
 
 void free_task(struct task_struct *tsk)
 {
-	cpufreq_task_times_exit(tsk);
 #ifdef CONFIG_SECCOMP
 	WARN_ON_ONCE(tsk->seccomp.filter);
 #endif
+	cpufreq_task_times_exit(tsk);
 	scs_release(tsk);
 
 	trace_android_vh_free_task(tsk);
