@@ -2936,6 +2936,9 @@ static int exynos_serial_resume(struct device *dev)
 					portaddrl(port, S3C64XX_UINTM));
 		}
 
+		if (ourport->rts_control || ourport->rts_alive_control)
+			usleep_range(200, 300);//delay for uart port resume
+
 		if (ourport->rts_control)
 			change_uart_gpio(DEFAULT_PINCTRL, ourport);
 
