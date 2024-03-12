@@ -1769,7 +1769,6 @@
   register_inet6addr_notifier
   register_inetaddr_notifier
   register_kernel_break_hook
-  register_kretprobe
   register_netdev
   register_netdevice
   register_netdevice_notifier
@@ -2590,7 +2589,6 @@
   unregister_chrdev_region
   unregister_inet6addr_notifier
   unregister_inetaddr_notifier
-  unregister_kretprobe
   unregister_netdev
   unregister_netdevice_notifier
   unregister_netdevice_queue
