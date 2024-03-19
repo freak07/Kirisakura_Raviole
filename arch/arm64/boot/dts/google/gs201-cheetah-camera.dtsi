@@ -528,6 +528,9 @@
 					 0
 					 0>;
 
+				/* Thread priority */
+				transaction-thread-priority = <99>;
+
 				i2c-lock-group-id = <3>;
 				transaction-process-limit = <20>;
 			};
