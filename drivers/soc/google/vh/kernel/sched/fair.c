@@ -1112,7 +1112,7 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd, unsig
 	unsigned long sum_util, energy = 0;
 	struct task_struct *tsk;
 	int cpu;
-	bool count_idle = false;
+	bool count_idle;
 
 	for (; pd; pd = pd->next) {
 		struct cpumask *pd_mask = perf_domain_span(pd);
@@ -1160,8 +1160,7 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd, unsig
 			max_util = max(max_util, cpu_util);
 		}
 
-		if (cpumask_test_cpu(dst_cpu, pd_mask) && exit_lat > C1_EXIT_LATENCY)
-			count_idle = true;
+		count_idle = cpumask_test_cpu(dst_cpu, pd_mask) && exit_lat > C1_EXIT_LATENCY;
 
 		energy += em_cpu_energy_pixel_mod(pd->em_pd, max_util, sum_util, count_idle,
 						  dst_cpu);
