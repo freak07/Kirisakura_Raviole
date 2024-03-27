@@ -110,7 +110,9 @@ struct {
 
 	/* Data for resize_callback thread */
 	struct task_struct *resize_thread;
+	struct pt_pts *resize_pts_in_progress; /* callback is in progress */
 	struct list_head resize_list; /* callback to call */
+	wait_queue_head_t resize_remove_wq; /* wait current callback return */
 	wait_queue_head_t resize_wq; /* wait for new callback */
 } pt_internal_data;
 
@@ -152,10 +154,10 @@ static void pt_trace(struct pt_handle *handle, int id, bool enable)
  */
 static struct pt_pts *pt_resize_list_next(u32 *size)
 {
+	unsigned long flags;
 	struct pt_pts *pts = NULL;
 
-	lockdep_assert_held(&pt_internal_data.sl);
-
+	spin_lock_irqsave(&pt_internal_data.sl, flags);
 	if (!list_empty(&pt_internal_data.resize_list)) {
 		pts = list_first_entry(&pt_internal_data.resize_list,
 					struct pt_pts, resize_list);
@@ -164,7 +166,14 @@ static struct pt_pts *pt_resize_list_next(u32 *size)
 		pts->resize_list.prev = NULL;
 		*size = pts->size;
 	}
+	pt_internal_data.resize_pts_in_progress = pts;
+	spin_unlock_irqrestore(&pt_internal_data.sl, flags);
 
+	wake_up(&pt_internal_data.resize_remove_wq);
+
+	if (pts == NULL)
+		wait_event_interruptible(pt_internal_data.resize_wq,
+				!list_empty(&pt_internal_data.resize_list));
 	return pts;
 }
 
@@ -180,8 +189,8 @@ static void pt_resize_list_add(struct pt_pts *pts, u32 size)
 	spin_lock_irqsave(&pt_internal_data.sl, flags);
 	if ((pts->resize_list.next == NULL) && (pts->enabled)
 		&& (pts->size != size)) {
-		waking = list_empty(&pt_internal_data.resize_list);
 		list_add(&pts->resize_list, &pt_internal_data.resize_list);
+		waking = !pt_internal_data.resize_pts_in_progress;
 	}
 	pts->size = size;
 	spin_unlock_irqrestore(&pt_internal_data.sl, flags);
@@ -191,7 +200,7 @@ static void pt_resize_list_add(struct pt_pts *pts, u32 size)
 }
 
 /*
- * Flush and disable pts resize callback.
+ * FLush and disable pts resize callback.
  * If a resize callback is in progress, we wait for its completion.
  */
 static bool pt_resize_list_disable(struct pt_pts *pts)
@@ -210,6 +219,8 @@ static bool pt_resize_list_disable(struct pt_pts *pts)
 	}
 	spin_unlock_irqrestore(&pt_internal_data.sl, flags);
 
+	wait_event(pt_internal_data.resize_remove_wq,
+			pt_internal_data.resize_pts_in_progress != pts);
 	return enabled;
 }
 
@@ -239,37 +250,25 @@ static int pt_resize_thread(void *data)
 	pt_resize_callback_t resize_callback = NULL;
 	int id;
 
-	while (!kthread_should_stop()) {
-		spin_lock(&pt_internal_data.sl);
-
+	while (1) {
+		/*
+		 * We are size snapshot from pt_resize_list_next().
+		 * because pts->size can change after the return.
+		 */
 		pts = pt_resize_list_next(&size);
-		if (pts != NULL) {
-			handle = pts->handle;
-			resize_callback = handle->resize_callback;
-			id = ((char *)pts - (char *)handle->pts) / sizeof(handle->pts[0]);
-			resize_callback(handle->data, id, size);
-			driver = pts->driver;
-			trace_pt_resize_callback(
-				handle->node->name,
-				driver->properties->nodes[pts->property_index]->name, false,
-				(int)size, pts->ptid);
-		}
+		if (pts == NULL)
+			continue;
+		handle = pts->handle;
+		resize_callback = handle->resize_callback;
+		id = ((char *)pts - (char *)handle->pts)
+						/ sizeof(handle->pts[0]);
+		resize_callback(handle->data, id, size);
 
-		spin_unlock(&pt_internal_data.sl);
-
-		/* List was empty, wait to be notified by pt_resize_list_add */
-		if (pts == NULL) {
-			int ret;
-			do {
-				ret = wait_event_interruptible(
-					pt_internal_data.resize_wq,
-					!list_empty(&pt_internal_data.resize_list) ||
-						kthread_should_stop());
-			} while (!ret);
-		}
+		driver = pts->driver;
+		trace_pt_resize_callback(handle->node->name,
+			driver->properties->nodes[pts->property_index]->name,
+			false, (int)size, pts->ptid);
 	}
-
-	return 0;
 }
 
 /*
@@ -1247,6 +1246,7 @@ static int __init pt_init(void)
 	INIT_LIST_HEAD(&pt_internal_data.driver_list);
 	INIT_LIST_HEAD(&pt_internal_data.resize_list);
 	init_waitqueue_head(&pt_internal_data.resize_wq);
+	init_waitqueue_head(&pt_internal_data.resize_remove_wq);
 	sysctl_table = &pt_internal_data.sysctl_table[0];
 	sysctl_table[0].procname = "dev";
 	sysctl_table[0].mode = 0550;
