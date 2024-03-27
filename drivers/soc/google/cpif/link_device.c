@@ -1659,6 +1659,16 @@ static int legacy_ipc_rx_func_napi(struct mem_link_device *mld, struct legacy_ip
 	int rcvd = 0;
 	int err = 0;
 
+	/* Make sure the in, out pointers are within bounds to avoid overflow.
+	 * These pointers are passed from CP shared memory and must be
+	 * validated before dma_sync below. */
+	if ((in > qsize) || (out > qsize)) {
+		mif_err("OOB error! in:%u, out:%u, qsize:%u\n", in, out, qsize);
+		link_trigger_cp_crash(mld, CRASH_REASON_MIF_RX_BAD_DATA,
+				"OOB error");
+		return -EINVAL;
+	}
+
 	if (unlikely(circ_empty(in, out)))
 		return 0;
 
@@ -1741,6 +1751,16 @@ static int legacy_ipc_rx_func(struct mem_link_device *mld, struct legacy_ipc_dev
 	unsigned int size = circ_get_usage(qsize, in, out);
 	int rcvd = 0;
 	int err = 0;
+
+	/* Make sure the in, out pointers are within bounds to avoid overflow.
+	 * These pointers are passed from CP shared memory and must be
+	 * validated before dma_sync below. */
+	if ((in > qsize) || (out > qsize)) {
+		mif_err("OOB error! in:%u, out:%u, qsize:%u\n", in, out, qsize);
+		link_trigger_cp_crash(mld, CRASH_REASON_MIF_RX_BAD_DATA,
+				"OOB error");
+		return -EINVAL;
+	}
 
 	if (unlikely(circ_empty(in, out)))
 		return 0;

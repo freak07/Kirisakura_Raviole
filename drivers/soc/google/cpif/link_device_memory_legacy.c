@@ -346,6 +346,19 @@ struct sk_buff *recv_from_legacy_link(struct mem_link_device *mld,
 	char hdr[EXYNOS_HEADER_SIZE];
 	char pr_buff[BAD_MSG_BUFFER_SIZE];
 
+	/* Make sure out pointer is within bounds. This pointer is read
+	 * from CP shared memory and must be validated before
+	 * circ_read below. */
+	if (out > qsize) {
+		mif_err("OOB err! out:%u, qsize:%u\n", out, qsize);
+		if (ld->link_trigger_cp_crash) {
+			ld->link_trigger_cp_crash(mld,
+				CRASH_REASON_MIF_RX_BAD_DATA, "OOB error");
+		}
+		*ret = -EINVAL;
+		goto no_mem;
+	}
+
 	/* Copy the header in a frame to the header buffer */
 	switch (ld->protocol) {
 	case PROTOCOL_SIPC:
