@@ -66,7 +66,7 @@ static int __mfc_alloc_common_context(struct mfc_core *core,
 		return -ENOMEM;
 	}
 
-	mfc_core_debug(2, "[MEMINFO] %s common ctx buf size: %ld, daddr: 0x%08llx\n",
+	mfc_core_info("[MEMINFO] %s common ctx buf size: %ld, daddr: 0x%08llx\n",
 			buf_type == MFCBUF_DRM ? "secure" : "normal",
 			ctx_buf->size, ctx_buf->daddr);
 
