@@ -277,6 +277,16 @@ prio_changed_fair(struct rq *rq, struct task_struct *p, int oldprio)
 		check_preempt_curr(rq, p, 0);
 }
 
+static inline unsigned long cfs_rq_load_avg(struct cfs_rq *cfs_rq)
+{
+	return cfs_rq->avg.load_avg;
+}
+
+static inline unsigned long cpu_load(struct rq *rq)
+{
+	return cfs_rq_load_avg(&rq->cfs);
+}
+
 /*****************************************************************************/
 /*                       New Code Section                                    */
 /*****************************************************************************/
@@ -1534,8 +1544,10 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, cpumas
 	int pd_max_spare_cap_cpu, pd_best_idle_cpu, pd_most_unimportant_cpu, pd_best_packing_cpu,
 		pd_max_spare_cap_running_rt_cpu;
 	int most_spare_cap_cpu = -1, unimportant_max_spare_cap_cpu = -1, idle_max_cap_cpu = -1;
+	int least_loaded_cpu = -1;
 	struct cpuidle_state *idle_state;
 	unsigned long unimportant_max_spare_cap = 0, idle_max_cap = 0;
+	unsigned long cfs_load, min_load = ULONG_MAX;
 	bool prefer_fit = get_uclamp_fork_reset(p, true);
 	const cpumask_t *preferred_idle_mask;
 
@@ -1641,6 +1653,13 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, cpumas
 			}
 
 			util_fits = util_fits_cpu(wake_util, util_min, util_max, i);
+
+
+			cfs_load = cpu_load(cpu_rq(i));
+			if (cfs_load < min_load) {
+				min_load = cfs_load;
+				least_loaded_cpu = i;
+			}
 
 			if (prefer_idle) {
 				/*
@@ -1752,12 +1771,15 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, cpumas
 					 * randomly based on task_util.
 					 */
 					if ((task_util_est(p) % 2))
-							cpumask_clear(&max_spare_cap);
+						cpumask_clear(&max_spare_cap);
 					cpumask_set_cpu(i, &max_spare_cap);
 				}
 			} else { /* Below path is for non-prefer idle case */
-				if (spare_cap >= target_max_spare_cap) {
+				if (spare_cap > target_max_spare_cap) {
 					target_max_spare_cap = spare_cap;
+					most_spare_cap_cpu = i;
+				} else if (spare_cap && spare_cap == target_max_spare_cap &&
+					   task_util_est(p) % 2) {
 					most_spare_cap_cpu = i;
 				}
 
@@ -1906,7 +1928,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, cpumas
 	}
 
 	weight = cpumask_weight(&candidates);
-	best_energy_cpu = most_spare_cap_cpu;
+	best_energy_cpu = most_spare_cap_cpu != -1 ? most_spare_cap_cpu: least_loaded_cpu;
 
 	/* Bail out if no candidate was found. */
 	if (weight == 0)
