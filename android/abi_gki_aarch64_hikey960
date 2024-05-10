@@ -72,7 +72,6 @@
   delayed_work_timer_fn
   del_gendisk
   del_timer
-  del_timer_sync
   destroy_workqueue
   dev_driver_string
   _dev_err

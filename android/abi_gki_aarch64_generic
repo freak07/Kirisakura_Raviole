@@ -380,7 +380,6 @@
   delayed_work_timer_fn
   del_gendisk
   del_timer
-  del_timer_sync
   desc_to_gpio
   destroy_workqueue
   dev_alloc_name
@@ -2228,6 +2227,7 @@
   thread_group_cputime_adjusted
   tick_nohz_get_idle_calls_cpu
   time64_to_tm
+  timer_delete_sync
   topology_set_thermal_pressure
   _totalram_pages
   touch_softlockup_watchdog

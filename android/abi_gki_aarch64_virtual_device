@@ -649,7 +649,6 @@
 # required by psmouse.ko
   bus_register_notifier
   bus_unregister_notifier
-  del_timer_sync
   device_add_groups
   device_create_file
   device_remove_file
