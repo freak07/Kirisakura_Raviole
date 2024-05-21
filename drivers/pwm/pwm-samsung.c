@@ -618,12 +618,14 @@ static int pwm_samsung_capture(struct pwm_chip *chip, struct pwm_device *pwm,
 static int pwm_samsung_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 			     const struct pwm_state *state)
 {
-	int err, enabled = pwm->state.enabled;
+	int err;
+	bool pwm_enabled = pwm->state.duty_cycle > 0 && pwm->state.enabled;
+	bool state_enabled = state->duty_cycle > 0 && state->enabled;
 
 	if (state->polarity != pwm->state.polarity) {
-		if (enabled) {
+		if (pwm_enabled) {
 			pwm_samsung_disable(chip, pwm);
-			enabled = false;
+			pwm_enabled = false;
 		}
 
 		err = pwm_samsung_set_polarity(chip, pwm, state->polarity);
@@ -631,8 +633,8 @@ static int pwm_samsung_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 			return err;
 	}
 
-	if (!state->enabled) {
-		if (enabled)
+	if (!state_enabled) {
+		if (pwm_enabled)
 			pwm_samsung_disable(chip, pwm);
 
 		return 0;
@@ -650,7 +652,7 @@ static int pwm_samsung_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 	if (err)
 		return err;
 
-	if (!pwm->state.enabled)
+	if (!pwm_enabled && state_enabled)
 		err = pwm_samsung_enable(chip, pwm);
 
 	return err;
