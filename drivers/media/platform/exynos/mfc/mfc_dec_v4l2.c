@@ -1034,7 +1034,7 @@ static int mfc_dec_dqbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 		ret = vb2_dqbuf(&ctx->vq_dst, buf, file->f_flags & O_NONBLOCK);
 		mfc_debug(4, "dec dst buf[%d] DQ\n", buf->index);
 
-		if (buf->index >= MFC_MAX_DPBS) {
+		if (buf->index >= MFC_MAX_BUFFERS) {
 			mfc_ctx_err("buffer index[%d] range over\n", buf->index);
 			return -EINVAL;
 		}
