@@ -1766,6 +1766,7 @@
   register_inet6addr_notifier
   register_inetaddr_notifier
   register_kernel_break_hook
+  register_kretprobe
   register_netdev
   register_netdevice
   register_netdevice_notifier
@@ -2236,7 +2237,6 @@
   trace_event_buffer_commit
   trace_event_buffer_reserve
   trace_event_ignore_this_pid
-  trace_event_printf
   trace_event_raw_init
   trace_event_reg
   trace_handle_return
@@ -2585,6 +2585,7 @@
   unregister_chrdev_region
   unregister_inet6addr_notifier
   unregister_inetaddr_notifier
+  unregister_kretprobe
   unregister_netdev
   unregister_netdevice_notifier
   unregister_netdevice_queue
