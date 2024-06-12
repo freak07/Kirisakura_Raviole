@@ -77,7 +77,7 @@ struct binder_lru_page {
  * @mutex:              protects binder_alloc fields
  * @vma_addr:           vm_area_struct->vm_start passed to mmap_handler
  *                      (invarient after mmap)
- * @vma_vm_mm:          copy of vma->vm_mm (invarient after mmap)
+ * @mm:                 copy of task->mm (invariant after open)
  * @buffer:             base of per-proc address space mapped via mmap
  * @buffers:            list of all buffers for this proc
  * @free_buffers:       rb tree of buffers available for allocation
@@ -100,7 +100,7 @@ struct binder_lru_page {
 struct binder_alloc {
 	struct mutex mutex;
 	unsigned long vma_addr;
-	struct mm_struct *vma_vm_mm;
+	struct mm_struct *mm;
 	void __user *buffer;
 	struct list_head buffers;
 	struct rb_root free_buffers;
