@@ -209,8 +209,8 @@ static int binder_update_page_range(struct binder_alloc *alloc, int allocate,
 		}
 	}
 
-	if (need_mm && mmget_not_zero(alloc->mm))
-		mm = alloc->mm;
+	if (need_mm && mmget_not_zero(alloc->vma_vm_mm))
+		mm = alloc->vma_vm_mm;
 
 	if (mm) {
 		mmap_write_lock(mm);
@@ -316,7 +316,7 @@ static inline struct vm_area_struct *binder_alloc_get_vma(
 	struct vm_area_struct *vma = NULL;
 
 	if (alloc->vma_addr)
-		vma = vma_lookup(alloc->mm, alloc->vma_addr);
+		vma = vma_lookup(alloc->vma_vm_mm, alloc->vma_addr);
 
 	return vma;
 }
@@ -380,15 +380,15 @@ static struct binder_buffer *binder_alloc_new_buf_locked(
 	size_t size, data_offsets_size;
 	int ret;
 
-	mmap_read_lock(alloc->mm);
+	mmap_read_lock(alloc->vma_vm_mm);
 	if (!binder_alloc_get_vma(alloc)) {
-		mmap_read_unlock(alloc->mm);
+		mmap_read_unlock(alloc->vma_vm_mm);
 		binder_alloc_debug(BINDER_DEBUG_USER_ERROR,
 				   "%d: binder_alloc_buf, no vma\n",
 				   alloc->pid);
 		return ERR_PTR(-ESRCH);
 	}
-	mmap_read_unlock(alloc->mm);
+	mmap_read_unlock(alloc->vma_vm_mm);
 
 	data_offsets_size = ALIGN(data_size, sizeof(void *)) +
 		ALIGN(offsets_size, sizeof(void *));
@@ -809,7 +809,7 @@ void binder_alloc_deferred_release(struct binder_alloc *alloc)
 	buffers = 0;
 	mutex_lock(&alloc->mutex);
 	BUG_ON(alloc->vma_addr &&
-	       vma_lookup(alloc->mm, alloc->vma_addr));
+	       vma_lookup(alloc->vma_vm_mm, alloc->vma_addr));
 
 	while ((n = rb_first(&alloc->allocated_buffers))) {
 		buffer = rb_entry(n, struct binder_buffer, rb_node);
@@ -859,8 +859,8 @@ void binder_alloc_deferred_release(struct binder_alloc *alloc)
 		kfree(alloc->pages);
 	}
 	mutex_unlock(&alloc->mutex);
-	if (alloc->mm)
-		mmdrop(alloc->mm);
+	if (alloc->vma_vm_mm)
+		mmdrop(alloc->vma_vm_mm);
 
 	binder_alloc_debug(BINDER_DEBUG_OPEN_CLOSE,
 		     "%s: %d buffers %d, pages %d\n",
@@ -917,13 +917,13 @@ void binder_alloc_print_pages(struct seq_file *m,
 	 * read inconsistent state.
 	 */
 
-	mmap_read_lock(alloc->mm);
+	mmap_read_lock(alloc->vma_vm_mm);
 	if (binder_alloc_get_vma(alloc) == NULL) {
-		mmap_read_unlock(alloc->mm);
+		mmap_read_unlock(alloc->vma_vm_mm);
 		goto uninitialized;
 	}
 
-	mmap_read_unlock(alloc->mm);
+	mmap_read_unlock(alloc->vma_vm_mm);
 	for (i = 0; i < alloc->buffer_size / PAGE_SIZE; i++) {
 		page = &alloc->pages[i];
 		if (!page->page_ptr)
@@ -1006,7 +1006,7 @@ enum lru_status binder_alloc_free_page(struct list_head *item,
 	index = page - alloc->pages;
 	page_addr = (uintptr_t)alloc->buffer + index * PAGE_SIZE;
 
-	mm = alloc->mm;
+	mm = alloc->vma_vm_mm;
 	if (!mmget_not_zero(mm))
 		goto err_mmget;
 	if (!mmap_read_trylock(mm))
@@ -1079,8 +1079,8 @@ static struct shrinker *binder_shrinker;
 void binder_alloc_init(struct binder_alloc *alloc)
 {
 	alloc->pid = current->group_leader->pid;
-	alloc->mm = current->mm;
-	mmgrab(alloc->mm);
+	alloc->vma_vm_mm = current->mm;
+	mmgrab(alloc->vma_vm_mm);
 	mutex_init(&alloc->mutex);
 	INIT_LIST_HEAD(&alloc->buffers);
 }
