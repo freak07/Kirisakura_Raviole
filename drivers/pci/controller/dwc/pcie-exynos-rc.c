@@ -62,6 +62,7 @@
 #include <soc/google/s2mpu.h>
 #include "../../../iommu/exynos-pcie-iommu-exp.h"
 #include <trace/hooks/pci.h>
+#include <soc/google/debug-snapshot.h>
 
 struct exynos_pcie g_pcie_rc[MAX_RC_NUM];
 int pcie_is_linkup;	/* checkpatch: do not initialise globals to 0 */
@@ -2663,8 +2664,6 @@ void exynos_pcie_rc_resumed_phydown(struct pcie_port *pp)
 	exynos_pcie_rc_enable_interrupts(pp, 0);
 	exynos_pcie_phy_isolation(exynos_pcie, PCIE_PHY_BYPASS);
 
-	exynos_pcie_rc_assert_phy_reset(pp);
-
 	if (exynos_pcie->phy_ops.phy_all_pwrdn)
 		exynos_pcie->phy_ops.phy_all_pwrdn(exynos_pcie, exynos_pcie->ch_num);
 
@@ -3082,8 +3081,9 @@ static int exynos_pcie_rc_establish_link(struct pcie_port *pp)
 	bool pll_lock, cdr_lock, oc_done;
 	int lock_cnt;
 retry:
-	logbuffer_logk(exynos_pcie->log, LOGLEVEL_ERR, "OC Initial Status check: 0x5FC(0x%x)\n",
-			exynos_phy_read(exynos_pcie, 0x5FC));
+	logbuffer_log(exynos_pcie->log,
+		      "OC Initial Status check: 0x5FC(0x%x)\n",
+		      exynos_phy_read(exynos_pcie, 0x5FC));
 
 	/* to call eyxnos_pcie_rc_pcie_phy_config() in cal.c file */
 	exynos_pcie_rc_assert_phy_reset(pp);
@@ -4628,13 +4628,14 @@ int exynos_pcie_rc_itmon_notifier(struct notifier_block *nb, unsigned long actio
 
 			exynos_pcie_rc_register_dump(exynos_pcie->ch_num);
 		}
-	} else if (exynos_pcie->ip_ver == 0x984500){
+	} else if (exynos_pcie->ip_ver >= 0x984500){
 		if ((itmon_info->port && !strcmp(itmon_info->port, "HSI2")) ||
 		    (itmon_info->dest && !strcmp(itmon_info->dest, "HSI2"))) {
-			regmap_read(exynos_pcie->pmureg, exynos_pcie->pmu_offset, &val);
-			dev_info(dev, "### PMU PHY Isolation : 0x%x\n", val);
+			if (exynos_pcie->ch_num == 0)
+				return NOTIFY_DONE;
 
-			exynos_pcie_rc_register_dump(exynos_pcie->ch_num);
+			// force reset and get dump
+			dbg_snapshot_emergency_reboot("# HSI2 FORCE RESET AND GET S2D DUMP!! #\n");
 		}
 	} else {
 		dev_info(dev, "skip register dump(ip_ver = 0x%x)\n", exynos_pcie->ip_ver);

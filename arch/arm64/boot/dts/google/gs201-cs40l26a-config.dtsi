@@ -76,7 +76,6 @@
 	cs40l26a_haptics: cs40l26a@43 {
 		compatible = "cirrus,cs40l26a";
 		reg = <0x43>;
-		dev-name = "cs40l26a";  /* sysfs folder name */
 		input-device-name = "cs40l26_input";    /* input device name */
 
 		pinctrl-names = "default";

@@ -3569,62 +3569,6 @@ __find_next_entry(struct trace_iterator *iter, int *ent_cpu,
 	return next;
 }
 
-#define STATIC_FMT_BUF_SIZE	128
-static char static_fmt_buf[STATIC_FMT_BUF_SIZE];
-
-static char *trace_iter_expand_format(struct trace_iterator *iter)
-{
-	char *tmp;
-
-	if (iter->fmt == static_fmt_buf)
-		return NULL;
-
-	tmp = krealloc(iter->fmt, iter->fmt_size + STATIC_FMT_BUF_SIZE,
-		       GFP_KERNEL);
-	if (tmp) {
-		iter->fmt_size += STATIC_FMT_BUF_SIZE;
-		iter->fmt = tmp;
-	}
-
-	return tmp;
-}
-
-const char *trace_event_format(struct trace_iterator *iter, const char *fmt)
-{
-	const char *p, *new_fmt;
-	char *q;
-
-	if (WARN_ON_ONCE(!fmt))
-		return fmt;
-
-	p = fmt;
-	new_fmt = q = iter->fmt;
-	while (*p) {
-		if (unlikely(q - new_fmt + 3 > iter->fmt_size)) {
-			if (!trace_iter_expand_format(iter))
-				return fmt;
-
-			q += iter->fmt - new_fmt;
-			new_fmt = iter->fmt;
-		}
-
-		*q++ = *p++;
-
-		/* Replace %p with %px */
-		if (p[-1] == '%') {
-			if (p[0] == '%') {
-				*q++ = *p++;
-			} else if (p[0] == 'p' && !isalnum(p[1])) {
-				*q++ = *p++;
-				*q++ = 'x';
-			}
-		}
-	}
-	*q = '\0';
-
-	return new_fmt;
-}
-
 #define STATIC_TEMP_BUF_SIZE	128
 static char static_temp_buf[STATIC_TEMP_BUF_SIZE] __aligned(4);
 
@@ -4423,16 +4367,6 @@ __tracing_open(struct inode *inode, struct file *file, bool snapshot)
 		iter->temp_size = 128;
 
 	/*
-	 * trace_event_printf() may need to modify given format
-	 * string to replace %p with %px so that it shows real address
-	 * instead of hash value. However, that is only for the event
-	 * tracing, other tracer may not need. Defer the allocation
-	 * until it is needed.
-	 */
-	iter->fmt = NULL;
-	iter->fmt_size = 0;
-
-	/*
 	 * We make a copy of the current tracer to avoid concurrent
 	 * changes on it while we are reading.
 	 */
@@ -4625,7 +4559,6 @@ static int tracing_release(struct inode *inode, struct file *file)
 
 	mutex_destroy(&iter->mutex);
 	free_cpumask_var(iter->started);
-	kfree(iter->fmt);
 	kfree(iter->temp);
 	kfree(iter->trace);
 	kfree(iter->buffer_iter);
@@ -6292,36 +6225,10 @@ tracing_max_lat_write(struct file *filp, const char __user *ubuf,
 
 #endif
 
-static int open_pipe_on_cpu(struct trace_array *tr, int cpu)
-{
-	if (cpu == RING_BUFFER_ALL_CPUS) {
-		if (cpumask_empty(tr->pipe_cpumask)) {
-			cpumask_setall(tr->pipe_cpumask);
-			return 0;
-		}
-	} else if (!cpumask_test_cpu(cpu, tr->pipe_cpumask)) {
-		cpumask_set_cpu(cpu, tr->pipe_cpumask);
-		return 0;
-	}
-	return -EBUSY;
-}
-
-static void close_pipe_on_cpu(struct trace_array *tr, int cpu)
-{
-	if (cpu == RING_BUFFER_ALL_CPUS) {
-		WARN_ON(!cpumask_full(tr->pipe_cpumask));
-		cpumask_clear(tr->pipe_cpumask);
-	} else {
-		WARN_ON(!cpumask_test_cpu(cpu, tr->pipe_cpumask));
-		cpumask_clear_cpu(cpu, tr->pipe_cpumask);
-	}
-}
-
 static int tracing_open_pipe(struct inode *inode, struct file *filp)
 {
 	struct trace_array *tr = inode->i_private;
 	struct trace_iterator *iter;
-	int cpu;
 	int ret;
 
 	ret = tracing_check_open_get_tr(tr);
@@ -6329,16 +6236,13 @@ static int tracing_open_pipe(struct inode *inode, struct file *filp)
 		return ret;
 
 	mutex_lock(&trace_types_lock);
-	cpu = tracing_get_cpu(inode);
-	ret = open_pipe_on_cpu(tr, cpu);
-	if (ret)
-		goto fail_pipe_on_cpu;
 
 	/* create a buffer to store the information to pass to userspace */
 	iter = kzalloc(sizeof(*iter), GFP_KERNEL);
 	if (!iter) {
 		ret = -ENOMEM;
-		goto fail_alloc_iter;
+		__trace_array_put(tr);
+		goto out;
 	}
 
 	trace_seq_init(&iter->seq);
@@ -6361,7 +6265,7 @@ static int tracing_open_pipe(struct inode *inode, struct file *filp)
 
 	iter->tr = tr;
 	iter->array_buffer = &tr->array_buffer;
-	iter->cpu_file = cpu;
+	iter->cpu_file = tracing_get_cpu(inode);
 	mutex_init(&iter->mutex);
 	filp->private_data = iter;
 
@@ -6371,15 +6275,12 @@ static int tracing_open_pipe(struct inode *inode, struct file *filp)
 	nonseekable_open(inode, filp);
 
 	tr->trace_ref++;
-
+out:
 	mutex_unlock(&trace_types_lock);
 	return ret;
 
 fail:
 	kfree(iter);
-fail_alloc_iter:
-	close_pipe_on_cpu(tr, cpu);
-fail_pipe_on_cpu:
 	__trace_array_put(tr);
 	mutex_unlock(&trace_types_lock);
 	return ret;
@@ -6396,7 +6297,7 @@ static int tracing_release_pipe(struct inode *inode, struct file *file)
 
 	if (iter->trace->pipe_close)
 		iter->trace->pipe_close(iter);
-	close_pipe_on_cpu(tr, iter->cpu_file);
+
 	mutex_unlock(&trace_types_lock);
 
 	free_cpumask_var(iter->started);
@@ -8949,9 +8850,6 @@ static struct trace_array *trace_array_create(const char *name)
 	if (!alloc_cpumask_var(&tr->tracing_cpumask, GFP_KERNEL))
 		goto out_free_tr;
 
-	if (!zalloc_cpumask_var(&tr->pipe_cpumask, GFP_KERNEL))
-		goto out_free_tr;
-
 	tr->trace_flags = global_trace.trace_flags & ~ZEROED_TRACE_FLAGS;
 
 	cpumask_copy(tr->tracing_cpumask, cpu_all_mask);
@@ -8993,7 +8891,6 @@ static struct trace_array *trace_array_create(const char *name)
  out_free_tr:
 	ftrace_free_ftrace_ops(tr);
 	free_trace_buffers(tr);
-	free_cpumask_var(tr->pipe_cpumask);
 	free_cpumask_var(tr->tracing_cpumask);
 	kfree(tr->name);
 	kfree(tr);
@@ -9095,7 +8992,6 @@ static int __remove_instance(struct trace_array *tr)
 	}
 	kfree(tr->topts);
 
-	free_cpumask_var(tr->pipe_cpumask);
 	free_cpumask_var(tr->tracing_cpumask);
 	kfree(tr->name);
 	kfree(tr);
@@ -9561,12 +9457,6 @@ void trace_init_global_iter(struct trace_iterator *iter)
 	/* Output in nanoseconds only if we are using a clock in nanoseconds. */
 	if (trace_clocks[iter->tr->clock_id].in_ns)
 		iter->iter_flags |= TRACE_FILE_TIME_IN_NS;
-
-	/* Can not use kmalloc for iter.temp and iter.fmt */
-	iter->temp = static_temp_buf;
-	iter->temp_size = STATIC_TEMP_BUF_SIZE;
-	iter->fmt = static_fmt_buf;
-	iter->fmt_size = STATIC_FMT_BUF_SIZE;
 }
 
 void ftrace_dump(enum ftrace_dump_mode oops_dump_mode)
@@ -9602,6 +9492,9 @@ void ftrace_dump(enum ftrace_dump_mode oops_dump_mode)
 
 	/* Simulate the iterator */
 	trace_init_global_iter(&iter);
+	/* Can not use kmalloc for iter.temp */
+	iter.temp = static_temp_buf;
+	iter.temp_size = STATIC_TEMP_BUF_SIZE;
 
 	for_each_tracing_cpu(cpu) {
 		atomic_inc(&per_cpu_ptr(iter.array_buffer->data, cpu)->disabled);
@@ -9833,14 +9726,12 @@ __init static int tracer_alloc_buffers(void)
 	if (trace_create_savedcmd() < 0)
 		goto out_free_temp_buffer;
 
-	if (!zalloc_cpumask_var(&global_trace.pipe_cpumask, GFP_KERNEL))
-		goto out_free_savedcmd;
-
 	/* TODO: make the number of buffers hot pluggable with CPUS */
 	if (allocate_trace_buffers(&global_trace, ring_buf_size) < 0) {
 		MEM_FAIL(1, "tracer: failed to allocate ring buffer!\n");
-		goto out_free_pipe_cpumask;
+		goto out_free_savedcmd;
 	}
+
 	if (global_trace.buffer_disabled)
 		tracing_off();
 
@@ -9891,8 +9782,6 @@ __init static int tracer_alloc_buffers(void)
 
 	return 0;
 
-out_free_pipe_cpumask:
-	free_cpumask_var(global_trace.pipe_cpumask);
 out_free_savedcmd:
 	free_saved_cmdlines_buffer(savedcmd);
 out_free_temp_buffer:

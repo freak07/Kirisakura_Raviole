@@ -15,7 +15,6 @@
 
 	max77759tcpc: max77759tcpc@25 {
 		status = "okay";
-		dev-name = "max77759tcpc";
 		compatible = "max77759tcpc";
 		reg = <0x25>;
 		pinctrl-names = "default";

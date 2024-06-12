@@ -124,8 +124,8 @@ static void exynos_pd_power_on_pre(struct exynos_pm_domain *pd)
 		exynos_bts_scitoken_setting(true);
 
 	if (pd->cal_pdid == HSI0_CAL_PDID) {
-		exynos_usbdrd_vdd_hsi_manual_control(1);
-		exynos_usbdrd_ldo_manual_control(1);
+		exynos_pd_hsi0_vdd_hsi_manual_control(1);
+		exynos_pd_hsi0_ldo_manual_control(1);
 	}
 }
 
@@ -150,8 +150,8 @@ static void exynos_pd_power_off_post(struct exynos_pm_domain *pd)
 		exynos_bts_scitoken_setting(false);
 
 	if (pd->cal_pdid == HSI0_CAL_PDID) {
-		exynos_usbdrd_ldo_manual_control(0);
-		exynos_usbdrd_vdd_hsi_manual_control(0);
+		exynos_pd_hsi0_ldo_manual_control(0);
+		exynos_pd_hsi0_vdd_hsi_manual_control(0);
 	}
 }
 

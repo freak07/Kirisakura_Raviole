@@ -47,6 +47,8 @@
 	#size-cells = <1>;
 
 	aliases {
+		i2c20 = &acpm_mfd_bus0;
+		i2c21 = &acpm_mfd_bus1;
 		pinctrl0 = &pinctrl_0;
 		pinctrl1 = &pinctrl_1;
 		pinctrl2 = &pinctrl_2;
@@ -826,6 +828,12 @@
 
 		#phy-cells = <1>;
 		ranges;
+	};
+
+	sub_pd_hsi0: sub-pd-hsi0 {
+		compatible = "exynos-pd-hsi0";
+		power-domains = <&pd_hsi0>;
+		status = "okay";
 	};
 
 	exynos_dm: exynos-dm@17000000 {

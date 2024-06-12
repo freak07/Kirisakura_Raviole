@@ -37,8 +37,8 @@ has_uapi_headers += video/gchips
 
 install_uapi_headers_targets := $(has_uapi_headers:=_headers_install)
 
-ifneq ($(wildcard $(KERNEL_SRC)/$(rel_path)/uwb/kernel),)
-ext_modules += uwb/kernel
+ifneq ($(wildcard $(KERNEL_SRC)/$(rel_path)/uwb/qorvo/dw3000/kernel),)
+ext_modules += uwb/qorvo/dw3000/kernel
 endif
 
 .PHONY: $(ext_modules) $(install_uapi_headers_targets) depmod allmodules

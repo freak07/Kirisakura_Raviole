@@ -330,7 +330,9 @@
 	hs_tune_param = <&usb_hs_tune>;
 	ss_tune_param = <&usb_ss_tune>;
 	extcon = <&max77759tcpc>;
+};
 
+&sub_pd_hsi0 {
 	vdd_hsi-supply = <&m_ldo7_reg>;
 	/* PP0850_L8M_USB: AVDD_PLL_USB, AVDD085_USB20, AVDD085_USBDP */
 	/* PP1800_L9M_USB: AVDD18_USB20, AVDD18_USBDP */

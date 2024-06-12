@@ -186,6 +186,8 @@ DECLARE_STATIC_KEY_FALSE(uclamp_max_filter_enable);
 
 DECLARE_STATIC_KEY_FALSE(tapered_dvfs_headroom_enable);
 
+DECLARE_STATIC_KEY_FALSE(enqueue_dequeue_ready);
+
 #define SCHED_PIXEL_FORCE_UPDATE		BIT(8)
 
 /*****************************************************************************/
@@ -475,6 +477,7 @@ static inline void init_vendor_task_struct(struct vendor_task_struct *v_tsk)
 	v_tsk->queued_to_list = LIST_NOT_QUEUED;
 	v_tsk->uclamp_fork_reset = false;
 	v_tsk->prefer_idle = false;
+	v_tsk->prefer_high_cap = false;
 	v_tsk->auto_uclamp_max_flags = 0;
 	v_tsk->uclamp_filter.uclamp_min_ignored = 0;
 	v_tsk->uclamp_filter.uclamp_max_ignored = 0;
@@ -487,9 +490,6 @@ static inline void init_vendor_task_struct(struct vendor_task_struct *v_tsk)
 	v_tsk->uclamp_pi[UCLAMP_MAX] = uclamp_none(UCLAMP_MAX);
 	v_tsk->runnable_start_ns = -1;
 }
-
-int acpu_init(void);
-extern struct proc_dir_entry *vendor_sched;
 
 extern u64 sched_slice(struct cfs_rq *cfs_rq, struct sched_entity *se);
 extern unsigned int sysctl_sched_uclamp_min_filter_us;
@@ -762,5 +762,11 @@ static inline void dec_adpf_counter(struct task_struct *p, struct rq *rq)
 
 	vrq = get_vendor_rq_struct(rq);
 
-	atomic_dec(&vrq->num_adpf_tasks);
+	/*
+	 * An enqueue could have happened before our dequeue hook was
+	 * registered, which can lead to imbalance.
+	 *
+	 * Make sure to never go below 0.
+	 */
+	atomic_dec_if_positive(&vrq->num_adpf_tasks);
 }

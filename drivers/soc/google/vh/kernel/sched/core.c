@@ -121,6 +121,9 @@ void rvh_enqueue_task_pixel_mod(void *data, struct rq *rq, struct task_struct *p
 	struct vendor_task_struct *vp = get_vendor_task_struct(p);
 	int group;
 
+	if (!static_branch_unlikely(&enqueue_dequeue_ready))
+		return;
+
 	raw_spin_lock(&vp->lock);
 	if (vp->queued_to_list == LIST_NOT_QUEUED) {
 		group = get_vendor_group(p);
@@ -142,6 +145,9 @@ void rvh_dequeue_task_pixel_mod(void *data, struct rq *rq, struct task_struct *p
 {
 	struct vendor_task_struct *vp = get_vendor_task_struct(p);
 	int group;
+
+	if (!static_branch_unlikely(&enqueue_dequeue_ready))
+		return;
 
 #if IS_ENABLED(CONFIG_UCLAMP_STATS)
 	if (rq->nr_running == 1)

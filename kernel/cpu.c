@@ -46,6 +46,7 @@
 #include <trace/hooks/cpu.h>
 
 #include "smpboot.h"
+#include "sched/sched.h"
 
 /**
  * cpuhp_cpu_state - Per cpu hotplug state storage
@@ -1167,8 +1168,6 @@ int remove_cpu(unsigned int cpu)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(remove_cpu);
-
-extern int  dl_bw_check_overflow(int cpu);
 
 int __pause_drain_rq(struct cpumask *cpus)
 {

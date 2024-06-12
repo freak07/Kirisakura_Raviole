@@ -12,7 +12,6 @@
 
 &hsi2c_8 {
 	p9412@3c {
-		dev-name = "p9412";
 		/* RTX */
 		idt,has_rtx = <1>;
 		idt,gpio_extben = <&gpp1 3 GPIO_ACTIVE_HIGH>;
