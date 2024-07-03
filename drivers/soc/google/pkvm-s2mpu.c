@@ -30,6 +30,7 @@ struct s2mpu_data {
 	bool pkvm_registered;
 	bool always_on;
 	bool pm_ref;
+	bool deny_all;
 };
 
 struct s2mpu_mptc_entry {
@@ -324,7 +325,7 @@ static int s2mpu_late_suspend(struct device *dev)
 	 * Do not call pkvm_iommu_suspend() here because that would put them
 	 * in a blocking state.
 	 */
-	if (data->always_on || pm_runtime_status_suspended(dev))
+	if (data->always_on || pm_runtime_status_suspended(dev) || data->deny_all)
 		return 0;
 
 	dev->power.must_resume = true;
@@ -333,12 +334,14 @@ static int s2mpu_late_suspend(struct device *dev)
 
 static int s2mpu_late_resume(struct device *dev)
 {
+	struct s2mpu_data *data = s2mpu_dev_data(dev);
+
 	/*
 	 * Some always-on S2MPUs reset while the CPU is asleep. Call
 	 * pkvm_iommu_resume() here regardless of always-on to reconfigure them.
 	 */
 
-	if (pm_runtime_status_suspended(dev))
+	if (pm_runtime_status_suspended(dev) || data->deny_all)
 		return 0;
 
 	return pkvm_s2mpu_resume(dev);
@@ -425,6 +428,7 @@ static int s2mpu_probe(struct platform_device *pdev)
 	off_at_boot = !!of_get_property(np, "off-at-boot", NULL);
 	has_pd = !!of_get_property(np, "power-domains", NULL);
 	dma_at_boot = !!of_get_property(np, "dma-cons", NULL);
+	data->deny_all = !!of_get_property(np, "deny-all", NULL);
 
 	/*
 	 * Try to parse IRQ information. This is optional as it only affects
@@ -435,6 +439,15 @@ static int s2mpu_probe(struct platform_device *pdev)
 
 	/* If a device have a dma-cons property link it as a consumer. */
 	WARN_ON(pkvm_s2mpu_of_link_with_cons(dev));
+
+	/*
+	 * Enable protection of the device, which disable the S2MPU, we do that
+	 * before probe, as the deny_all s2mpus appear as powered off all the time
+	 * to the hypervisor, so it never configure them.
+	 */
+	if (data->deny_all && !off_at_boot) {
+		writel_relaxed(0, data->base + REG_NS_CTRL0);
+	}
 
 	ret = pkvm_iommu_s2mpu_register(dev, res->start);
 	if (ret && ret != -ENODEV) {
@@ -475,10 +488,10 @@ static int s2mpu_probe(struct platform_device *pdev)
 	 */
 	if (dma_at_boot)
 		WARN_ON(pkvm_s2mpu_resume(dev));
-	else if (!off_at_boot)
+	else if (!off_at_boot && !data->deny_all)
 		WARN_ON(pkvm_s2mpu_suspend(dev));
 
-	if (has_pd || data->always_on)
+	if ((has_pd || data->always_on) && !data->deny_all)
 		pm_runtime_enable(dev);
 
 	/*
