@@ -950,7 +950,7 @@ static struct sock *unix_find_bsd(struct net *net, struct sockaddr_un *sunaddr,
 		goto fail;
 
 	inode = d_backing_inode(path.dentry);
-	err = inode_permission(inode, MAY_WRITE);
+	err = path_permission(&path, MAY_WRITE);
 	if (err)
 		goto path_put;
 
