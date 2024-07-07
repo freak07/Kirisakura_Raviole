@@ -2950,7 +2950,7 @@ void rvh_update_misfit_status_pixel_mod(void *data, struct task_struct *p,
 			continue;
 
 		/* update misfit if task p fit cpu */
-		if (task_util < capacity_orig_of(cpu)) {
+		if (task_util <= capacity_orig_of(cpu)) {
 			rcu_read_unlock();
 			return;
 		}
