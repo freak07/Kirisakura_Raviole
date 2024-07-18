@@ -44,6 +44,7 @@ struct dbg_snapshot_log_item dss_log_items[] = {
 struct dbg_snapshot_log_misc dss_log_misc;
 static char dss_freq_name[SZ_32][SZ_8];
 static unsigned int dss_freq_size;
+static bool dss_last_info_enabled;
 
 #define dss_get_log(item)						\
 long dss_get_len_##item##_log(void) {					\
@@ -611,6 +612,8 @@ static void dbg_snapshot_print_lastinfo(void)
 {
 	int cpu;
 
+	if (!dss_last_info_enabled)
+		return;
 	pr_info("<last info>\n");
 	for (cpu = 0; cpu < DSS_NR_CPUS; cpu++) {
 		pr_info("CPU ID: %d ----------------------------------\n", cpu);
@@ -727,6 +730,7 @@ void dbg_snapshot_init_log(void)
 		return;
 	}
 
+	dss_last_info_enabled = true;
 	log_item_set_filed(TASK, task);
 	log_item_set_filed(WORK, work);
 	log_item_set_filed(CPUIDLE, cpuidle);
