@@ -1351,6 +1351,7 @@ static int dir_rename(struct inode *old_dir, struct dentry *old_dentry,
 		struct inode *new_dir, struct dentry *new_dentry)
 {
 	struct mount_info *mi = get_mount_info(old_dir->i_sb);
+	struct renamedata rd;
 	struct dentry *backing_old_dentry;
 	struct dentry *backing_new_dentry;
 	struct dentry *backing_old_dir_dentry;
@@ -1397,10 +1398,13 @@ static int dir_rename(struct inode *old_dir, struct dentry *old_dentry,
 		error = -ENOTEMPTY;
 		goto unlock_out;
 	}
-
-	error = vfs_rename(d_inode(backing_old_dir_dentry), backing_old_dentry,
-			d_inode(backing_new_dir_dentry), backing_new_dentry,
-			NULL, 0);
+			
+	rd.old_dir	= d_inode(backing_old_dir_dentry);
+	rd.old_dentry	= backing_old_dentry;
+	rd.new_dir	= d_inode(backing_new_dir_dentry);
+	rd.new_dentry	= backing_new_dentry;
+	error = vfs_rename(&rd);
+	
 	if (error)
 		goto unlock_out;
 	if (target_inode)

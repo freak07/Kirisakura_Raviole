@@ -89,7 +89,7 @@ struct bpf_prog *fuse_get_bpf_prog(struct file *file)
 						 false);
 
 		/* Close the fd, which also closes the file */
-		__close_fd(current->files, task_fd);
+		close_fd(task_fd);
 		file = NULL;
 	}
 #endif
@@ -1619,6 +1619,7 @@ static int fuse_rename_backing_common(
 			 unsigned int flags)
 {
 	int err = 0;
+	struct renamedata rd;
 	struct path old_backing_path;
 	struct path new_backing_path;
 	struct dentry *old_backing_dir_dentry;
@@ -1662,9 +1663,12 @@ static int fuse_rename_backing_common(
 		err = -ENOTEMPTY;
 		goto put_parents;
 	}
-	err = vfs_rename(d_inode(old_backing_dir_dentry), old_backing_dentry,
-			 d_inode(new_backing_dir_dentry), new_backing_dentry,
-			 NULL, flags);
+			 
+	rd.old_dir	= d_inode(old_backing_dir_dentry);
+	rd.old_dentry	= old_backing_dentry;
+	rd.new_dir	= d_inode(new_backing_dir_dentry);
+	rd.new_dentry	= new_backing_dentry;
+	err = vfs_rename(&rd);
 	if (err)
 		goto unlock;
 	if (target_inode)

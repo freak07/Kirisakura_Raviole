@@ -3,12 +3,14 @@
  * Copyright 2020 Google LLC
  */
 
+
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/fsnotify.h>
+#include <linux/module.h>
 #include <linux/namei.h>
 #include <linux/poll.h>
-#include <linux/syscalls.h>
+#include <linux/fdtable.h>
 
 #include <uapi/linux/incrementalfs.h>
 
@@ -267,7 +269,7 @@ static int dir_relative_path_resolve(
 		LOOKUP_FOLLOW | LOOKUP_DIRECTORY, result_path, NULL);
 
 out:
-	ksys_close(dir_fd);
+	close_fd(dir_fd);
 	if (error)
 		pr_debug("Error: %d\n", error);
 	return error;
