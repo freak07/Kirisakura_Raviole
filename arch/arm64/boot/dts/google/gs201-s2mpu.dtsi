@@ -254,4 +254,19 @@
 		interrupts = <GIC_SPI IRQ_SYSMMU_S2_TPU_TPU IRQ_TYPE_LEVEL_HIGH>;
 		power-domains = <&pd_tpu>;
 	};
+
+	s2mpu_aoc: s2mpu_aoc@1a0b0000 {
+		compatible = "google,s2mpu";
+		reg = <0x0 0x1a0b0000 0x10000>;
+		interrupts = <GIC_SPI IRQ_SYSMMU_AOC_S2_AOC IRQ_TYPE_LEVEL_HIGH>;
+		deny-all;
+	};
+
+	s2mpu_alive: s2mpu_alive@018190000 {
+		compatible = "google,s2mpu";
+		reg = <0x0 0x18190000 0x10000>;
+		interrupts = <GIC_SPI O_INTERRUPT_S2__SYSMMU_D_APM_ALIVE IRQ_TYPE_LEVEL_HIGH>;
+		deny-all;
+		off-at-boot;
+	};
 };
