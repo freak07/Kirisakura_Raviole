@@ -18,7 +18,6 @@
 #include <linux/kstrtox.h>
 #include <linux/sched/task_stack.h>
 #include <linux/slab.h>
-#include <linux/string.h>
 #include <linux/sysfs.h>
 
 typedef void (*show_pad_maps_fn)	(struct seq_file *m, struct vm_area_struct *vma);
@@ -183,15 +182,7 @@ static inline bool linker_ctx(void)
 		memset(buf, 0, bufsize);
 		path = d_path(&file->f_path, buf, bufsize);
 
-		/*
-		 * Depending on interpreter requested, valid paths could be any of:
-		 *   1. /system/bin/bootstrap/linker64
-		 *   2. /system/bin/linker64
-		 *   3. /apex/com.android.runtime/bin/linker64
-		 *
-		 * Check the base name (linker64).
-		 */
-		if (!strcmp(kbasename(path), "linker64"))
+		if (!strcmp(path, "/system/bin/linker64"))
 			return true;
 	}
 
