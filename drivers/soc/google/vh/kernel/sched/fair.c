@@ -241,6 +241,16 @@ void set_next_buddy(struct sched_entity *se)
 	}
 }
 
+static inline unsigned long cfs_rq_load_avg(struct cfs_rq *cfs_rq)
+{
+	return cfs_rq->avg.load_avg;
+}
+
+static inline unsigned long cpu_load(struct rq *rq)
+{
+	return cfs_rq_load_avg(&rq->cfs);
+}
+
 /*****************************************************************************/
 /*                       New Code Section                                    */
 /*****************************************************************************/
@@ -1076,7 +1086,7 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd, unsig
 	unsigned long sum_util, energy = 0;
 	struct task_struct *tsk;
 	int cpu;
-	bool count_idle = false;
+	bool count_idle;
 
 	for (; pd; pd = pd->next) {
 		struct cpumask *pd_mask = perf_domain_span(pd);
@@ -1124,8 +1134,7 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd, unsig
 			max_util = max(max_util, cpu_util);
 		}
 
-		if (cpumask_test_cpu(dst_cpu, pd_mask) && exit_lat > C1_EXIT_LATENCY)
-			count_idle = true;
+		count_idle = cpumask_test_cpu(dst_cpu, pd_mask) && exit_lat > C1_EXIT_LATENCY;
 
 		energy += em_cpu_energy_pixel_mod(pd->em_pd, max_util, sum_util, count_idle,
 						  dst_cpu);
@@ -1486,8 +1495,10 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, cpumas
 	int pd_max_spare_cap_cpu, pd_best_idle_cpu, pd_most_unimportant_cpu, pd_best_packing_cpu,
 		pd_max_spare_cap_running_rt_cpu;
 	int most_spare_cap_cpu = -1, unimportant_max_spare_cap_cpu = -1, idle_max_cap_cpu = -1;
+	int least_loaded_cpu = -1;
 	struct cpuidle_state *idle_state;
 	unsigned long unimportant_max_spare_cap = 0, idle_max_cap = 0;
+	unsigned long cfs_load, min_load = ULONG_MAX;
 	bool prefer_fit = get_uclamp_fork_reset(p, true);
 	const cpumask_t *preferred_idle_mask;
 
@@ -1593,6 +1604,13 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, cpumas
 			}
 
 			util_fits = util_fits_cpu(wake_util, util_min, util_max, i);
+
+
+			cfs_load = cpu_load(cpu_rq(i));
+			if (cfs_load < min_load) {
+				min_load = cfs_load;
+				least_loaded_cpu = i;
+			}
 
 			if (prefer_idle) {
 				/*
@@ -1704,12 +1722,15 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, cpumas
 					 * randomly based on task_util.
 					 */
 					if ((task_util_est(p) % 2))
-							cpumask_clear(&max_spare_cap);
+						cpumask_clear(&max_spare_cap);
 					cpumask_set_cpu(i, &max_spare_cap);
 				}
 			} else { /* Below path is for non-prefer idle case */
-				if (spare_cap >= target_max_spare_cap) {
+				if (spare_cap > target_max_spare_cap) {
 					target_max_spare_cap = spare_cap;
+					most_spare_cap_cpu = i;
+				} else if (spare_cap && spare_cap == target_max_spare_cap &&
+					   task_util_est(p) % 2) {
 					most_spare_cap_cpu = i;
 				}
 
@@ -1812,7 +1833,9 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, cpumas
 		preferred_idle_mask = get_preferred_idle_mask(p);
 		cpumask_or(&idle_unpreferred, &idle_fit, &idle_unfit);
 		cpumask_andnot(&idle_unpreferred, &idle_unpreferred, preferred_idle_mask);
-		cpumask_and(&idle_fit, &idle_fit, preferred_idle_mask);
+		// If there is no fit idle CPU in preferred_idle_mask, ignore it
+		if (task_fits_capacity(p, cpumask_last(preferred_idle_mask)))
+			cpumask_and(&idle_fit, &idle_fit, preferred_idle_mask);
 		cpumask_and(&idle_unfit, &idle_unfit, preferred_idle_mask);
 	}
 
@@ -1856,7 +1879,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, cpumas
 	}
 
 	weight = cpumask_weight(&candidates);
-	best_energy_cpu = most_spare_cap_cpu;
+	best_energy_cpu = most_spare_cap_cpu != -1 ? most_spare_cap_cpu: least_loaded_cpu;
 
 	/* Bail out if no candidate was found. */
 	if (weight == 0)
@@ -2685,7 +2708,7 @@ void rvh_update_misfit_status_pixel_mod(void *data, struct task_struct *p,
 			continue;
 
 		/* update misfit if task p fit cpu */
-		if (task_util < capacity_orig_of(cpu)) {
+		if (task_util <= capacity_orig_of(cpu)) {
 			rcu_read_unlock();
 			return;
 		}

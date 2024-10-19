@@ -2414,7 +2414,6 @@ static int macsec_upd_txsa(struct sk_buff *skb, struct genl_info *info)
 
 		ctx.sa.assoc_num = assoc_num;
 		ctx.sa.tx_sa = tx_sa;
-		ctx.sa.update_pn = !!prev_pn.full64;
 		ctx.secy = secy;
 
 		ret = macsec_offload(ops->mdo_upd_txsa, &ctx);
@@ -2508,7 +2507,6 @@ static int macsec_upd_rxsa(struct sk_buff *skb, struct genl_info *info)
 
 		ctx.sa.assoc_num = assoc_num;
 		ctx.sa.rx_sa = rx_sa;
-		ctx.sa.update_pn = !!prev_pn.full64;
 		ctx.secy = secy;
 
 		ret = macsec_offload(ops->mdo_upd_rxsa, &ctx);
@@ -3686,9 +3684,8 @@ static void macsec_get_stats64(struct net_device *dev,
 
 	dev_fetch_sw_netstats(s, dev->tstats);
 
-	s->rx_dropped = DEV_STATS_READ(dev, rx_dropped);
-	s->tx_dropped = DEV_STATS_READ(dev, tx_dropped);
-	s->rx_errors = DEV_STATS_READ(dev, rx_errors);
+	s->rx_dropped = dev->stats.rx_dropped;
+	s->tx_dropped = dev->stats.tx_dropped;
 }
 
 static int macsec_get_iflink(const struct net_device *dev)

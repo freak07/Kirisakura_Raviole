@@ -300,4 +300,7 @@
 #define IS_LOW_MEM			(totalram_pages() <= ((SZ_1G + SZ_512M) >> PAGE_SHIFT))
 #define SZ_600M				(6 * 1024 * 1024)
 
+/* Min Bitrate for VT (100kbps) */
+#define VT_MIN_BITRATE			(3500 * 30)
+
 #endif /* __MFC_COMMON_H */

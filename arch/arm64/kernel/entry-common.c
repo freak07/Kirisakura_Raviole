@@ -135,20 +135,11 @@ static void noinstr el1_pc(struct pt_regs *regs, unsigned long esr)
 	exit_to_kernel_mode(regs);
 }
 
-static void noinstr el1_undef(struct pt_regs *regs, unsigned long esr)
+static void noinstr el1_undef(struct pt_regs *regs)
 {
 	enter_from_kernel_mode(regs);
 	local_daif_inherit(regs);
-	do_el1_undef(regs, esr);
-	local_daif_mask();
-	exit_to_kernel_mode(regs);
-}
-
-static void noinstr el1_bti(struct pt_regs *regs, unsigned long esr)
-{
-	enter_from_kernel_mode(regs);
-	local_daif_inherit(regs);
-	do_el1_bti(regs, esr);
+	do_undefinstr(regs);
 	local_daif_mask();
 	exit_to_kernel_mode(regs);
 }
@@ -199,7 +190,7 @@ static void noinstr el1_fpac(struct pt_regs *regs, unsigned long esr)
 {
 	enter_from_kernel_mode(regs);
 	local_daif_inherit(regs);
-	do_el1_fpac(regs, esr);
+	do_ptrauth_fault(regs, esr);
 	local_daif_mask();
 	exit_to_kernel_mode(regs);
 }
@@ -222,10 +213,7 @@ asmlinkage void noinstr el1_sync_handler(struct pt_regs *regs)
 		break;
 	case ESR_ELx_EC_SYS64:
 	case ESR_ELx_EC_UNKNOWN:
-		el1_undef(regs, esr);
-		break;
-	case ESR_ELx_EC_BTI:
-		el1_bti(regs, esr);
+		el1_undef(regs);
 		break;
 	case ESR_ELx_EC_BREAKPT_CUR:
 	case ESR_ELx_EC_SOFTSTP_CUR:
@@ -310,7 +298,7 @@ static void noinstr el0_sys(struct pt_regs *regs, unsigned long esr)
 {
 	enter_from_user_mode();
 	local_daif_restore(DAIF_PROCCTX);
-	do_el0_sys(esr, regs);
+	do_sysinstr(esr, regs);
 }
 
 static void noinstr el0_pc(struct pt_regs *regs, unsigned long esr)
@@ -332,18 +320,18 @@ static void noinstr el0_sp(struct pt_regs *regs, unsigned long esr)
 	do_sp_pc_abort(regs->sp, esr, regs);
 }
 
-static void noinstr el0_undef(struct pt_regs *regs, unsigned long esr)
+static void noinstr el0_undef(struct pt_regs *regs)
 {
 	enter_from_user_mode();
 	local_daif_restore(DAIF_PROCCTX);
-	do_el0_undef(regs, esr);
+	do_undefinstr(regs);
 }
 
 static void noinstr el0_bti(struct pt_regs *regs)
 {
 	enter_from_user_mode();
 	local_daif_restore(DAIF_PROCCTX);
-	do_el0_bti(regs);
+	do_bti(regs);
 }
 
 static void noinstr el0_inv(struct pt_regs *regs, unsigned long esr)
@@ -373,7 +361,7 @@ static void noinstr el0_fpac(struct pt_regs *regs, unsigned long esr)
 {
 	enter_from_user_mode();
 	local_daif_restore(DAIF_PROCCTX);
-	do_el0_fpac(regs, esr);
+	do_ptrauth_fault(regs, esr);
 }
 
 asmlinkage void noinstr el0_sync_handler(struct pt_regs *regs)
@@ -410,7 +398,7 @@ asmlinkage void noinstr el0_sync_handler(struct pt_regs *regs)
 		el0_pc(regs, esr);
 		break;
 	case ESR_ELx_EC_UNKNOWN:
-		el0_undef(regs, esr);
+		el0_undef(regs);
 		break;
 	case ESR_ELx_EC_BTI:
 		el0_bti(regs);
@@ -434,7 +422,7 @@ static void noinstr el0_cp15(struct pt_regs *regs, unsigned long esr)
 {
 	enter_from_user_mode();
 	local_daif_restore(DAIF_PROCCTX);
-	do_el0_cp15(esr, regs);
+	do_cp15instr(esr, regs);
 }
 
 static void noinstr el0_svc_compat(struct pt_regs *regs)
@@ -470,7 +458,7 @@ asmlinkage void noinstr el0_sync_compat_handler(struct pt_regs *regs)
 	case ESR_ELx_EC_CP14_MR:
 	case ESR_ELx_EC_CP14_LS:
 	case ESR_ELx_EC_CP14_64:
-		el0_undef(regs, esr);
+		el0_undef(regs);
 		break;
 	case ESR_ELx_EC_CP15_32:
 	case ESR_ELx_EC_CP15_64:

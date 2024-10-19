@@ -224,28 +224,32 @@ static const struct of_device_id exynos5_i2c_match[] = {
 MODULE_DEVICE_TABLE(of, exynos5_i2c_match);
 
 #ifdef CONFIG_GPIOLIB
-static void change_i2c_gpio(struct exynos5_i2c *i2c)
+static int change_i2c_pinctrl_state(struct exynos5_i2c *i2c, const char *state)
 {
-	struct pinctrl_state *default_i2c_pins;
+	struct pinctrl_state *i2c_pinctrl_state;
 	struct pinctrl *default_i2c_pinctrl;
 	int status = 0;
 
 	default_i2c_pinctrl = devm_pinctrl_get(i2c->dev);
 	if (IS_ERR(default_i2c_pinctrl)) {
 		dev_err(i2c->dev, "Can't get i2c pinctrl!!!\n");
-		return;
+		return -1;
 	}
 
-	default_i2c_pins = pinctrl_lookup_state(default_i2c_pinctrl,
-						"default");
-	if (!IS_ERR(default_i2c_pins)) {
+	i2c_pinctrl_state = pinctrl_lookup_state(default_i2c_pinctrl,
+						state);
+	if (!IS_ERR(i2c_pinctrl_state)) {
 		status = pinctrl_select_state(default_i2c_pinctrl,
-					      default_i2c_pins);
-		if (status)
-			dev_err(i2c->dev, "Can't set default i2c pins!!!\n");
+					      i2c_pinctrl_state);
+		if (status) {
+			dev_err(i2c->dev, "Can't set i2c pins to state %s!!!\n", state);
+			return -1;
+		}
 	} else {
-		dev_err(i2c->dev, "Can't get default pinstate!!!\n");
+		dev_err(i2c->dev, "Can't get %s pinstate!!!\n", state);
+		return -1;
 	}
+	return 0;
 }
 
 static void recover_gpio_pins(struct exynos5_i2c *i2c)
@@ -294,26 +298,30 @@ static void recover_gpio_pins(struct exynos5_i2c *i2c)
 	sda_val = gpio_get_value(gpio_sda);
 
 	if (sda_val == 0) {
-		gpio_direction_output(gpio_scl, 1);
-		gpio_direction_input(gpio_sda);
+		if (!change_i2c_pinctrl_state(i2c, "recovery")) {
+			gpio_direction_output(gpio_scl, 1);
+			gpio_direction_input(gpio_sda);
 
-		for (clk_cnt = 0; clk_cnt < 100; clk_cnt++) {
+			for (clk_cnt = 0; clk_cnt < 100; clk_cnt++) {
 			/* Make clock for slave */
-			gpio_set_value(gpio_scl, 0);
-			udelay(5);
-			gpio_set_value(gpio_scl, 1);
-			udelay(5);
-			if (gpio_get_value(gpio_sda) == 1) {
-				dev_err(i2c->dev, "SDA line is recovered.\n");
-				break;
+				gpio_set_value(gpio_scl, 0);
+				udelay(5);
+				gpio_set_value(gpio_scl, 1);
+				udelay(5);
+				if (gpio_get_value(gpio_sda) == 1) {
+					dev_err(i2c->dev, "SDA line is recovered.\n");
+					break;
+				}
 			}
+			if (clk_cnt == 100)
+				dev_err(i2c->dev, "SDA line is not recovered!!!\n");
+		} else {
+			dev_err(i2c->dev, "Recovery state doesn't exist, skip recovery!!!\n");
 		}
-		if (clk_cnt == 100)
-			dev_err(i2c->dev, "SDA line is not recovered!!!\n");
 	}
 
 	/* Change I2C GPIO as default function */
-	change_i2c_gpio(i2c);
+	change_i2c_pinctrl_state(i2c, "default");
 }
 #endif
 
@@ -710,11 +718,12 @@ static irqreturn_t exynos5_i2c_irq(int irqno, void *dev_id)
 	 */
 	if (reg_val & HSI2C_INT_CHK_TRANS_STATE) {
 		trans_status = readl(i2c->regs + HSI2C_TRANS_STATUS);
-		dev_err(i2c->dev, "HSI2C Error Interrupt occurred(IS:0x%08x, TR:0x%08x)\n",
-			(unsigned int)reg_val, (unsigned int)trans_status);
+		dev_err(i2c->dev, "HSI2C Error Interrupt occurred(IS:0x%08x, TR:0x%08x) for %#x\n",
+			(unsigned int)reg_val, (unsigned int)trans_status, (i2c->msg->addr & 0x7f));
 
 		if (reg_val & HSI2C_INT_NODEV) {
-			dev_err(i2c->dev, "HSI2C NO ACK occurred\n");
+			dev_err(i2c->dev, "HSI2C NO ACK occurred for %#x\n",
+				(i2c->msg->addr & 0x7f));
 			if (i2c->nack_restart) {
 				if (reg_val & HSI2C_INT_TRANSFER_DONE)
 					exynos5_i2c_stop(i2c);

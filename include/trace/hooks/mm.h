@@ -171,6 +171,9 @@ DECLARE_HOOK(android_vh_alloc_pages_failure_bypass,
 DECLARE_HOOK(android_vh_ptep_clear_flush_young,
 	TP_PROTO(bool *skip),
 	TP_ARGS(skip));
+DECLARE_HOOK(android_vh_do_swap_page_spf,
+	TP_PROTO(bool *allow_swap_spf),
+	TP_ARGS(allow_swap_spf));
 /* macro versions of hooks are no longer required */
 
 DECLARE_HOOK(android_vh_use_cma_first_check,

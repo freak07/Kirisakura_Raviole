@@ -78,7 +78,7 @@
 	};
 
 	chosen: chosen {
-		bootargs = "earlycon=exynos4210,mmio32,0x10A00000 console=ttySAC0,115200n8 clocksource=arch_sys_counter root=/dev/ram0 rw ramdisk_size=65536 androidboot.hardware.platform=gs201 androidboot.debug_level=0x4948 firmware_class.path=/vendor/firmware reserve-fimc=0xffffff90f9fe0000 clk_ignore_unused loop.max_part=7 coherent_pool=4M no_console_suspend softlockup_panic=1 maxcpus=8 sysrq_always_enabled kasan_multi_shot ehld.noehld=1";
+		bootargs = "earlycon=exynos4210,mmio32,0x10A00000 console=ttySAC0,115200n8 clocksource=arch_sys_counter root=/dev/ram0 rw ramdisk_size=65536 androidboot.hardware.platform=gs201 androidboot.debug_level=0x4948 firmware_class.path=/vendor/firmware reserve-fimc=0xffffff90f9fe0000 clk_ignore_unused loop.max_part=7 coherent_pool=4M no_console_suspend softlockup_panic=1 maxcpus=8 kasan_multi_shot ehld.noehld=1";
 	};
 
 	odm: odm {
@@ -610,49 +610,9 @@
 		 *     bit[6]   don't force optimal fetch on read  (0)
 		 *     bit[7]   don't force optimal fetch on write (0)
 		 */
-		gpu_g0_p0 {
-			/* vptid 40, max size 256KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x00001001 0x0 0x5>;
-		};
-		gpu_g0_p1 {
-			/* vptid 40, max size 512KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x00005001 0x0 0x5>;
-		};
-		gpu_g0_p2 {
-			/* vptid 40, max size 768KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x0000d001 0x0 0x5>;
-		};
-		gpu_g0_p3 {
-			/* vptid 40, max size 1024KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x0001d001 0x0 0x5>;
-		};
-		gpu_g0_p4 {
-			/* vptid 40, max size 1536KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x0003d001 0x0 0x5>;
-		};
-		gpu_g0_p5 {
-			/* vptid 40, max size 2048KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x0007d001 0x0 0x5>;
-		};
-		gpu_g0_p6 {
-			/* vptid 40, max size 3072KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x000fd001 0x0 0x5>;
-		};
-		gpu_g0_p7 {
-			/* vptid 40, max size 4096KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x001fd001 0x0 0x5>;
-		};
-		gpu_g0_p8 {
-			/* vptid 40, max size 6144KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x003fd001 0x0 0x5>;
-		};
-		gpu_g0_p9 {
+		gpu_write_alloc {
 			/* vptid 40, max size 8192KB, priority 0, pbha 5 */
-			id_size_priority = <0x28 0x007fd001 0x0 0x5>;
-		};
-		gpu_g1_p0 {
-			/* vptid 2, max size 8192KB, priority 0, pbha 6 */
-			id_size_priority = <0x2 0xffffffff 0x0 0x6>;
+			id_size_priority = <0x28 0xffffffff 0x0 0x5>;
 		};
 		CAMERA2WAY {
 			/* vptid 3, size 512KB, priority 0 (highest), pbha 0 */

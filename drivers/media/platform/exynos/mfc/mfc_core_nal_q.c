@@ -563,11 +563,15 @@ static void __mfc_core_nal_q_set_min_bit_count(struct mfc_ctx *ctx, EncoderInput
 	struct mfc_enc *enc = ctx->enc_priv;
 	struct mfc_enc_params *p = &enc->params;
 
+	/* only enable min bit count when target bitrate over 100kbps */
+	if (p->rc_bitrate < VT_MIN_BITRATE)
+		return;
+
 	pInStr->BitCountEnable &= ~0x1;
 	pInStr->BitCountEnable |= 0x1;
 
 	if (p->rc_framerate)
-		pInStr->MinBitCount = (3500 * 30) / p->rc_framerate;
+		pInStr->MinBitCount = VT_MIN_BITRATE / p->rc_framerate;
 }
 
 static void __mfc_core_nal_q_set_slice_mode(struct mfc_ctx *ctx, EncoderInputStr *pInStr)

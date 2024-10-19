@@ -25,13 +25,17 @@ void mfc_core_set_min_bit_count(struct mfc_core *core, struct mfc_ctx *ctx)
 	struct mfc_enc_params *p = &enc->params;
 	unsigned int reg = 0;
 
+	/* only enable min bit count when target bitrate over 100kbps */
+	if (p->rc_bitrate < VT_MIN_BITRATE)
+		return;
+
 	reg = MFC_CORE_RAW_READL(MFC_REG_E_BIT_COUNT_ENABLE);
 	mfc_clear_set_bits(reg, 0x1, 0, 1);
 	MFC_CORE_RAW_WRITEL(reg, MFC_REG_E_BIT_COUNT_ENABLE);
 
 	reg = MFC_CORE_RAW_READL(MFC_REG_E_MIN_BIT_COUNT);
 	if (p->rc_framerate)
-		mfc_clear_set_bits(reg, 0xFFFFFFFF, 0, ((3500 * 30) / p->rc_framerate));
+		mfc_clear_set_bits(reg, 0xFFFFFFFF, 0, (VT_MIN_BITRATE / p->rc_framerate));
 	MFC_CORE_RAW_WRITEL(reg, MFC_REG_E_MIN_BIT_COUNT);
 }
 

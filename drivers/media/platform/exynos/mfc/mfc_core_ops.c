@@ -471,7 +471,11 @@ err_fw_prot:
 err_fw_load:
 	if (dbg_enable)
 		mfc_release_dbg_info_buffer(core);
-	mfc_core_pm_power_off(core);
+
+	if (core->num_inst == 1) {
+		mfc_debug(2, "power off\n");
+		mfc_core_pm_power_off(core);
+	}
 
 err_power_on:
 	core->core_ctx[ctx->num] = 0;

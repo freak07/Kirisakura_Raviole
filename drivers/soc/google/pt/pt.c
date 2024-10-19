@@ -60,7 +60,7 @@ struct pt_properties {
  */
 
 struct pt_handle { /* one per client */
-	struct mutex mt; /* serialize write access to the handle */
+	spinlock_t lock; /* serialize write access to the handle */
 	struct list_head list;
 	pt_resize_callback_t resize_callback;
 	int id_cnt;
@@ -76,7 +76,7 @@ struct pt_driver { /* one per driver */
 	struct pt_properties *properties;
 	struct list_head list;
 	const struct pt_ops *ops;
-	struct mutex mt; /* serialize access to the driver */
+	spinlock_t lock; /* serialize access to the driver */
 	int ref;
 	int ioctl_ret; /* return of last successful ops->ioctl() */
 	struct device_node *node; /* driver node */
@@ -110,9 +110,7 @@ struct {
 
 	/* Data for resize_callback thread */
 	struct task_struct *resize_thread;
-	struct pt_pts *resize_pts_in_progress; /* callback is in progress */
 	struct list_head resize_list; /* callback to call */
-	wait_queue_head_t resize_remove_wq; /* wait current callback return */
 	wait_queue_head_t resize_wq; /* wait for new callback */
 } pt_internal_data;
 
@@ -154,10 +152,10 @@ static void pt_trace(struct pt_handle *handle, int id, bool enable)
  */
 static struct pt_pts *pt_resize_list_next(u32 *size)
 {
-	unsigned long flags;
 	struct pt_pts *pts = NULL;
 
-	spin_lock_irqsave(&pt_internal_data.sl, flags);
+	lockdep_assert_held(&pt_internal_data.sl);
+
 	if (!list_empty(&pt_internal_data.resize_list)) {
 		pts = list_first_entry(&pt_internal_data.resize_list,
 					struct pt_pts, resize_list);
@@ -166,14 +164,7 @@ static struct pt_pts *pt_resize_list_next(u32 *size)
 		pts->resize_list.prev = NULL;
 		*size = pts->size;
 	}
-	pt_internal_data.resize_pts_in_progress = pts;
-	spin_unlock_irqrestore(&pt_internal_data.sl, flags);
 
-	wake_up(&pt_internal_data.resize_remove_wq);
-
-	if (pts == NULL)
-		wait_event_interruptible(pt_internal_data.resize_wq,
-				!list_empty(&pt_internal_data.resize_list));
 	return pts;
 }
 
@@ -189,8 +180,8 @@ static void pt_resize_list_add(struct pt_pts *pts, u32 size)
 	spin_lock_irqsave(&pt_internal_data.sl, flags);
 	if ((pts->resize_list.next == NULL) && (pts->enabled)
 		&& (pts->size != size)) {
+		waking = list_empty(&pt_internal_data.resize_list);
 		list_add(&pts->resize_list, &pt_internal_data.resize_list);
-		waking = !pt_internal_data.resize_pts_in_progress;
 	}
 	pts->size = size;
 	spin_unlock_irqrestore(&pt_internal_data.sl, flags);
@@ -200,7 +191,7 @@ static void pt_resize_list_add(struct pt_pts *pts, u32 size)
 }
 
 /*
- * FLush and disable pts resize callback.
+ * Flush and disable pts resize callback.
  * If a resize callback is in progress, we wait for its completion.
  */
 static bool pt_resize_list_disable(struct pt_pts *pts)
@@ -219,8 +210,6 @@ static bool pt_resize_list_disable(struct pt_pts *pts)
 	}
 	spin_unlock_irqrestore(&pt_internal_data.sl, flags);
 
-	wait_event(pt_internal_data.resize_remove_wq,
-			pt_internal_data.resize_pts_in_progress != pts);
 	return enabled;
 }
 
@@ -238,7 +227,7 @@ static void pt_resize_list_enable(struct pt_pts *pts)
 
 /*
  * Thread calling the resize callback.
- * This thread doesn't hold any mutex, so the callback can
+ * This thread doesn't hold any lock, so the callback can
  * call pt_client_*()
  */
 static int pt_resize_thread(void *data)
@@ -250,25 +239,37 @@ static int pt_resize_thread(void *data)
 	pt_resize_callback_t resize_callback = NULL;
 	int id;
 
-	while (1) {
-		/*
-		 * We are size snapshot from pt_resize_list_next().
-		 * because pts->size can change after the return.
-		 */
-		pts = pt_resize_list_next(&size);
-		if (pts == NULL)
-			continue;
-		handle = pts->handle;
-		resize_callback = handle->resize_callback;
-		id = ((char *)pts - (char *)handle->pts)
-						/ sizeof(handle->pts[0]);
-		resize_callback(handle->data, id, size);
+	while (!kthread_should_stop()) {
+		spin_lock_irq(&pt_internal_data.sl);
 
-		driver = pts->driver;
-		trace_pt_resize_callback(handle->node->name,
-			driver->properties->nodes[pts->property_index]->name,
-			false, (int)size, pts->ptid);
+		pts = pt_resize_list_next(&size);
+		if (pts != NULL) {
+			handle = pts->handle;
+			resize_callback = handle->resize_callback;
+			id = ((char *)pts - (char *)handle->pts) / sizeof(handle->pts[0]);
+			resize_callback(handle->data, id, size);
+			driver = pts->driver;
+			trace_pt_resize_callback(
+				handle->node->name,
+				driver->properties->nodes[pts->property_index]->name, false,
+				(int)size, pts->ptid);
+		}
+
+		spin_unlock_irq(&pt_internal_data.sl);
+
+		/* List was empty, wait to be notified by pt_resize_list_add */
+		if (pts == NULL) {
+			int ret;
+			do {
+				ret = wait_event_interruptible(
+					pt_internal_data.resize_wq,
+					!list_empty(&pt_internal_data.resize_list) ||
+						kthread_should_stop());
+			} while (ret);
+		}
 	}
+
+	return 0;
 }
 
 /*
@@ -310,15 +311,16 @@ static bool pt_driver_alloc(struct pt_handle *handle, int id)
 	struct pt_driver *driver = handle->pts[id].driver;
 	void *data = driver->data;
 	int property_index = handle->pts[id].property_index;
+	unsigned long flags;
 
-	mutex_lock(&driver->mt);
+	spin_lock_irqsave(&driver->lock, flags);
 	ptid = driver->ops->alloc(data,
 				  property_index,
 				  &handle->pts[id],
 				  pt_resize_internal);
 	if (ptid != PT_PTID_INVALID)
 		handle->pts[id].ptid = ptid;
-	mutex_unlock(&handle->pts[id].driver->mt);
+	spin_unlock_irqrestore(&driver->lock, flags);
 	return ptid != PT_PTID_INVALID;
 }
 
@@ -327,10 +329,11 @@ static void pt_driver_enable(struct pt_handle *handle, int id)
 	ptid_t ptid = handle->pts[id].ptid;
 	struct pt_driver *driver = handle->pts[id].driver;
 	void *data = driver->data;
+	unsigned long flags;
 
-	mutex_lock(&driver->mt);
+	spin_lock_irqsave(&driver->lock, flags);
 	driver->ops->enable(data, ptid);
-	mutex_unlock(&driver->mt);
+	spin_unlock_irqrestore(&driver->lock, flags);
 }
 
 static void pt_driver_disable(struct pt_handle *handle, int id)
@@ -338,10 +341,11 @@ static void pt_driver_disable(struct pt_handle *handle, int id)
 	ptid_t ptid = handle->pts[id].ptid;
 	struct pt_driver *driver = handle->pts[id].driver;
 	void *data = driver->data;
+	unsigned long flags;
 
-	mutex_lock(&driver->mt);
+	spin_lock_irqsave(&driver->lock, flags);
 	driver->ops->disable(data, ptid);
-	mutex_unlock(&handle->pts[id].driver->mt);
+	spin_unlock_irqrestore(&handle->pts[id].driver->lock, flags);
 }
 
 static void pt_driver_free(struct pt_handle *handle, int id)
@@ -349,11 +353,12 @@ static void pt_driver_free(struct pt_handle *handle, int id)
 	ptid_t ptid = handle->pts[id].ptid;
 	struct pt_driver *driver = handle->pts[id].driver;
 	void *data = driver->data;
+	unsigned long flags;
 
-	mutex_lock(&driver->mt);
+	spin_lock_irqsave(&driver->lock, flags);
 	driver->ops->free(data, ptid);
 	handle->pts[id].ptid = PT_PTID_INVALID;
-	mutex_unlock(&handle->pts[id].driver->mt);
+	spin_unlock_irqrestore(&handle->pts[id].driver->lock, flags);
 }
 
 static int pt_driver_mutate(struct pt_handle *handle, int old_id, int new_id)
@@ -363,8 +368,9 @@ static int pt_driver_mutate(struct pt_handle *handle, int old_id, int new_id)
 	struct pt_driver *driver = handle->pts[old_id].driver;
 	void *data = driver->data;
 	int new_property_index = handle->pts[new_id].property_index;
+	unsigned long flags;
 
-	mutex_lock(&driver->mt);
+	spin_lock_irqsave(&driver->lock, flags);
 	new_ptid = driver->ops->mutate(data, old_ptid,
 					&handle->pts[new_id],
 					new_property_index);
@@ -375,7 +381,7 @@ static int pt_driver_mutate(struct pt_handle *handle, int old_id, int new_id)
 		handle->pts[old_id].enabled = false;
 		handle->pts[new_id].enabled = true;
 	}
-	mutex_unlock(&driver->mt);
+	spin_unlock_irqrestore(&driver->lock, flags);
 	return new_ptid;
 }
 
@@ -444,17 +450,18 @@ static int pt_driver_ioctl3(struct pt_driver *driver, int arg0,
 {
 	int ret;
 	int args[3];
+	unsigned long flags;
 
 	if (!driver->ops->ioctl)
 		return -EINVAL;
-	mutex_lock(&driver->mt);
+	spin_lock_irqsave(&driver->lock, flags);
 	args[0] = arg0;
 	args[1] = arg1;
 	args[2] = arg2;
 	ret = driver->ops->ioctl(driver->data, 3, args);
 	if (ret >= 0)
 		driver->ioctl_ret = args[0];
-	mutex_unlock(&driver->mt);
+	spin_unlock_irqrestore(&driver->lock, flags);
 	return ret;
 }
 
@@ -538,56 +545,62 @@ void pt_global_disable(struct pt_global *global)
 {
 	void *data;
 	int property_index;
+	unsigned long flags;
 
 	if (!global->driver)
 		return;
-	mutex_lock(&global->driver->mt);
-	if (global->ptid == PT_PTID_INVALID) {
-		mutex_unlock(&global->driver->mt);
-		return;
-	}
+
+	spin_lock_irqsave(&global->driver->lock, flags);
+
+	if (global->ptid == PT_PTID_INVALID)
+		goto out_unlock;
+
 	data = global->driver->data;
 	property_index = global->property_index;
 	global->ptid = global->driver->ops->alloc(data,
 						  property_index,
 						  NULL,
 						  pt_resize_internal_nop);
-	if (global->ptid == PT_PTID_INVALID) {
-		mutex_unlock(&global->driver->mt);
-		return;
-	}
+	if (global->ptid == PT_PTID_INVALID)
+		goto out_unlock;
+
 	global->driver->ops->disable(data, global->ptid);
 	global->driver->ops->free(data, global->ptid);
 	global->ptid = PT_PTID_INVALID;
 	global->pbha = PT_PTID_INVALID;
-	mutex_unlock(&global->driver->mt);
+
+out_unlock:
+	spin_unlock_irqrestore(&global->driver->lock, flags);
 }
 
 static void pt_global_enable(struct pt_global *global)
 {
 	void *data;
 	int property_index;
+	unsigned long flags;
 
 	if (!global->driver)
 		return;
-	mutex_lock(&global->driver->mt);
-	if (global->ptid != PT_PTID_INVALID) {
-		mutex_unlock(&global->driver->mt);
-		return;
-	}
+
+	spin_lock_irqsave(&global->driver->lock, flags);
+
+	if (global->ptid != PT_PTID_INVALID)
+		goto out_unlock;
+
 	data = global->driver->data;
 	property_index = global->property_index;
 	global->ptid = global->driver->ops->alloc(data,
 						  property_index,
 						  NULL,
 						  pt_resize_internal_nop);
-	if (global->ptid == PT_PTID_INVALID) {
-		mutex_unlock(&global->driver->mt);
-		return;
-	}
+	if (global->ptid == PT_PTID_INVALID)
+		goto out_unlock;
+
 	global->driver->ops->enable(data, global->ptid);
 	global->pbha = global->driver->ops->pbha(data, global->ptid);
-	mutex_unlock(&global->driver->mt);
+
+out_unlock:
+	spin_unlock_irqrestore(&global->driver->lock, flags);
 }
 
 ptpbha_t pt_pbha(struct device_node *node, int id)
@@ -602,14 +615,14 @@ ptpbha_t pt_pbha(struct device_node *node, int id)
 	spin_unlock_irqrestore(&pt_internal_data.sl, flags);
 	if (!handle || id >= handle->id_cnt)
 		return PT_PBHA_INVALID;
-	mutex_lock(&handle->mt);
+	spin_lock_irqsave(&handle->lock, flags);
 	ptid = handle->pts[id].ptid;
 	if (ptid != PT_PTID_INVALID) {
 		pbha = handle->pts[id].driver->ops->pbha(
 				handle->pts[id].driver->data,
 				ptid);
 	}
-	mutex_unlock(&handle->mt);
+	spin_unlock_irqrestore(&handle->lock, flags);
 	return pbha;
 }
 
@@ -656,15 +669,16 @@ ptid_t pt_client_mutate_size(struct pt_handle *handle, int old_id, int new_id, s
 {
 	ptid_t ptid;
 	struct pt_driver *driver;
+	unsigned long flags;
 
 	driver = handle->pts[old_id].driver;
 	if (driver != handle->pts[new_id].driver)
 		return PT_PTID_INVALID;
 	pt_handle_check(handle, old_id);
 	pt_handle_check(handle, new_id);
-	mutex_lock(&handle->mt);
+	spin_lock_irqsave(&handle->lock, flags);
 	if ((!handle->pts[old_id].enabled) || (handle->pts[new_id].enabled)) {
-		mutex_unlock(&handle->mt);
+		spin_unlock_irqrestore(&handle->lock, flags);
 		return PT_PTID_INVALID;
 	}
 	ptid = pt_driver_mutate(handle, old_id, new_id);
@@ -672,35 +686,37 @@ ptid_t pt_client_mutate_size(struct pt_handle *handle, int old_id, int new_id, s
 	pt_trace(handle, new_id, true);
 	/* Update by driver callback */
 	*size = handle->pts[new_id].size;
-	mutex_unlock(&handle->mt);
+	spin_unlock_irqrestore(&handle->lock, flags);
 	return ptid;
 
 }
 
 void pt_client_disable_no_free(struct pt_handle *handle, int id)
 {
+	unsigned long flags;
 	pt_handle_check(handle, id);
-	mutex_lock(&handle->mt);
+	spin_lock_irqsave(&handle->lock, flags);
 	if (!pt_resize_list_disable(&handle->pts[id])) {
-		mutex_unlock(&handle->mt);
+		spin_unlock_irqrestore(&handle->lock, flags);
 		return;
 	}
 	pt_driver_disable(handle, id);
 	pt_trace(handle, id, false);
-	mutex_unlock(&handle->mt);
+	spin_unlock_irqrestore(&handle->lock, flags);
 }
 
 void pt_client_free(struct pt_handle *handle, int id)
 {
-	mutex_lock(&handle->mt);
+	unsigned long flags;
+	spin_lock_irqsave(&handle->lock, flags);
 	pt_handle_check(handle, id);
 	if (handle->pts[id].enabled) {
-		mutex_unlock(&handle->mt);
+		spin_unlock_irqrestore(&handle->lock, flags);
 		return;
 	}
 	if (handle->pts[id].ptid != PT_PTID_INVALID)
 		pt_driver_free(handle, id);
-	mutex_unlock(&handle->mt);
+	spin_unlock_irqrestore(&handle->lock, flags);
 }
 
 void pt_client_disable(struct pt_handle *handle, int id)
@@ -711,11 +727,12 @@ void pt_client_disable(struct pt_handle *handle, int id)
 
 ptid_t pt_client_enable_size(struct pt_handle *handle, int id, size_t *size)
 {
+	unsigned long flags;
 	ptid_t ptid;
-	mutex_lock(&handle->mt);
+	spin_lock_irqsave(&handle->lock, flags);
 	pt_handle_check(handle, id);
 	if (handle->pts[id].enabled) {
-		mutex_unlock(&handle->mt);
+		spin_unlock_irqrestore(&handle->lock, flags);
 		return -EINVAL;
 	}
 	ptid = handle->pts[id].ptid;
@@ -730,7 +747,7 @@ ptid_t pt_client_enable_size(struct pt_handle *handle, int id, size_t *size)
 	}
 	/* Update by driver callback */
 	*size = handle->pts[id].size;
-	mutex_unlock(&handle->mt);
+	spin_unlock_irqrestore(&handle->lock, flags);
 	if (ptid != PT_PTID_INVALID)
 		pt_resize_list_enable(&handle->pts[id]);
 	return ptid;
@@ -748,17 +765,17 @@ void pt_client_unregister(struct pt_handle *handle)
 	int id;
 	unsigned long flags;
 
-	mutex_lock(&handle->mt);
+	spin_lock_irqsave(&handle->lock, flags);
 	for (id = 0; id < handle->id_cnt; id++) {
 		if (handle->pts[id].ptid != PT_PTID_INVALID)
 			panic("%s %s %d enabled\n", __func__,
 				handle->node->name, id);
 		pt_driver_put(handle->pts[id].driver);
 	}
-	spin_lock_irqsave(&pt_internal_data.sl, flags);
+	spin_lock(&pt_internal_data.sl);
 	pt_internal_data.timestamp++;
 	list_del(&handle->list);
-	spin_unlock_irqrestore(&pt_internal_data.sl, flags);
+	spin_unlock(&pt_internal_data.sl);
 	pt_handle_sysctl_unregister(handle);
 
 	for (id = 0; id < handle->id_cnt; id++) {
@@ -766,11 +783,14 @@ void pt_client_unregister(struct pt_handle *handle)
 
 		if (ptid == PT_PTID_INVALID)
 			continue;
-		mutex_lock(&handle->pts[id].driver->mt);
+		spin_lock(&handle->pts[id].driver->lock);
 		handle->pts[id].driver->ops->free(
 			handle->pts[id].driver->data, ptid);
-		mutex_unlock(&handle->pts[id].driver->mt);
+		spin_unlock(&handle->pts[id].driver->lock);
 	}
+
+	spin_unlock_irqrestore(&handle->lock, flags);
+
 	kfree(handle);
 }
 
@@ -796,7 +816,7 @@ struct pt_handle *pt_client_register(struct device_node *node, void *data,
 	handle->node = node;
 	handle->resize_callback = resize_callback;
 	handle->pts = (struct pt_pts *)(handle + 1);
-	mutex_init(&handle->mt);
+	spin_lock_init(&handle->lock);
 
 	// Check/Extract pts from property
 	for (id = 0; id < handle->id_cnt; id++) {
@@ -859,7 +879,7 @@ struct pt_driver *pt_driver_register(struct device_node *node,
 	if (driver == NULL)
 		return NULL;
 	memset(driver, 0, size);
-	mutex_init(&driver->mt);
+	spin_lock_init(&driver->lock);
 	driver->ops = ops;
 	driver->node = node;
 	driver->data = data;
@@ -1227,7 +1247,6 @@ static int __init pt_init(void)
 	INIT_LIST_HEAD(&pt_internal_data.driver_list);
 	INIT_LIST_HEAD(&pt_internal_data.resize_list);
 	init_waitqueue_head(&pt_internal_data.resize_wq);
-	init_waitqueue_head(&pt_internal_data.resize_remove_wq);
 	sysctl_table = &pt_internal_data.sysctl_table[0];
 	sysctl_table[0].procname = "dev";
 	sysctl_table[0].mode = 0550;

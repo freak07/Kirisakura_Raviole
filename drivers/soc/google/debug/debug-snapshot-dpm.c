@@ -200,8 +200,6 @@ static void dbg_snapshot_dt_scan_dpm_feature(struct device_node *node)
 {
 	struct device_node *item;
 	unsigned int val;
-	struct property *prop;
-	const char *method;
 
 	dss_dpm.enabled_debug = false;
 	dss_dpm.dump_mode = NONE_DUMP;
@@ -237,15 +235,6 @@ static void dbg_snapshot_dt_scan_dpm_feature(struct device_node *node)
 	if (!item) {
 		pr_warn("dpm: No such methods of kernel event\n");
 		goto exit_dss;
-	}
-
-	of_property_for_each_string(item, "method", prop, method) {
-		if (!method) {
-			pr_warn("dpm: No such methods of kevents\n");
-			goto exit_dss;
-		}
-
-		dbg_snapshot_set_enable_log_item(method, true);
 	}
 
 	item = of_find_node_by_name(node, "debug-kinfo");
