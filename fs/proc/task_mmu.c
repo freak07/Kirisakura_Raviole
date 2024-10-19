@@ -522,7 +522,7 @@ static int show_map(struct seq_file *m, void *v)
 	if (vma_pages(vma))
 		show_map_vma(m, vma);
 
-	show_map_pad_vma(vma, pad_vma, m, show_map_vma, false);
+	show_map_pad_vma(vma, pad_vma, m, show_map_vma);
 
 	return 0;
 }
@@ -1053,7 +1053,7 @@ static int show_smap(struct seq_file *m, void *v)
 	show_smap_vma_flags(m, vma);
 
 show_pad:
-	show_map_pad_vma(vma, pad_vma, m, show_smap, true);
+	show_map_pad_vma(vma, pad_vma, m, (show_pad_vma_fn)show_smap);
 
 	return 0;
 }
