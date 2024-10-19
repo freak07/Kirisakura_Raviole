@@ -9,7 +9,6 @@
 #include <linux/ptrace.h>
 #include <linux/slab.h>
 #include <linux/pagemap.h>
-#include <linux/pgsize_migration.h>
 #include <linux/mempolicy.h>
 #include <linux/rmap.h>
 #include <linux/swap.h>
@@ -516,13 +515,7 @@ done:
 
 static int show_map(struct seq_file *m, void *v)
 {
-	struct vm_area_struct *pad_vma = get_pad_vma(v);
-	struct vm_area_struct *vma = get_data_vma(v);
-
-	show_map_vma(m, vma);
-
-	show_map_pad_vma(vma, pad_vma, m, show_map_vma);
-
+	show_map_vma(m, v);
 	return 0;
 }
 
@@ -1024,8 +1017,7 @@ static void __show_smap(struct seq_file *m, const struct mem_size_stats *mss,
 
 static int show_smap(struct seq_file *m, void *v)
 {
-	struct vm_area_struct *pad_vma = get_pad_vma(v);
-	struct vm_area_struct *vma = get_data_vma(v);
+	struct vm_area_struct *vma = v;
 	struct mem_size_stats mss;
 
 	memset(&mss, 0, sizeof(mss));
@@ -1047,8 +1039,6 @@ static int show_smap(struct seq_file *m, void *v)
 	if (arch_pkeys_enabled())
 		seq_printf(m, "ProtectionKey:  %8u\n", vma_pkey(vma));
 	show_smap_vma_flags(m, vma);
-
-	show_map_pad_vma(vma, pad_vma, m, (show_pad_vma_fn)show_smap);
 
 	return 0;
 }
