@@ -71,6 +71,8 @@
 				google,bhi-status-marginal = <79>;
 				google,bhi-status-need-rep = <79>;
 				google,bhi-cycle-grace = <200>;
+
+				google,first-usage-date = <0>;
 			};
 
 			google_bms {

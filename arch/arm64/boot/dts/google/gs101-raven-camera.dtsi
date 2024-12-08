@@ -124,10 +124,11 @@
 	status = "okay";
 	clock-frequency = <370000>;
 
-	pinctrl-names = "default","on_i2c","off_i2c";
+	pinctrl-names = "default","on_i2c","off_i2c","recovery";
 	pinctrl-0 = <&hsi2c7_bus &spi14_cs2>;
 	pinctrl-1 = <&hsi2c7_bus>;
 	pinctrl-2 = <&hsi2c7_bus>;
+	pinctrl-3 = <>;
 };
 
 / {
