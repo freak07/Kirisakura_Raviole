@@ -945,7 +945,6 @@
   perf_trace_run_bpf_submit
   queue_delayed_work_on
   revalidate_disk_size
-  set_capacity_revalidate_and_notify
   __srcu_read_unlock
   synchronize_srcu
   sysfs_create_link

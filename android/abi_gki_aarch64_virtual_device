@@ -1058,7 +1058,6 @@
   blk_rq_map_kern
   __blk_rq_map_sg
   blk_status_to_errno
-  set_capacity_revalidate_and_notify
   set_disk_ro
   string_get_size
   virtio_max_dma_size

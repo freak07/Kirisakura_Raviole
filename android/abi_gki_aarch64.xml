@@ -2891,7 +2891,6 @@
       <elf-symbol name='serio_unregister_driver' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes' crc='0xe84f2f73'/>
       <elf-symbol name='serio_unregister_port' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes' crc='0x501fdc15'/>
       <elf-symbol name='set_blocksize' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes' crc='0x3a10b4e3'/>
-      <elf-symbol name='set_capacity_revalidate_and_notify' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes' crc='0xd52ef3a6'/>
       <elf-symbol name='set_cpus_allowed_ptr' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes' crc='0xbd179a66'/>
       <elf-symbol name='set_disk_ro' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes' crc='0x24462b13'/>
       <elf-symbol name='set_freezable' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes' crc='0x9e61bb05'/>
@@ -124898,12 +124897,6 @@
         <parameter type-id='b88dd945' name='bdev' filepath='fs/block_dev.c' line='157' column='1'/>
         <parameter type-id='95e97e5e' name='size' filepath='fs/block_dev.c' line='157' column='1'/>
         <return type-id='95e97e5e'/>
-      </function-decl>
-      <function-decl name='set_capacity_revalidate_and_notify' mangled-name='set_capacity_revalidate_and_notify' filepath='block/genhd.c' line='52' column='1' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='set_capacity_revalidate_and_notify'>
-        <parameter type-id='33c599da' name='disk' filepath='block/genhd.c' line='52' column='1'/>
-        <parameter type-id='a42536cd' name='size' filepath='block/genhd.c' line='52' column='1'/>
-        <parameter type-id='b50a4934' name='update_bdev' filepath='block/genhd.c' line='53' column='1'/>
-        <return type-id='b50a4934'/>
       </function-decl>
       <function-decl name='set_cpus_allowed_ptr' mangled-name='set_cpus_allowed_ptr' filepath='kernel/sched/core.c' line='2085' column='1' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='set_cpus_allowed_ptr'>
         <parameter type-id='f23e2572' name='p' filepath='kernel/sched/core.c' line='2085' column='1'/>
