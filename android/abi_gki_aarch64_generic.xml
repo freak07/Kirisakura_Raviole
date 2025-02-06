@@ -4439,7 +4439,7 @@
           <var-decl name='enabled' type-id='49178f86' visibility='default' filepath='private/gs-google/include/linux/jump_label.h' line='88' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='64'>
-          <var-decl name='' type-id='ac5ab5c4' visibility='default' filepath='private/gs-google/include/linux/jump_label.h' line='102' column='1'/>
+          <var-decl name='' type-id='ac5ab5c8' visibility='default' filepath='private/gs-google/include/linux/jump_label.h' line='102' column='1'/>
         </data-member>
       </class-decl>
       <pointer-type-def type-id='fc8b497c' size-in-bits='64' id='0023218e'/>
@@ -4972,7 +4972,7 @@
       <qualified-type-def type-id='6eadcbe0' const='yes' id='02233ed7'/>
       <class-decl name='qstr' size-in-bits='128' is-struct='yes' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='48' column='1' id='02244303'>
         <data-member access='public' layout-offset-in-bits='0'>
-          <var-decl name='' type-id='ac5ab5b7' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='49' column='1'/>
+          <var-decl name='' type-id='ac5ab5bc' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='49' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='64'>
           <var-decl name='name' type-id='354f7eb9' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='55' column='1'/>
@@ -8747,7 +8747,7 @@
       </function-type>
       <class-decl name='pt_regs' size-in-bits='2688' is-struct='yes' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/ptrace.h' line='178' column='1' id='0d029111'>
         <data-member access='public' layout-offset-in-bits='0'>
-          <var-decl name='' type-id='ac5ab5ad' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/ptrace.h' line='179' column='1'/>
+          <var-decl name='' type-id='ac5ab5b3' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/ptrace.h' line='179' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='2176'>
           <var-decl name='orig_x0' type-id='91ce1af9' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/ptrace.h' line='188' column='1'/>
@@ -11074,7 +11074,7 @@
           <var-decl name='serial' type-id='c84025ab' visibility='default' filepath='private/gs-google/include/linux/key.h' line='191' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='64'>
-          <var-decl name='' type-id='ac5ab5c7' visibility='default' filepath='private/gs-google/include/linux/key.h' line='192' column='1'/>
+          <var-decl name='' type-id='ac5ab5aa' visibility='default' filepath='private/gs-google/include/linux/key.h' line='192' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='256'>
           <var-decl name='sem' type-id='f19fdb93' visibility='default' filepath='private/gs-google/include/linux/key.h' line='199' column='1'/>
@@ -11086,7 +11086,7 @@
           <var-decl name='security' type-id='eaa32e2f' visibility='default' filepath='private/gs-google/include/linux/key.h' line='201' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='896'>
-          <var-decl name='' type-id='ac5ab5c8' visibility='default' filepath='private/gs-google/include/linux/key.h' line='202' column='1'/>
+          <var-decl name='' type-id='ac5ab5ab' visibility='default' filepath='private/gs-google/include/linux/key.h' line='202' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='960'>
           <var-decl name='last_used_at' type-id='1afd27ac' visibility='default' filepath='private/gs-google/include/linux/key.h' line='206' column='1'/>
@@ -11113,10 +11113,10 @@
           <var-decl name='flags' type-id='7359adad' visibility='default' filepath='private/gs-google/include/linux/key.h' line='222' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='1280'>
-          <var-decl name='' type-id='ac5ab5c9' visibility='default' filepath='private/gs-google/include/linux/key.h' line='239' column='1'/>
+          <var-decl name='' type-id='ac5ab5ac' visibility='default' filepath='private/gs-google/include/linux/key.h' line='239' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='1600'>
-          <var-decl name='' type-id='ac5ab5ca' visibility='default' filepath='private/gs-google/include/linux/key.h' line='254' column='1'/>
+          <var-decl name='' type-id='ac5ab5ad' visibility='default' filepath='private/gs-google/include/linux/key.h' line='254' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='1856'>
           <var-decl name='restrict_link' type-id='92daca01' visibility='default' filepath='private/gs-google/include/linux/key.h' line='274' column='1'/>
@@ -12500,7 +12500,7 @@
       <pointer-type-def type-id='504ee449' size-in-bits='64' id='1583af75'/>
       <class-decl name='bpf_cgroup_storage' size-in-bits='832' is-struct='yes' visibility='default' filepath='private/gs-google/include/linux/bpf-cgroup.h' line='53' column='1' id='15881542'>
         <data-member access='public' layout-offset-in-bits='0'>
-          <var-decl name='' type-id='ac5ab5b5' visibility='default' filepath='private/gs-google/include/linux/bpf-cgroup.h' line='54' column='1'/>
+          <var-decl name='' type-id='ac5ab5bb' visibility='default' filepath='private/gs-google/include/linux/bpf-cgroup.h' line='54' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='64'>
           <var-decl name='map' type-id='b6a33eaf' visibility='default' filepath='private/gs-google/include/linux/bpf-cgroup.h' line='58' column='1'/>
@@ -12773,7 +12773,7 @@
       <array-type-def dimensions='1' type-id='8f048e17' size-in-bits='infinite' id='167619f6'>
         <subrange length='infinite' type-id='7ff19f0f' id='031f2035'/>
       </array-type-def>
-      <class-decl name='compact_control' size-in-bits='1024' is-struct='yes' visibility='default' filepath='private/gs-google/drivers/gpu/drm/../../../mm/internal.h' line='255' column='1' id='16773614'>
+      <class-decl name='compact_control' size-in-bits='1024' is-struct='yes' visibility='default' filepath='private/gs-google/mm/internal.h' line='255' column='1' id='16773614'>
         <data-member access='public' layout-offset-in-bits='0'>
           <var-decl name='freepages' type-id='72f469ec' visibility='default' filepath='private/gs-google/kernel/events/../../mm/internal.h' line='256' column='1'/>
         </data-member>
@@ -12880,7 +12880,7 @@
           <var-decl name='hash' type-id='7359adad' visibility='default' filepath='private/gs-google/include/linux/key.h' line='110' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='64'>
-          <var-decl name='' type-id='ac5ab5c6' visibility='default' filepath='private/gs-google/include/linux/key.h' line='111' column='1'/>
+          <var-decl name='' type-id='ac5ab5ca' visibility='default' filepath='private/gs-google/include/linux/key.h' line='111' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='128'>
           <var-decl name='type' type-id='d0a699d1' visibility='default' filepath='private/gs-google/include/linux/key.h' line='123' column='1'/>
@@ -18179,7 +18179,7 @@
           <var-decl name='fl_lmops' type-id='a548fbc8' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='1130' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='1472'>
-          <var-decl name='fl_u' type-id='ac5ab5c0' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='1139' column='1'/>
+          <var-decl name='fl_u' type-id='ac5ab5c4' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='1139' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='1728'>
           <var-decl name='android_reserved1' type-id='72f469ec' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='1141' column='1'/>
@@ -21075,7 +21075,7 @@
           <var-decl name='hash' type-id='f0981eeb' visibility='default' filepath='private/gs-google/include/linux/kernfs.h' line='143' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='512'>
-          <var-decl name='' type-id='ac5ab5c5' visibility='default' filepath='private/gs-google/include/linux/kernfs.h' line='144' column='1'/>
+          <var-decl name='' type-id='ac5ab5c9' visibility='default' filepath='private/gs-google/include/linux/kernfs.h' line='144' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='768'>
           <var-decl name='priv' type-id='eaa32e2f' visibility='default' filepath='private/gs-google/include/linux/kernfs.h' line='150' column='1'/>
@@ -21479,7 +21479,7 @@
         <parameter type-id='855e3679'/>
         <return type-id='95e97e5e'/>
       </function-type>
-      <typedef-decl name='va_list' type-id='7f896fb4' filepath='prebuilts/clang/host/linux-x86/clang-r536225/lib/clang/19/include/__stdarg_va_list.h' line='12' column='1' id='2aee9912'/>
+      <typedef-decl name='va_list' type-id='7f896fb4' filepath='prebuilts/clang/host/linux-x86/clang-r547379/lib/clang/20/include/__stdarg_va_list.h' line='12' column='1' id='2aee9912'/>
       <class-decl name='transport_container' size-in-bits='832' is-struct='yes' visibility='default' filepath='private/gs-google/include/linux/transport_class.h' line='56' column='1' id='2af4292a'>
         <data-member access='public' layout-offset-in-bits='0'>
           <var-decl name='ac' type-id='52bea74f' visibility='default' filepath='private/gs-google/include/linux/transport_class.h' line='57' column='1'/>
@@ -23637,7 +23637,7 @@
       <qualified-type-def type-id='ad974450' const='yes' id='319b3a77'/>
       <class-decl name='qrwlock' size-in-bits='64' is-struct='yes' visibility='default' filepath='private/gs-google/include/asm-generic/qrwlock_types.h' line='13' column='1' id='319e0e18'>
         <data-member access='public' layout-offset-in-bits='0'>
-          <var-decl name='' type-id='ac5ab5af' visibility='default' filepath='private/gs-google/include/asm-generic/qrwlock_types.h' line='14' column='1'/>
+          <var-decl name='' type-id='ac5ab5b5' visibility='default' filepath='private/gs-google/include/asm-generic/qrwlock_types.h' line='14' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='32'>
           <var-decl name='wait_lock' type-id='641c41d1' visibility='default' filepath='private/gs-google/include/asm-generic/qrwlock_types.h' line='26' column='1'/>
@@ -38095,7 +38095,7 @@
           <var-decl name='ttbr0' type-id='91ce1af9' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/thread_info.h' line='30' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='192'>
-          <var-decl name='' type-id='ac5ab5ae' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/thread_info.h' line='32' column='1'/>
+          <var-decl name='' type-id='ac5ab5b4' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/thread_info.h' line='32' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='256'>
           <var-decl name='scs_base' type-id='eaa32e2f' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/thread_info.h' line='45' column='1'/>
@@ -45201,7 +45201,7 @@
           <var-decl name='group_info' type-id='383471a1' visibility='default' filepath='private/gs-google/include/linux/cred.h' line='147' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='1216'>
-          <var-decl name='' type-id='ac5ab5b6' visibility='default' filepath='private/gs-google/include/linux/cred.h' line='149' column='1'/>
+          <var-decl name='' type-id='ac5ab5a8' visibility='default' filepath='private/gs-google/include/linux/cred.h' line='149' column='1'/>
         </data-member>
       </class-decl>
       <class-decl name='thermal_zone_of_device_ops' size-in-bits='384' is-struct='yes' visibility='default' filepath='private/gs-google/include/linux/thermal.h' line='322' column='1' id='67409b07'>
@@ -47256,7 +47256,7 @@
       <pointer-type-def type-id='b69ec80d' size-in-bits='64' id='6aed11b9'/>
       <pointer-type-def type-id='e3e12fea' size-in-bits='64' id='6af04ca4'/>
       <pointer-type-def type-id='74e7a035' size-in-bits='64' id='6af64a09'/>
-      <class-decl name='uncached_list' size-in-bits='192' is-struct='yes' visibility='default' filepath='private/gs-google/net/ipv4/route.c' line='1537' column='1' id='6b1203e5'>
+      <class-decl name='uncached_list' size-in-bits='192' is-struct='yes' visibility='default' filepath='private/gs-google/net/ipv6/route.c' line='129' column='1' id='6b1203e5'>
         <data-member access='public' layout-offset-in-bits='0'>
           <var-decl name='lock' type-id='fb4018a0' visibility='default' filepath='private/gs-google/net/ipv4/route.c' line='1538' column='1'/>
         </data-member>
@@ -64897,6 +64897,9 @@
         <parameter type-id='78c01427'/>
         <return type-id='95e97e5e'/>
       </function-type>
+      <array-type-def dimensions='1' type-id='95e97e5e' size-in-bits='2048' id='93e41790'>
+        <subrange length='64' type-id='7ff19f0f' id='b10be967'/>
+      </array-type-def>
       <array-type-def dimensions='1' type-id='3b0abfc6' size-in-bits='768' id='93f82aba'>
         <subrange length='6' type-id='7ff19f0f' id='52fa524b'/>
       </array-type-def>
@@ -75260,7 +75263,55 @@
           <var-decl name='mask_base' type-id='eaa32e2f' visibility='default' filepath='private/gs-google/include/linux/msi.h' line='116' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='2176' is-anonymous='yes' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/ptrace.h' line='179' column='1' id='ac5ab5ad'>
+      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/cred.h' line='149' column='1' id='ac5ab5a8'>
+        <data-member access='public'>
+          <var-decl name='non_rcu' type-id='95e97e5e' visibility='default' filepath='private/gs-google/include/linux/cred.h' line='150' column='1'/>
+        </data-member>
+        <data-member access='public'>
+          <var-decl name='rcu' type-id='e3d8ce29' visibility='default' filepath='private/gs-google/include/linux/cred.h' line='151' column='1'/>
+        </data-member>
+      </union-decl>
+      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='945' column='1' id='ac5ab5a9'>
+        <data-member access='public'>
+          <var-decl name='fu_llist' type-id='c5ccfee8' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='946' column='1'/>
+        </data-member>
+        <data-member access='public'>
+          <var-decl name='fu_rcuhead' type-id='e3d8ce29' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='947' column='1'/>
+        </data-member>
+      </union-decl>
+      <union-decl name='__anonymous_union__' size-in-bits='192' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/key.h' line='192' column='1' id='ac5ab5aa'>
+        <data-member access='public'>
+          <var-decl name='graveyard_link' type-id='72f469ec' visibility='default' filepath='private/gs-google/include/linux/key.h' line='193' column='1'/>
+        </data-member>
+        <data-member access='public'>
+          <var-decl name='serial_node' type-id='2a8a6332' visibility='default' filepath='private/gs-google/include/linux/key.h' line='194' column='1'/>
+        </data-member>
+      </union-decl>
+      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/key.h' line='202' column='1' id='ac5ab5ab'>
+        <data-member access='public'>
+          <var-decl name='expiry' type-id='1afd27ac' visibility='default' filepath='private/gs-google/include/linux/key.h' line='203' column='1'/>
+        </data-member>
+        <data-member access='public'>
+          <var-decl name='revoked_at' type-id='1afd27ac' visibility='default' filepath='private/gs-google/include/linux/key.h' line='204' column='1'/>
+        </data-member>
+      </union-decl>
+      <union-decl name='__anonymous_union__' size-in-bits='320' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/key.h' line='239' column='1' id='ac5ab5ac'>
+        <data-member access='public'>
+          <var-decl name='index_key' type-id='16ab8749' visibility='default' filepath='private/gs-google/include/linux/key.h' line='240' column='1'/>
+        </data-member>
+        <data-member access='public'>
+          <var-decl name='' type-id='e7f43f95' visibility='default' filepath='private/gs-google/include/linux/key.h' line='241' column='1'/>
+        </data-member>
+      </union-decl>
+      <union-decl name='__anonymous_union__' size-in-bits='256' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/key.h' line='254' column='1' id='ac5ab5ad'>
+        <data-member access='public'>
+          <var-decl name='payload' type-id='2888d74a' visibility='default' filepath='private/gs-google/include/linux/key.h' line='255' column='1'/>
+        </data-member>
+        <data-member access='public'>
+          <var-decl name='' type-id='e7f43f96' visibility='default' filepath='private/gs-google/include/linux/key.h' line='256' column='1'/>
+        </data-member>
+      </union-decl>
+      <union-decl name='__anonymous_union__' size-in-bits='2176' is-anonymous='yes' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/ptrace.h' line='179' column='1' id='ac5ab5b3'>
         <data-member access='public'>
           <var-decl name='user_regs' type-id='cedec667' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/ptrace.h' line='180' column='1'/>
         </data-member>
@@ -75268,7 +75319,7 @@
           <var-decl name='' type-id='e7f43f8a' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/ptrace.h' line='181' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/thread_info.h' line='32' column='1' id='ac5ab5ae'>
+      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/thread_info.h' line='32' column='1' id='ac5ab5b4'>
         <data-member access='public'>
           <var-decl name='preempt_count' type-id='91ce1af9' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/thread_info.h' line='33' column='1'/>
         </data-member>
@@ -75276,7 +75327,7 @@
           <var-decl name='preempt' type-id='e7f43f8b' visibility='default' filepath='private/gs-google/arch/arm64/include/asm/thread_info.h' line='42' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='32' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/asm-generic/qrwlock_types.h' line='14' column='1' id='ac5ab5af'>
+      <union-decl name='__anonymous_union__' size-in-bits='32' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/asm-generic/qrwlock_types.h' line='14' column='1' id='ac5ab5b5'>
         <data-member access='public'>
           <var-decl name='cnts' type-id='49178f86' visibility='default' filepath='private/gs-google/include/asm-generic/qrwlock_types.h' line='15' column='1'/>
         </data-member>
@@ -75284,7 +75335,7 @@
           <var-decl name='' type-id='e7f43f8d' visibility='default' filepath='private/gs-google/include/asm-generic/qrwlock_types.h' line='16' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='32' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/asm-generic/qspinlock_types.h' line='15' column='1' id='ac5ab5b0'>
+      <union-decl name='__anonymous_union__' size-in-bits='32' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/asm-generic/qspinlock_types.h' line='15' column='1' id='ac5ab5b6'>
         <data-member access='public'>
           <var-decl name='val' type-id='49178f86' visibility='default' filepath='private/gs-google/include/asm-generic/qspinlock_types.h' line='16' column='1'/>
         </data-member>
@@ -75295,7 +75346,7 @@
           <var-decl name='' type-id='e7f43f8f' visibility='default' filepath='private/gs-google/include/asm-generic/qspinlock_types.h' line='28' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/bpf-cgroup.h' line='54' column='1' id='ac5ab5b5'>
+      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/bpf-cgroup.h' line='54' column='1' id='ac5ab5bb'>
         <data-member access='public'>
           <var-decl name='buf' type-id='b1253746' visibility='default' filepath='private/gs-google/include/linux/bpf-cgroup.h' line='55' column='1'/>
         </data-member>
@@ -75303,15 +75354,7 @@
           <var-decl name='percpu_buf' type-id='eaa32e2f' visibility='default' filepath='private/gs-google/include/linux/bpf-cgroup.h' line='56' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/cred.h' line='149' column='1' id='ac5ab5b6'>
-        <data-member access='public'>
-          <var-decl name='non_rcu' type-id='95e97e5e' visibility='default' filepath='private/gs-google/include/linux/cred.h' line='150' column='1'/>
-        </data-member>
-        <data-member access='public'>
-          <var-decl name='rcu' type-id='e3d8ce29' visibility='default' filepath='private/gs-google/include/linux/cred.h' line='151' column='1'/>
-        </data-member>
-      </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='49' column='1' id='ac5ab5b7'>
+      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='49' column='1' id='ac5ab5bc'>
         <data-member access='public'>
           <var-decl name='' type-id='e7f43f90' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='50' column='1'/>
         </data-member>
@@ -75319,7 +75362,7 @@
           <var-decl name='hash_len' type-id='91ce1af9' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='53' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='108' column='1' id='ac5ab5b8'>
+      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='108' column='1' id='ac5ab5bd'>
         <data-member access='public'>
           <var-decl name='d_lru' type-id='72f469ec' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='109' column='1'/>
         </data-member>
@@ -75327,7 +75370,7 @@
           <var-decl name='d_wait' type-id='03d48e96' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='110' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='117' column='1' id='ac5ab5b9'>
+      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='117' column='1' id='ac5ab5be'>
         <data-member access='public'>
           <var-decl name='d_alias' type-id='03a4a074' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='118' column='1'/>
         </data-member>
@@ -75338,7 +75381,7 @@
           <var-decl name='d_rcu' type-id='e3d8ce29' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='120' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='338' column='1' id='ac5ab5ba'>
+      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='338' column='1' id='ac5ab5bf'>
         <data-member access='public'>
           <var-decl name='ki_cookie' type-id='f0981eeb' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='339' column='1'/>
         </data-member>
@@ -75346,7 +75389,7 @@
           <var-decl name='ki_waitq' type-id='4be56288' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='340' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='32' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='660' column='1' id='ac5ab5bb'>
+      <union-decl name='__anonymous_union__' size-in-bits='32' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='660' column='1' id='ac5ab5c0'>
         <data-member access='public'>
           <var-decl name='i_nlink' type-id='20f5f452' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='661' column='1'/>
         </data-member>
@@ -75354,7 +75397,7 @@
           <var-decl name='__i_nlink' type-id='f0981eeb' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='662' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='699' column='1' id='ac5ab5bc'>
+      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='699' column='1' id='ac5ab5c1'>
         <data-member access='public'>
           <var-decl name='i_dentry' type-id='e151255a' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='700' column='1'/>
         </data-member>
@@ -75362,7 +75405,7 @@
           <var-decl name='i_rcu' type-id='e3d8ce29' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='701' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='711' column='1' id='ac5ab5bd'>
+      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='711' column='1' id='ac5ab5c2'>
         <data-member access='public'>
           <var-decl name='i_fop' type-id='61758ee5' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='712' column='1'/>
         </data-member>
@@ -75370,7 +75413,7 @@
           <var-decl name='free_inode' type-id='4f3d95df' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='713' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='718' column='1' id='ac5ab5be'>
+      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='718' column='1' id='ac5ab5c3'>
         <data-member access='public'>
           <var-decl name='i_pipe' type-id='15d29710' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='719' column='1'/>
         </data-member>
@@ -75387,15 +75430,7 @@
           <var-decl name='i_dir_seq' type-id='f0981eeb' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='723' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='945' column='1' id='ac5ab5bf'>
-        <data-member access='public'>
-          <var-decl name='fu_llist' type-id='c5ccfee8' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='946' column='1'/>
-        </data-member>
-        <data-member access='public'>
-          <var-decl name='fu_rcuhead' type-id='e3d8ce29' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='947' column='1'/>
-        </data-member>
-      </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='256' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='1131' column='1' id='ac5ab5c0'>
+      <union-decl name='__anonymous_union__' size-in-bits='256' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='1131' column='1' id='ac5ab5c4'>
         <data-member access='public'>
           <var-decl name='nfs_fl' type-id='17bacae5' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='1132' column='1'/>
         </data-member>
@@ -75406,7 +75441,7 @@
           <var-decl name='afs' type-id='e7f43f91' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='1138' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='83' column='1' id='ac5ab5c1'>
+      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='83' column='1' id='ac5ab5c5'>
         <data-member access='public'>
           <var-decl name='q_node' type-id='72f469ec' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='84' column='1'/>
         </data-member>
@@ -75414,7 +75449,7 @@
           <var-decl name='__rcu_icq_cache' type-id='f3b4aca8' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='85' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='87' column='1' id='ac5ab5c2'>
+      <union-decl name='__anonymous_union__' size-in-bits='128' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='87' column='1' id='ac5ab5c6'>
         <data-member access='public'>
           <var-decl name='ioc_node' type-id='03a4a074' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='88' column='1'/>
         </data-member>
@@ -75422,7 +75457,7 @@
           <var-decl name='__rcu_head' type-id='e3d8ce29' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='89' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/jump_label.h' line='102' column='1' id='ac5ab5c4'>
+      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/jump_label.h' line='102' column='1' id='ac5ab5c8'>
         <data-member access='public'>
           <var-decl name='type' type-id='7359adad' visibility='default' filepath='private/gs-google/include/linux/jump_label.h' line='103' column='1'/>
         </data-member>
@@ -75433,7 +75468,7 @@
           <var-decl name='next' type-id='c77a71ce' visibility='default' filepath='private/gs-google/include/linux/jump_label.h' line='105' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='256' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/kernfs.h' line='144' column='1' id='ac5ab5c5'>
+      <union-decl name='__anonymous_union__' size-in-bits='256' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/kernfs.h' line='144' column='1' id='ac5ab5c9'>
         <data-member access='public'>
           <var-decl name='dir' type-id='4303ca40' visibility='default' filepath='private/gs-google/include/linux/kernfs.h' line='145' column='1'/>
         </data-member>
@@ -75444,44 +75479,12 @@
           <var-decl name='attr' type-id='9e04468e' visibility='default' filepath='private/gs-google/include/linux/kernfs.h' line='147' column='1'/>
         </data-member>
       </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/key.h' line='111' column='1' id='ac5ab5c6'>
+      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/key.h' line='111' column='1' id='ac5ab5ca'>
         <data-member access='public'>
           <var-decl name='' type-id='e7f43f94' visibility='default' filepath='private/gs-google/include/linux/key.h' line='112' column='1'/>
         </data-member>
         <data-member access='public'>
           <var-decl name='x' type-id='7359adad' visibility='default' filepath='private/gs-google/include/linux/key.h' line='121' column='1'/>
-        </data-member>
-      </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='192' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/key.h' line='192' column='1' id='ac5ab5c7'>
-        <data-member access='public'>
-          <var-decl name='graveyard_link' type-id='72f469ec' visibility='default' filepath='private/gs-google/include/linux/key.h' line='193' column='1'/>
-        </data-member>
-        <data-member access='public'>
-          <var-decl name='serial_node' type-id='2a8a6332' visibility='default' filepath='private/gs-google/include/linux/key.h' line='194' column='1'/>
-        </data-member>
-      </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/key.h' line='202' column='1' id='ac5ab5c8'>
-        <data-member access='public'>
-          <var-decl name='expiry' type-id='1afd27ac' visibility='default' filepath='private/gs-google/include/linux/key.h' line='203' column='1'/>
-        </data-member>
-        <data-member access='public'>
-          <var-decl name='revoked_at' type-id='1afd27ac' visibility='default' filepath='private/gs-google/include/linux/key.h' line='204' column='1'/>
-        </data-member>
-      </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='320' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/key.h' line='239' column='1' id='ac5ab5c9'>
-        <data-member access='public'>
-          <var-decl name='index_key' type-id='16ab8749' visibility='default' filepath='private/gs-google/include/linux/key.h' line='240' column='1'/>
-        </data-member>
-        <data-member access='public'>
-          <var-decl name='' type-id='e7f43f95' visibility='default' filepath='private/gs-google/include/linux/key.h' line='241' column='1'/>
-        </data-member>
-      </union-decl>
-      <union-decl name='__anonymous_union__' size-in-bits='256' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/key.h' line='254' column='1' id='ac5ab5ca'>
-        <data-member access='public'>
-          <var-decl name='payload' type-id='2888d74a' visibility='default' filepath='private/gs-google/include/linux/key.h' line='255' column='1'/>
-        </data-member>
-        <data-member access='public'>
-          <var-decl name='' type-id='e7f43f96' visibility='default' filepath='private/gs-google/include/linux/key.h' line='256' column='1'/>
         </data-member>
       </union-decl>
       <union-decl name='__anonymous_union__' size-in-bits='64' is-anonymous='yes' visibility='default' filepath='private/gs-google/include/linux/lockref.h' line='26' column='1' id='ac5ab5cb'>
@@ -78179,7 +78182,11 @@
       <pointer-type-def type-id='b254b8db' size-in-bits='64' id='ac5f2363'/>
       <pointer-type-def type-id='49a0ad34' size-in-bits='64' id='ac6963b2'/>
       <pointer-type-def type-id='62c10f49' size-in-bits='64' id='ac6d3ca6'/>
-      <class-decl name='prot_inuse' is-struct='yes' visibility='default' is-declaration-only='yes' id='ac763c5d'/>
+      <class-decl name='prot_inuse' size-in-bits='2048' is-struct='yes' visibility='default' filepath='private/gs-google/net/core/sock.c' line='3379' column='1' id='ac763c5d'>
+        <data-member access='public' layout-offset-in-bits='0'>
+          <var-decl name='val' type-id='93e41790' visibility='default' filepath='private/gs-google/net/core/sock.c' line='3380' column='1'/>
+        </data-member>
+      </class-decl>
       <function-type size-in-bits='64' id='ac765b39'>
         <parameter type-id='2ba25712'/>
         <parameter type-id='14bde5bf'/>
@@ -81502,7 +81509,7 @@
       <pointer-type-def type-id='bd2407df' size-in-bits='64' id='b4b886af'/>
       <class-decl name='file' size-in-bits='2368' is-struct='yes' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='944' column='1' id='b4b8adeb'>
         <data-member access='public' layout-offset-in-bits='0'>
-          <var-decl name='f_u' type-id='ac5ab5bf' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='948' column='1'/>
+          <var-decl name='f_u' type-id='ac5ab5a9' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='948' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='128'>
           <var-decl name='f_path' type-id='b5382ece' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='949' column='1'/>
@@ -88051,7 +88058,7 @@
       </class-decl>
       <class-decl name='qspinlock' size-in-bits='32' is-struct='yes' visibility='default' filepath='private/gs-google/include/asm-generic/qspinlock_types.h' line='14' column='1' id='c167abfb'>
         <data-member access='public' layout-offset-in-bits='0'>
-          <var-decl name='' type-id='ac5ab5b0' visibility='default' filepath='private/gs-google/include/asm-generic/qspinlock_types.h' line='15' column='1'/>
+          <var-decl name='' type-id='ac5ab5b6' visibility='default' filepath='private/gs-google/include/asm-generic/qspinlock_types.h' line='15' column='1'/>
         </data-member>
       </class-decl>
       <qualified-type-def type-id='f95bfc29' const='yes' id='c16a2224'/>
@@ -97017,7 +97024,7 @@
           <var-decl name='d_fsdata' type-id='eaa32e2f' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='106' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='1024'>
-          <var-decl name='' type-id='ac5ab5b8' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='108' column='1'/>
+          <var-decl name='' type-id='ac5ab5bd' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='108' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='1152'>
           <var-decl name='d_child' type-id='72f469ec' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='112' column='1'/>
@@ -97026,7 +97033,7 @@
           <var-decl name='d_subdirs' type-id='72f469ec' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='113' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='1408'>
-          <var-decl name='d_u' type-id='ac5ab5b9' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='121' column='1'/>
+          <var-decl name='d_u' type-id='ac5ab5be' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='121' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='1536'>
           <var-decl name='android_kabi_reserved1' type-id='91ce1af9' visibility='default' filepath='private/gs-google/include/linux/dcache.h' line='123' column='1'/>
@@ -98114,7 +98121,7 @@
           <var-decl name='ki_ioprio' type-id='1dc6a898' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='337' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='320'>
-          <var-decl name='' type-id='ac5ab5ba' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='338' column='1'/>
+          <var-decl name='' type-id='ac5ab5bf' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='338' column='1'/>
         </data-member>
       </class-decl>
       <pointer-type-def type-id='52c5253d' size-in-bits='64' id='da6639f9'/>
@@ -98313,10 +98320,10 @@
           <var-decl name='ioc' type-id='d042cfad' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='75' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='128'>
-          <var-decl name='' type-id='ac5ab5c1' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='83' column='1'/>
+          <var-decl name='' type-id='ac5ab5c5' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='83' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='256'>
-          <var-decl name='' type-id='ac5ab5c2' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='87' column='1'/>
+          <var-decl name='' type-id='ac5ab5c6' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='87' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='384'>
           <var-decl name='flags' type-id='f0981eeb' visibility='default' filepath='private/gs-google/include/linux/iocontext.h' line='92' column='1'/>
@@ -110292,35 +110299,7 @@
         <return type-id='48b5725f'/>
       </function-type>
       <pointer-type-def type-id='22c4fd1a' size-in-bits='64' id='ec1a9290'/>
-      <class-decl name='disk_events' size-in-bits='1920' is-struct='yes' visibility='default' filepath='private/gs-google/block/genhd.c' line='1887' column='1' id='ec1aac50'>
-        <data-member access='public' layout-offset-in-bits='0'>
-          <var-decl name='node' type-id='72f469ec' visibility='default' filepath='private/gs-google/block/genhd.c' line='1888' column='1'/>
-        </data-member>
-        <data-member access='public' layout-offset-in-bits='128'>
-          <var-decl name='disk' type-id='33c599da' visibility='default' filepath='private/gs-google/block/genhd.c' line='1889' column='1'/>
-        </data-member>
-        <data-member access='public' layout-offset-in-bits='192'>
-          <var-decl name='lock' type-id='fb4018a0' visibility='default' filepath='private/gs-google/block/genhd.c' line='1890' column='1'/>
-        </data-member>
-        <data-member access='public' layout-offset-in-bits='256'>
-          <var-decl name='block_mutex' type-id='925167dc' visibility='default' filepath='private/gs-google/block/genhd.c' line='1892' column='1'/>
-        </data-member>
-        <data-member access='public' layout-offset-in-bits='640'>
-          <var-decl name='block' type-id='95e97e5e' visibility='default' filepath='private/gs-google/block/genhd.c' line='1893' column='1'/>
-        </data-member>
-        <data-member access='public' layout-offset-in-bits='672'>
-          <var-decl name='pending' type-id='f0981eeb' visibility='default' filepath='private/gs-google/block/genhd.c' line='1894' column='1'/>
-        </data-member>
-        <data-member access='public' layout-offset-in-bits='704'>
-          <var-decl name='clearing' type-id='f0981eeb' visibility='default' filepath='private/gs-google/block/genhd.c' line='1895' column='1'/>
-        </data-member>
-        <data-member access='public' layout-offset-in-bits='768'>
-          <var-decl name='poll_msecs' type-id='bd54fe1a' visibility='default' filepath='private/gs-google/block/genhd.c' line='1897' column='1'/>
-        </data-member>
-        <data-member access='public' layout-offset-in-bits='832'>
-          <var-decl name='dwork' type-id='5ad6e0ef' visibility='default' filepath='private/gs-google/block/genhd.c' line='1898' column='1'/>
-        </data-member>
-      </class-decl>
+      <class-decl name='disk_events' is-struct='yes' visibility='default' is-declaration-only='yes' id='ec1aac50'/>
       <pointer-type-def type-id='b9157ea1' size-in-bits='64' id='ec2076dd'/>
       <pointer-type-def type-id='fdb31210' size-in-bits='64' id='ec23f0e2'/>
       <function-type size-in-bits='64' id='ec247fc5'>
@@ -117659,7 +117638,7 @@
           <var-decl name='i_ino' type-id='7359adad' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='652' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='576'>
-          <var-decl name='' type-id='ac5ab5bb' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='660' column='1'/>
+          <var-decl name='' type-id='ac5ab5c0' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='660' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='608'>
           <var-decl name='i_rdev' type-id='8504f260' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='664' column='1'/>
@@ -117731,7 +117710,7 @@
           <var-decl name='i_wb_list' type-id='72f469ec' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='698' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='2688'>
-          <var-decl name='' type-id='ac5ab5bc' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='699' column='1'/>
+          <var-decl name='' type-id='ac5ab5c1' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='699' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='2816'>
           <var-decl name='i_version' type-id='28ee064c' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='703' column='1'/>
@@ -117752,7 +117731,7 @@
           <var-decl name='i_readcount' type-id='49178f86' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='709' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='3072'>
-          <var-decl name='' type-id='ac5ab5bd' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='711' column='1'/>
+          <var-decl name='' type-id='ac5ab5c2' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='711' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='3136'>
           <var-decl name='i_flctx' type-id='731257ff' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='715' column='1'/>
@@ -117764,7 +117743,7 @@
           <var-decl name='i_devices' type-id='72f469ec' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='717' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='5120'>
-          <var-decl name='' type-id='ac5ab5be' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='718' column='1'/>
+          <var-decl name='' type-id='ac5ab5c3' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='718' column='1'/>
         </data-member>
         <data-member access='public' layout-offset-in-bits='5184'>
           <var-decl name='i_generation' type-id='3f1a6b60' visibility='default' filepath='private/gs-google/include/linux/fs.h' line='726' column='1'/>
@@ -136663,9 +136642,9 @@
         <parameter type-id='29af9a71' name='regmap' filepath='private/gs-google/sound/soc/soc-component.c' line='388' column='1'/>
         <return type-id='48b5725f'/>
       </function-decl>
-      <function-decl name='snd_soc_component_read' mangled-name='snd_soc_component_read' filepath='private/gs-google/sound/soc/soc-component.c' line='444' column='1' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='snd_soc_component_read'>
-        <parameter type-id='807b7702' name='component' filepath='private/gs-google/sound/soc/soc-component.c' line='444' column='1'/>
-        <parameter type-id='f0981eeb' name='reg' filepath='private/gs-google/sound/soc/soc-component.c' line='445' column='1'/>
+      <function-decl name='snd_soc_component_read' mangled-name='snd_soc_component_read' filepath='private/gs-google/include/sound/soc-component.h' line='340' column='1' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='snd_soc_component_read'>
+        <parameter type-id='807b7702'/>
+        <parameter type-id='f0981eeb'/>
         <return type-id='f0981eeb'/>
       </function-decl>
       <function-decl name='snd_soc_component_set_jack' mangled-name='snd_soc_component_set_jack' filepath='private/gs-google/include/sound/soc-component.h' line='362' column='1' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='snd_soc_component_set_jack'>
